@@ -44,4 +44,4 @@ gh release create "$TAG" \
   "$DIST"/ace-*
 
 echo ""
-echo "==> Released: https://github.com/prod9/ace/releases/tag/$TAG"
+echo "==> Released: https://github.com/ace-rs/ace/releases/tag/$TAG"

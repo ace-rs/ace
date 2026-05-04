@@ -154,10 +154,10 @@ mod tests {
     fn load_or_default_existing_file() {
         let dir = tempfile::tempdir().expect("create tempdir");
         let path = dir.path().join("ace.toml");
-        std::fs::write(&path, "school = \"prod9/school\"\n").expect("write");
+        std::fs::write(&path, "school = \"ace-rs/school\"\n").expect("write");
 
         let result = load_or_default(&path).expect("should load");
-        assert_eq!(result.school, "prod9/school");
+        assert_eq!(result.school, "ace-rs/school");
     }
 
     #[test]
@@ -174,10 +174,10 @@ mod tests {
         let dir = tempfile::tempdir().expect("create tempdir");
         let path = dir.path().join("ace.toml");
 
-        set_school(&path, "prod9/school").expect("set school");
+        set_school(&path, "ace-rs/school").expect("set school");
 
         let config = load(&path).expect("reload");
-        assert_eq!(config.school, "prod9/school");
+        assert_eq!(config.school, "ace-rs/school");
     }
 
     #[test]
@@ -233,10 +233,10 @@ AWS_REGION = "us-east-1"
         let path = dir.path().join("ace.toml");
         std::fs::write(&path, "school = \"old\"\n\n[env]\nKEY = \"value\"\n").expect("write");
 
-        set_school(&path, "prod9/school").expect("set school");
+        set_school(&path, "ace-rs/school").expect("set school");
 
         let config = load(&path).expect("reload");
-        assert_eq!(config.school, "prod9/school");
+        assert_eq!(config.school, "ace-rs/school");
         assert_eq!(config.env.get("KEY").map(String::as_str), Some("value"));
     }
 }

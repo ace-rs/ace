@@ -1,7 +1,7 @@
 pub fn build_download_url(version: &semver::Version, target: &str) -> String {
     let suffix = if target.contains("windows") { ".exe" } else { "" };
     format!(
-        "https://github.com/prod9/ace/releases/download/v{version}/ace-{target}{suffix}"
+        "https://github.com/ace-rs/ace/releases/download/v{version}/ace-{target}{suffix}"
     )
 }
 
@@ -15,7 +15,7 @@ mod tests {
         let url = build_download_url(&version, "aarch64-apple-darwin");
         assert_eq!(
             url,
-            "https://github.com/prod9/ace/releases/download/v0.4.0/ace-aarch64-apple-darwin"
+            "https://github.com/ace-rs/ace/releases/download/v0.4.0/ace-aarch64-apple-darwin"
         );
     }
 
@@ -32,7 +32,7 @@ mod tests {
         let url = build_download_url(&version, "x86_64-pc-windows-gnu");
         assert_eq!(
             url,
-            "https://github.com/prod9/ace/releases/download/v0.4.0/ace-x86_64-pc-windows-gnu.exe"
+            "https://github.com/ace-rs/ace/releases/download/v0.4.0/ace-x86_64-pc-windows-gnu.exe"
         );
     }
 }

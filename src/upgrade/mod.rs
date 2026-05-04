@@ -45,7 +45,7 @@ pub fn check_for_update(ace: &mut Ace) {
     } else {
         let tag_filter = format!("v{}.*", current.major);
         let Ok(tags) =
-            crate::git::ls_remote_tags("https://github.com/prod9/ace.git", &tag_filter)
+            crate::git::ls_remote_tags("https://github.com/ace-rs/ace.git", &tag_filter)
         else {
             return;
         };

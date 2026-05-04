@@ -77,7 +77,7 @@ mod tests {
         let cache_root = tmp.path();
 
         std::fs::create_dir_all(cache_root.join("imports/owner/repo")).unwrap();
-        std::fs::create_dir_all(cache_root.join("prod9/school")).unwrap();
+        std::fs::create_dir_all(cache_root.join("ace-rs/school")).unwrap();
         std::fs::create_dir_all(cache_root.join("other-owner/other-repo")).unwrap();
 
         let stray = detect_stray_cache_dirs(cache_root);

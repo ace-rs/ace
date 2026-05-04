@@ -19,6 +19,7 @@ if ! cargo set-version --help &>/dev/null; then
 fi
 
 cargo set-version "$VERSION"
+echo "v$VERSION" > latest
 git commit -am "v$VERSION"
 git tag "v$VERSION"
 

@@ -10,8 +10,8 @@ use super::paths::{ace_cache_dir, ace_data_dir};
 ///
 /// ```toml
 /// [[school]]
-/// specifier = "prod9/school"
-/// repo = "prod9/school"
+/// specifier = "ace-rs/school"
+/// repo = "ace-rs/school"
 /// path = ""
 ///
 /// [[school]]
@@ -116,15 +116,15 @@ mod tests {
     #[test]
     fn upsert_deduplicates() {
         let mut index = IndexToml::default();
-        upsert(&mut index, "prod9/school");
-        upsert(&mut index, "prod9/school");
+        upsert(&mut index, "ace-rs/school");
+        upsert(&mut index, "ace-rs/school");
         assert_eq!(index.school.len(), 1);
     }
 
     #[test]
     fn upsert_multiple_schools() {
         let mut index = IndexToml::default();
-        upsert(&mut index, "prod9/school");
+        upsert(&mut index, "ace-rs/school");
         upsert(&mut index, "acme/school");
         assert_eq!(index.school.len(), 2);
     }
@@ -144,12 +144,12 @@ mod tests {
         let new = tmp.path().join("data").join("index.toml");
 
         let mut seed = IndexToml::default();
-        upsert(&mut seed, "prod9/school");
+        upsert(&mut seed, "ace-rs/school");
         save(&legacy, &seed).expect("seed legacy");
 
         let loaded = load_or_migrate(&new, &legacy).expect("migrate");
         assert_eq!(loaded.school.len(), 1);
-        assert_eq!(loaded.school[0].specifier, "prod9/school");
+        assert_eq!(loaded.school[0].specifier, "ace-rs/school");
         assert!(new.exists(), "new path should be written after migration");
     }
 
@@ -188,14 +188,14 @@ mod tests {
         let path = tmp.path().join("index.toml");
 
         let mut index = IndexToml::default();
-        upsert(&mut index, "prod9/school");
+        upsert(&mut index, "ace-rs/school");
         upsert(&mut index, "prod9/mono:school");
 
         save(&path, &index).expect("save should succeed");
         let loaded = load(&path).expect("load should succeed");
 
         assert_eq!(loaded.school.len(), 2);
-        assert_eq!(loaded.school[0].specifier, "prod9/school");
+        assert_eq!(loaded.school[0].specifier, "ace-rs/school");
         assert_eq!(loaded.school[1].specifier, "prod9/mono:school");
         assert_eq!(loaded.school[1].repo, "prod9/mono");
         assert_eq!(loaded.school[1].path, "school");

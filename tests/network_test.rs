@@ -9,14 +9,14 @@ fn setup_remote_school() {
     env.git_init();
 
     env.ace()
-        .args(["setup", "prod9/school"])
+        .args(["setup", "ace-rs/school"])
         .timeout(std::time::Duration::from_secs(10))
         .assert()
         .success();
 
     // ace.toml written with remote specifier.
     env.assert_exists("ace.toml");
-    env.assert_contains("ace.toml", "prod9/school");
+    env.assert_contains("ace.toml", "ace-rs/school");
 
     // Skills symlinked from school clone.
     env.assert_exists(".claude/skills");
@@ -33,7 +33,7 @@ fn setup_remote_then_rerun() {
 
     // First setup.
     env.ace()
-        .args(["setup", "prod9/school"])
+        .args(["setup", "ace-rs/school"])
         .timeout(std::time::Duration::from_secs(10))
         .assert()
         .success();
@@ -46,14 +46,14 @@ fn setup_remote_then_rerun() {
 
     // Re-setup — should succeed using cached clone.
     env.ace()
-        .args(["setup", "prod9/school"])
+        .args(["setup", "ace-rs/school"])
         .timeout(std::time::Duration::from_secs(10))
         .assert()
         .success();
 
     // ace.toml restored.
     env.assert_exists("ace.toml");
-    env.assert_contains("ace.toml", "prod9/school");
+    env.assert_contains("ace.toml", "ace-rs/school");
 
     // Skills symlink still valid.
     env.assert_exists(".claude/skills");

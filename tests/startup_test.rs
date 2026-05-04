@@ -6,8 +6,8 @@ const LEGACY_INDEX: &str = "cache/ace/index.toml";
 const NEW_INDEX: &str = "data/ace/index.toml";
 
 const SEED_LEGACY: &str = r#"[[school]]
-specifier = "prod9/school"
-repo = "prod9/school"
+specifier = "ace-rs/school"
+repo = "ace-rs/school"
 "#;
 
 /// Run `ace paths` against the sandboxed env without the hidden `ace setup .`
@@ -35,7 +35,7 @@ fn startup_migrates_legacy_index_toml_to_data_dir() {
     env.assert_exists(NEW_INDEX);
     let migrated = env.read_file(NEW_INDEX);
     assert!(
-        migrated.contains("prod9/school"),
+        migrated.contains("ace-rs/school"),
         "migrated index should preserve specifier; got {migrated:?}",
     );
 }
@@ -66,7 +66,7 @@ repo = "acme/school"
 
     let new_content = env.read_file(NEW_INDEX);
     assert!(
-        new_content.contains("acme/school") && !new_content.contains("prod9/school"),
+        new_content.contains("acme/school") && !new_content.contains("ace-rs/school"),
         "new index should be untouched when already present; got {new_content:?}",
     );
 }

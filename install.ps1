@@ -1,7 +1,7 @@
 # Install ACE from GitHub releases (Windows).
 #
 # Usage:
-#   powershell -c "irm https://raw.githubusercontent.com/prod9/ace/main/install.ps1 | iex"
+#   powershell -c "irm https://ace-rs.dev/install.ps1 | iex"
 #
 # Installs the latest release binary to %LOCALAPPDATA%\ace\ace.exe.
 
@@ -9,7 +9,8 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'  # ~100x faster Invoke-WebRequest on PS 5.x
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$Repo = 'prod9/ace'
+$Repo = 'ace-rs/ace'
+$LatestUrl = 'https://ace-rs.dev/latest'
 $InstallDir = Join-Path $env:LOCALAPPDATA 'ace'
 $InstallPath = Join-Path $InstallDir 'ace.exe'
 
@@ -28,12 +29,10 @@ $Target = "$TripleArch-pc-windows-gnu"
 # --- Resolve latest release ---------------------------------------------------
 
 Write-Host 'Fetching latest release...'
-$ReleaseUrl = "https://api.github.com/repos/$Repo/releases/latest"
-$Release = Invoke-RestMethod -Uri $ReleaseUrl -Headers @{ 'User-Agent' = 'ace-installer' }
-$Tag = $Release.tag_name
+$Tag = (Invoke-WebRequest -Uri $LatestUrl -UseBasicParsing).Content.Trim()
 
 if (-not $Tag) {
-    Write-Error 'Could not determine latest release tag.'
+    Write-Error "Could not determine latest release tag from $LatestUrl."
     exit 1
 }
 

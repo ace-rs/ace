@@ -13,13 +13,13 @@ environments up-to-date. Acts as an entrypoint to supported AI coding backends s
 **curl installer** (recommended):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/prod9/ace/main/install.sh | bash
+curl -fsSL https://ace-rs.dev/install.sh | bash
 ```
 
 **GitHub release** (manual):
 
 Download the binary for your platform from the
-[latest release](https://github.com/prod9/ace/releases/latest), `chmod +x`, and move to
+[latest release](https://github.com/ace-rs/ace/releases/latest), `chmod +x`, and move to
 somewhere on your `$PATH`.
 
 **Source** (development):
@@ -31,7 +31,7 @@ cargo install --path .
 ## Usage
 
 ```sh
-ace setup prod9/school                       # clone a school, register MCP, write config
+ace setup ace-rs/school                       # clone a school, register MCP, write config
 ace                                          # launch the configured backend
 ace --codex                                  # temporarily use Codex for this invocation
 ace -- --continue                            # pass flags through to the backend

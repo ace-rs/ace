@@ -75,7 +75,7 @@ fn resolve_target_version(
     if !silent { ace.progress("checking for updates..."); }
 
     let tag_filter = format!("v{}.*", current.major);
-    let tags = crate::git::ls_remote_tags("https://github.com/prod9/ace.git", &tag_filter)?;
+    let tags = crate::git::ls_remote_tags("https://github.com/ace-rs/ace.git", &tag_filter)?;
     let versions = check::parse_version_tags(&tags);
 
     let Some(latest) = check::latest_version(&versions) else {

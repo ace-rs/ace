@@ -30,10 +30,12 @@ Two distinct user contexts. Confusing them is the most common reasoning error he
 `ace setup .` is project-repo with an embedded school (monorepo). It does NOT bootstrap
 `school.toml`; "local school" is a separate, undesigned feature.
 
-Detection: `Ace::require_school()` (`src/ace/mod.rs:144`) checks `project_dir/school.toml`
-first; else falls back to ace.toml specifier. `SchoolError::Missing` ("run `ace setup`")
-fits only the project-repo no-specifier case — the school-repo no-`school.toml` case
-needs a separate variant ("run `ace school init`").
+Detection: `Ace::require_school()` (`src/ace/mod.rs`) checks `project_dir/school.toml`
+first; else resolves the ace.toml specifier and verifies `school.toml` at the resolved
+root. Errors split by cause: `SchoolError::NoSpecifier` ("run `ace setup`") when ace.toml
+lacks `school = ...`; `SchoolError::NotInitialized` ("run `ace school init`") when the
+resolved root exists but has no `school.toml`. Full case matrix in
+`spec/school/overview.md` (Context Resolution).
 
 ## Conventions
 
@@ -47,7 +49,7 @@ needs a separate variant ("run `ace school init`").
   text lives in clap doc comments; keep `--help` aligned with behavior.
 - **Storage**: see `spec/decisions/006-index-toml-data-dir.md`. Git via
   `std::process::Command` only (no sqlite, no git crate).
-- **Flaude is test-only.** Don't mention it in `www/`, user-facing help, or public docs.
+- **Flaude is test-only.** Don't mention it in user-facing help or public docs.
   Specs/code comments/CLAUDE.md are fine.
 
 ## Backcompat

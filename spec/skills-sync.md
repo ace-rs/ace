@@ -157,8 +157,8 @@ Parent callers resolve the cache root via `config::paths::ace_import_cache_dir()
 
 ```toml
 [[school]]
-specifier = "prod9/school"
-repo = "prod9/school"
+specifier = "ace-rs/school"
+repo = "ace-rs/school"
 path = ""
 
 [[school]]

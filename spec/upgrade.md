@@ -11,7 +11,7 @@ On every `ace` invocation (after state resolution, before exec):
 
 1. Read cache marker `~/.cache/ace/latest_version`.
 2. If marker mtime is < 4 hours old, use cached value. Otherwise run
-   `git ls-remote --tags https://github.com/prod9/ace.git 'v{MAJOR}.*'`
+   `git ls-remote --tags https://github.com/ace-rs/ace.git 'v{MAJOR}.*'`
    to discover tags matching the current major version. Parse each tag as
    `semver::Version` (stripping `v` prefix at this boundary only), pick the
    highest, write the canonical semver string to the marker.
@@ -77,7 +77,7 @@ ace upgrade [--silent] [--force [VERSION]]
 2. Compare against current version using `semver::Version`. If equal and
    `--force` not set, print "Already at latest version (X.Y.Z)" and exit 0.
 3. Determine platform target triple (same mapping as `install.sh`).
-4. Download binary from `https://github.com/prod9/ace/releases/download/v{version}/ace-{target}`
+4. Download binary from `https://github.com/ace-rs/ace/releases/download/v{version}/ace-{target}`
    (the `v` prefix is added back at this boundary only).
 5. Atomic self-replacement (see below).
 6. Update cache marker with the new version.

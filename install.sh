@@ -4,11 +4,12 @@ set -euo pipefail
 # Install ACE from GitHub releases.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/prod9/ace/main/install.sh | bash
+#   curl -fsSL https://ace-rs.dev/install.sh | bash
 #
-# Installs the latest release binary to /usr/local/bin/ace.
+# Installs the latest release binary to ~/.local/bin/ace.
 
-REPO="prod9/ace"
+REPO="ace-rs/ace"
+LATEST_URL="https://ace-rs.dev/latest"
 INSTALL_DIR="${HOME}/.local/bin"
 
 # --- Detect platform ----------------------------------------------------------
@@ -39,11 +40,10 @@ TARGET="${TRIPLE_ARCH}-${TRIPLE_OS}"
 # --- Resolve latest release ---------------------------------------------------
 
 echo "Fetching latest release..."
-RELEASE_URL="https://api.github.com/repos/${REPO}/releases/latest"
-TAG="$(curl -fsSL "$RELEASE_URL" | grep '"tag_name"' | sed 's/.*: "\(.*\)".*/\1/')"
+TAG="$(curl -fsSL "$LATEST_URL" | tr -d '[:space:]')"
 
 if [ -z "$TAG" ]; then
-  echo "Error: could not determine latest release tag."
+  echo "Error: could not determine latest release tag from ${LATEST_URL}."
   exit 1
 fi
 

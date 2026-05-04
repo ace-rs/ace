@@ -39,7 +39,7 @@ fn build_block() -> String {
         MARKER_START.to_string(),
         "# These folders are symlinks to the school clone managed by `ace setup`.".to_string(),
         "# To update skills, update the school repo instead.".to_string(),
-        "# See: https://github.com/prod9/ace".to_string(),
+        "# See: https://github.com/ace-rs/ace".to_string(),
     ];
 
     let dirs: BTreeSet<&str> = Kind::ALL.iter().map(|b| b.backend_dir()).collect();
