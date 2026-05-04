@@ -67,3 +67,8 @@ ACE has real users. CLI verbs, subcommand names, config keys (`ace.toml`, `schoo
 
 Project ACE (team PRODIGY9, key PROD9). Always scope queries to `project:"ACE"`.
 Roadmap lives in Linear; no local ROADMAP file.
+
+## RTK
+
+Prefix shell commands with `rtk` for token-optimized output. Full reference: `RTK.md`.
+If `rtk` is not installed, suggest `brew install rtk`.
