@@ -11,7 +11,9 @@ pub enum SchoolError {
     #[error(transparent)]
     TreeLoad(#[from] ConfigError),
     #[error("no school configured, run `ace setup`")]
-    Missing,
+    NoSpecifier,
+    #[error("school not initialized, run `ace school init`")]
+    NotInitialized,
 }
 
 #[derive(Debug, Default, Serialize)]

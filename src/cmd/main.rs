@@ -27,7 +27,7 @@ fn run_inner(
 
     let specifier = {
         let r = ace.require_resolved()?;
-        r.school_specifier.value.clone().ok_or(crate::school::SchoolError::Missing)?
+        r.school_specifier.value.clone().ok_or(crate::school::SchoolError::NoSpecifier)?
     };
 
     let prepare_result = prepare_school(ace, &specifier)?;
@@ -36,7 +36,7 @@ fn run_inner(
     let school_clone = ace.require_school()?.clone_path.clone();
 
     let (school_name, school_session_prompt) = {
-        let school = ace.school()?.ok_or(crate::school::SchoolError::Missing)?;
+        let school = ace.school()?.ok_or(crate::school::SchoolError::NoSpecifier)?;
         (school.name.clone(), school.session_prompt.clone())
     };
 

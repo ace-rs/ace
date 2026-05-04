@@ -138,9 +138,13 @@ impl Ace {
         })
     }
 
-    /// Resolve school paths. Dual context:
-    /// - If school.toml exists in project_dir → school repo context
-    /// - Otherwise require_tree → specifier → school_paths
+    /// Resolve school paths. See spec/school/overview.md (Context Resolution)
+    /// for the full case matrix. Summary:
+    /// - school.toml in workdir → Ok (school-repo).
+    /// - Else require_tree → specifier → resolve.
+    /// - Resolved root exists but lacks school.toml → MissingSchool
+    ///   (covers cases 5 and 7: local pre-init / clone uninitialized upstream).
+    /// - Resolved root absent → Ok; cmd/pull.rs self-heals via clone (case 8).
     pub fn require_school(&self) -> Result<&SchoolPaths, SchoolError> {
         self.school_paths.get_or_try_init(|| {
             if self.project_dir.join("school.toml").exists() {
@@ -152,9 +156,13 @@ impl Ace {
             }
             let tree = self.require_tree()?;
             let Some(spec) = tree.specifier() else {
-                return Err(SchoolError::Missing);
+                return Err(SchoolError::NoSpecifier);
             };
-            config::school_paths::resolve(&self.project_dir, &spec).map_err(SchoolError::from)
+            let paths = config::school_paths::resolve(&self.project_dir, &spec)?;
+            if paths.root.is_dir() && !paths.root.join("school.toml").exists() {
+                return Err(SchoolError::NotInitialized);
+            }
+            Ok(paths)
         })
     }
 
@@ -246,5 +254,51 @@ impl Ace {
 
     pub fn prompt_select(&mut self, prompt: &str, options: Vec<String>) -> Result<String, IoError> {
         self.io.prompt_select(prompt, options)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// spec/school/overview.md case 5: ace.toml with local specifier `.`,
+    /// no school.toml at resolved root → MissingSchool, not Ok with stale paths.
+    #[test]
+    fn require_school_local_specifier_uninitialized_returns_not_initialized() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::write(
+            tmp.path().join("ace.toml"),
+            "school = \".\"\nbackend = \"flaude\"\n",
+        )
+        .unwrap();
+        let ace = Ace::new(tmp.path().to_path_buf(), OutputMode::Silent);
+        let err = ace.require_school().expect_err("expected NotInitialized");
+        assert!(
+            matches!(err, SchoolError::NotInitialized),
+            "got: {err:?}"
+        );
+        assert!(err.to_string().contains("ace school init"), "msg: {err}");
+    }
+
+    /// spec/school/overview.md case 1: school.toml in workdir short-circuits to Ok.
+    #[test]
+    fn require_school_workdir_school_toml_returns_ok() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::write(tmp.path().join("school.toml"), "name = \"x\"\n").unwrap();
+        let ace = Ace::new(tmp.path().to_path_buf(), OutputMode::Silent);
+        let paths = ace.require_school().expect("Ok");
+        assert_eq!(paths.root, tmp.path());
+        assert!(paths.clone_path.is_none());
+    }
+
+    /// spec/school/overview.md case 3: ace.toml without specifier → Missing.
+    #[test]
+    fn require_school_no_specifier_returns_no_specifier() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::write(tmp.path().join("ace.toml"), "backend = \"flaude\"\n").unwrap();
+        let ace = Ace::new(tmp.path().to_path_buf(), OutputMode::Silent);
+        let err = ace.require_school().expect_err("expected NoSpecifier");
+        assert!(matches!(err, SchoolError::NoSpecifier), "got: {err:?}");
+        assert!(err.to_string().contains("ace setup"), "msg: {err}");
     }
 }

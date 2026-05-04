@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use super::ConfigError;
 use super::paths::ace_data_dir;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SchoolPaths {
     pub source: String,
     pub clone_path: Option<PathBuf>,
@@ -63,7 +63,7 @@ mod tests {
     #[test]
     fn parse_specifier_valid() {
         let cases: &[(&str, &str, Option<&str>)] = &[
-            ("prod9/school", "prod9/school", None),
+            ("ace-rs/school", "ace-rs/school", None),
             ("prod9/mono:school", "prod9/mono", Some("school")),
             (".", ".", None),
             (".:/school", ".", Some("school")),
@@ -126,7 +126,7 @@ mod tests {
         let data_root = super::super::paths::ace_data_dir()
             .expect("ace_data_dir should resolve in tests");
         let cases: &[(&str, &str, &str)] = &[
-            ("prod9/school", "ace/prod9/school", "ace/prod9/school"),
+            ("ace-rs/school", "ace/ace-rs/school", "ace/ace-rs/school"),
             ("prod9/mono:school", "ace/prod9/mono", "ace/prod9/mono/school"),
         ];
 

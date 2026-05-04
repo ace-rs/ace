@@ -49,7 +49,9 @@ Each binding is independent and fallible. No shared trait — operations differ 
   with built-ins, then looks up `resolved.backend_name`. Errors: `Unknown` /
   `Unresolvable` / `KindMismatch`.
 - `src/school.rs` — `School` domain object built by `From<SchoolToml>`.
-  `SchoolError::Missing` when no school is configured.
+  `SchoolError::NoSpecifier` when ace.toml lacks `school = ...`;
+  `SchoolError::NotInitialized` when the resolved root has no `school.toml`
+  (see `spec/school/overview.md` Context Resolution).
 - `src/skills/` — `Skills<Discovered>` / `Skills<Decided>` typestate. `Skills::discover`
   walks `<school>/skills/`; `.resolve(&Tree)` produces the resolved set with diagnostics.
   `SkillError` wraps discovery I/O plus upstream `ConfigError` / `SchoolError`.

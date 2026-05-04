@@ -8,7 +8,7 @@ pub fn run(ace: &mut Ace) {
 }
 
 fn run_inner(ace: &mut Ace) -> Result<(), CmdError> {
-    let clone_path = ace.require_school()?.clone_path.clone().ok_or(crate::school::SchoolError::Missing)?;
+    let clone_path = ace.require_school()?.clone_path.clone().ok_or(crate::school::SchoolError::NoSpecifier)?;
 
     ace.data(&format!("# school-clone\t{}", clone_path.display()));
 

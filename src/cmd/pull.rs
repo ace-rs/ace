@@ -15,7 +15,7 @@ fn run_inner(ace: &mut Ace) -> Result<(), CmdError> {
         .school_specifier
         .value
         .clone()
-        .ok_or(crate::school::SchoolError::Missing)?;
+        .ok_or(crate::school::SchoolError::NoSpecifier)?;
 
     let project_dir = ace.project_dir().to_path_buf();
     let school_paths = school_paths::resolve(&project_dir, &specifier)?;
