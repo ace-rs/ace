@@ -4,6 +4,13 @@ A school is a git-cloneable source repository containing skills, conventions, ag
 other shared resources for an organization. ACE maintains a local clone in
 `~/.local/share/ace/{owner/repo}/` (XDG_DATA_HOME).
 
+This spec covers the **school-repo** context — the maintainer authoring a school. The
+other context — a project consuming a school — is covered in [setup.md](../setup.md).
+The two contexts are distinguished by which marker file exists at the workdir root:
+`school.toml` (school) vs `ace.toml` (project). Maintainer-side commands are under
+`ace school <subcmd>` and `src/actions/school/`; consumer-side under bare `ace` /
+`ace setup` / `ace pull` and `src/actions/project/`.
+
 ## Specifier
 
 The `school` field in `ace.toml` uses a multi-mode specifier:

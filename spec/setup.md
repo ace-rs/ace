@@ -1,7 +1,19 @@
 # Setup Flow
 
+This spec covers **project-repo** setup — bootstrapping a user's codebase to consume a school.
+The other context — authoring a school itself — is covered in [school/overview.md](school/overview.md)
+and uses `ace school init` instead. The two contexts are distinguished by which marker file
+exists at the workdir root: `ace.toml` (project) vs `school.toml` (school). A workdir can be
+both, in which case school-context detection takes precedence (see `Ace::require_school` in
+`src/ace/mod.rs`).
+
 `ace setup <owner/repo>` is a required first step before using ACE in a project. It must be run
 explicitly — ACE does not auto-detect or auto-initialize.
+
+`ace setup .` is a project-repo variant — `school = "."` declares the school is embedded in
+the same tree (e.g. monorepo). It does NOT create a `school.toml`; an embedded school must
+already exist somewhere addressable by the specifier. Bootstrapping a brand-new local school
+is a separate, undesigned feature.
 
 ## Guards
 

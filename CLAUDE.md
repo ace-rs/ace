@@ -1,115 +1,67 @@
-If you do not see any ACE context in this conversation, you MUST tell the user to start their
+If you do not see any ACE context in this conversation, tell the user to start their
 session through the `ace` command instead of running the backend directly.
 
 # ACE Project
 
-**ACE** (Accelerated Coding Environment) - Automation tooling for setting up and keeping AI coding
-environments setup and up-to-date. Acts as entrypoint to Claude Code or Codex.
+**ACE** (Accelerated Coding Environment) — entrypoint to Claude Code / Codex / etc. that
+keeps skills, agents, conventions, and credentials provisioned per-project.
 
-Core functions:
-- Check environment readiness
-- Install/update skills, agents, and conventions
-- Configure chatbots to connect to LiteLLM.
-- Manage model credentials.
+Read `spec/architecture.md` first; load specs for the feature area you're touching
+(`ls spec/`). Decisions live under `spec/decisions/`.
 
 ## Coding Style
 
-- **`simplify` skill**: Must load and adhere to all coding skill principles (`general-coding`,
-  `rust-coding`, etc.) before proposing changes. Simplification that violates a coding
-  principle is a regression, not an improvement.
-- See `rust-coding` skill for general Rust conventions (error handling, serde, Option/Result)
-- Error enums: `ConfigError` for `src/config/`, `SetupError`/`PrepareError` and other
-  action-scoped errors for `src/actions/`, `CmdError` for `src/cmd/`. Action-specific
-  errors (`InitError`, `AddImportError`, `PullImportsError`) are fine when well-scoped.
-- Actions that only produce I/O errors return `std::io::Error` directly — no wrapping.
-- See `spec/configuration.md` for config validation details.
+- Load `simplify`, `general-coding`, `rust-coding` before proposing changes.
+  Simplification that violates a coding principle is a regression.
+- Error enums by layer: `ConfigError` (`src/config/`), action-scoped errors
+  (`SetupError`/`PrepareError`/`InitError`/etc. in `src/actions/`), `CmdError`
+  (`src/cmd/`). Pure-I/O actions return `std::io::Error` directly.
 
-## Action Pattern
+## Project-Repo vs School-Repo Context
 
-- Actions follow the unit-of-work pattern (see `general-coding` skill)
-- ACE-specific: `run(&self, ace: &mut Ace)`, all actions in `src/actions/`
-- Grouped by user role: `actions/project/` (consumer-side, user in their repo) vs
-  `actions/school/` (maintainer-side, user in a school repo). See
-  `spec/decisions/005-action-layout.md`.
-- `Ace` is the session/context object — it carries state, output sink, and lazy-loaded
-  resources. Actions receive it as the single context parameter.
+Two distinct user contexts. Confusing them is the most common reasoning error here.
 
-## Testing
+- **Project-repo** — workdir is the user's codebase consuming a school. Marker:
+  `ace.toml` with `school = "<specifier>"`. Actions in `src/actions/project/`.
+  See `spec/setup.md`.
+- **School-repo** — workdir IS the school being authored. Marker: `school.toml` at root.
+  Actions in `src/actions/school/`. See `spec/school/`.
 
-- Run all tests: `cargo test`
-- Run one test file: `cargo test --test setup_test`
-- See `rust-coding` skill for general Rust test conventions
-- See `spec/testing.md` for integration test strategy and TestEnv pattern
-- Pure-logic unit tests: `#[cfg(test)]` in `src/` — no filesystem
-- Integration tests (filesystem/git/symlinks): `tests/` directory, using `TestEnv`
-- Each integration test file covers one CLI command (`setup_test`, `fmt_test`, etc.)
-- `tempfile` crate for sandbox isolation — Dagger/testcontainers only if multi-distro
-  or network-dependent testing becomes necessary
+`ace setup .` is project-repo with an embedded school (monorepo). It does NOT bootstrap
+`school.toml`; "local school" is a separate, undesigned feature.
 
-## Spec Compliance
+Detection: `Ace::require_school()` (`src/ace/mod.rs:144`) checks `project_dir/school.toml`
+first; else falls back to ace.toml specifier. `SchoolError::Missing` ("run `ace setup`")
+fits only the project-repo no-specifier case — the school-repo no-`school.toml` case
+needs a separate variant ("run `ace school init`").
 
-- ACE specs live in `spec/` — read at minimum `spec/architecture.md` (layer boundaries) and
-  any spec covering the feature area. Run `ls spec/` to see available specs.
+## Conventions
 
-## Documentation
+- **Action pattern**: `run(&self, ace: &mut Ace)` in `src/actions/`. Split by role
+  (`project/` vs `school/`) — see `spec/decisions/005-action-layout.md`.
+- **Testing**: `cargo test`, `cargo test --test <name>`. Pure-logic in `#[cfg(test)]`;
+  fs/git/symlinks in `tests/` with `TestEnv`. See `spec/testing.md`.
+- **TUI**: `term_ui::Tui` + `Workflow` enum dispatch (no traits). `inquire` for prompts.
+  See `spec/decisions/001-no-crossterm.md`.
+- **CLI**: `ace paths` is `key\tvalue`, prints regardless of on-disk existence. Help
+  text lives in clap doc comments; keep `--help` aligned with behavior.
+- **Storage**: see `spec/decisions/006-index-toml-data-dir.md`. Git via
+  `std::process::Command` only (no sqlite, no git crate).
+- **Flaude is test-only.** Don't mention it in `www/`, user-facing help, or public docs.
+  Specs/code comments/CLAUDE.md are fine.
 
-- **Flaude is a test-only backend.** It exists so integration tests can exercise
-  the Claude-family code paths without hitting a real binary. Do not mention
-  Flaude on the website (`www/`), in user-facing help text, or in public docs.
-  It's fine to reference in specs, code comments, and CLAUDE.md itself.
+## Backcompat
 
-## CLI Conventions
+ACE has real users. CLI verbs, subcommand names, config keys (`ace.toml`, `school.toml`,
+`ace.local.toml`), and storage paths are public contracts.
 
-- `ace paths` uses tab-separated `key\tvalue` for machine parseability
-- Paths printed regardless of whether they exist on disk
-- Command help text lives in clap doc comments / attributes, not in PRDs
-- When modifying commands, ensure `--help` text stays aligned with code behavior
-
-## Backcompat Policy
-
-ACE has real users. Treat CLI verbs, subcommand names, config keys (in `ace.toml`,
-`school.toml`, `ace.local.toml`), and storage paths as public contracts.
-
-- **Renames** — add the new name, keep the old one as an alias. Use clap's
-  `#[command(visible_alias = "...")]` for subcommands; add deprecation hints in
-  help text where useful. Do not remove the old name in a minor/patch release.
-- **Removals** — require a major version bump and a clear release-note callout.
-- **Internal renames** (struct names, error-enum variants, module paths) have no
-  backcompat obligation — they're not part of the contract.
-- **Storage migrations** — prefer detect-and-hint (see `warn_stray_cache_dirs`
-  in `src/main.rs`) over silent auto-migration. Users should know what changed.
-
-When in doubt, add the alias and move on. Breaking a user's `ace ...` command
-or their checked-in `ace.toml` is not acceptable without explicit deprecation.
-
-## TUI Pattern
-
-- `term_ui` module: `Tui::new(&mut Ace)` + `tui.run(Workflow::...)` — no trait, no dynamic dispatch
-- `Workflow` enum dispatches to methods that use `inquire` for inline prompts (Text, Select)
-- Standalone `term_ui::select()` for cases where the caller runs the action (e.g. async actions)
-- Session has no UI field — interactive input is handled entirely by term_ui
-
-## Storage Layout
-
-- School clones: `~/.local/share/ace/{owner/repo}/` (XDG_DATA_HOME) — schools are
-  user *data*, not cache. `UpdateOutcome::Dirty` / `AheadOfOrigin` states can carry
-  in-progress work; losing it to OS cache hygiene would be a foot-gun.
-- Import source cache: `~/.cache/ace/imports/{owner/repo}/` (XDG_CACHE_HOME) —
-  read-only upstream snapshots used by `ace import` and `ace school update`.
-  Safe to sweep; next invocation re-clones.
-- Index: `~/.local/share/ace/index.toml` — tracks downloaded schools (specifier, repo,
-  path). Sits alongside the school clones (user data, not cache). Legacy location
-  `~/.cache/ace/index.toml` is one-shot migrated via `index_toml::load_or_migrate`;
-  legacy file is left on disk and surfaced by `warn_stray_cache_dirs` for manual cleanup.
-- Startup hint: bare `ace` invocation warns once if the pre-PROD9-76 flat layout
-  (`~/.cache/ace/{owner/repo}/`) has stray entries. No auto-migration.
-- Git operations use `std::process::Command`, no sqlite or git crate.
+- Renames: add new name + `#[command(visible_alias = "...")]`; don't remove in
+  minor/patch. Removals: major bump + release note.
+- Internal renames (struct/variant/module): no obligation.
+- Storage migrations: detect-and-hint (see `warn_stray_cache_dirs` in `src/main.rs`),
+  not silent auto-migration.
 
 ## Linear
 
-- Project: ACE (team: PRODIGY9, key: PROD9)
-- Always scope Linear queries to `project:"ACE"`
-
-## Roadmap
-
-Tracked in Linear under project ACE (PROD9). No local ROADMAP file.
+Project ACE (team PRODIGY9, key PROD9). Always scope queries to `project:"ACE"`.
+Roadmap lives in Linear; no local ROADMAP file.
