@@ -4,6 +4,8 @@ set -euo pipefail
 # Release ACE binaries to GitHub.
 #
 # Prerequisites:
+#   0. Clean tree:    git status must be clean — no uncommitted or staged
+#                     changes. Commit or stash everything BEFORE bumping.
 #   1. Bump version:  cargo set-version 0.2.0  (or --bump patch/minor/major)
 #                     Install: cargo install cargo-edit
 #   2. Commit:        git commit -am "Bump version to 0.2.0"
