@@ -21,6 +21,23 @@ projects. Structure:
 Projects subscribe via `ace setup`, which clones the school into a local data
 directory (`~/.local/share/ace/…`) and symlinks `skills/` into the project.
 
+## `ace learn`
+
+`ace learn` one-shots the backend to study the current project and narrow `ace.toml`'s
+`skills` filter to just what's relevant. The agent edits the project's instructions file
+in-place (project-study notes plus a "load these skills" section) and emits the desired
+skill names/globs on stdout, which ACE writes back to `ace.toml`.
+
+When to run it:
+
+- After `ace setup` on a new project where the school has many skills (ACE auto-prompts).
+- After importing new skills into the school (`ace school pull-imports`) when the school
+  has grown past what fits a single project.
+- Any time the project's needs shift enough that the active skill set should change.
+
+The user reviews the result via `git diff` (both `ace.toml` and the instructions file)
+and accepts or rolls back per file.
+
 ## Editing skills
 
 Skill files in the project are symlinks into the school clone. Edits go directly to the clone —

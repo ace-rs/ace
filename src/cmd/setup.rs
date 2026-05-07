@@ -55,6 +55,10 @@ fn run_inner(ace: &mut Ace, specifier: Option<&str>) -> Result<(), CmdError> {
         ace.done(&format!("Created {}", backend.instructions_file()));
     }
 
+    // Skill-count check: if school exposes more than the threshold and the
+    // user hasn't explicitly set `skills` in ace.toml, offer to run learn.
+    crate::school::skill_count::maybe_offer_learn(ace)?;
+
     ace.done("Setup complete.");
     Ok(())
 }

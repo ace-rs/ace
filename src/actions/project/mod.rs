@@ -1,6 +1,7 @@
 pub mod clone;
 pub mod edit_skills_config;
 pub mod explain_skill;
+pub mod learn;
 pub mod link;
 pub mod link_skills;
 pub mod list_skills;
@@ -11,6 +12,7 @@ pub mod remove_mcp;
 pub mod setup;
 pub mod update_gitignore;
 
+pub use learn::{LearnAction, LearnError};
 pub use link::{Link, SCHOOL_FOLDERS};
 pub use prepare::{Prepare, PrepareError, PrepareResult};
 pub use pull::{ChangeKind, Pull, PullOutcome, SkillChange};

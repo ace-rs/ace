@@ -1,4 +1,5 @@
 pub const SESSION: &str = include_str!("builtins/prompt_session.md");
+pub const LEARN: &str = include_str!("builtins/prompt_learn.md");
 pub const SCHOOL_CHANGES: &str = include_str!("builtins/prompt_school_changes.md");
 pub const DIRTY_SCHOOL: &str = include_str!("builtins/prompt_dirty_school.md");
 pub const PREVIOUS_SKILLS: &str = include_str!("builtins/prompt_previous_skills.md");

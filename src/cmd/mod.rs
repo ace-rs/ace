@@ -4,6 +4,7 @@ mod explain;
 mod maverick;
 mod fmt;
 mod import;
+mod learn;
 mod main;
 mod mcp;
 mod paths;
@@ -25,7 +26,7 @@ use crate::actions::school::{AddImportError, PullImportsError};
 use crate::actions::project::RegisterMcpError;
 use crate::actions::project::PrepareError;
 use crate::actions::school::InitError;
-use crate::actions::project::SetupError;
+use crate::actions::project::{LearnError, SetupError};
 use crate::git::GitError;
 
 #[derive(Parser)]
@@ -181,6 +182,8 @@ enum Command {
     },
     /// Fetch latest school changes (force, ignoring cooldown)
     Pull,
+    /// Study the project, edit instructions file, narrow `skills` filter
+    Learn,
     /// Start a fresh session (skip auto-resume)
     New {
         /// Extra arguments passed through to the backend, after --
@@ -221,6 +224,8 @@ pub(crate) enum CmdError {
     Skill(#[from] crate::skills::SkillError),
     #[error("{0}")]
     Setup(#[from] SetupError),
+    #[error("{0}")]
+    Learn(#[from] LearnError),
     #[error("{0}")]
     Prepare(#[from] PrepareError),
     #[error("{0}")]
@@ -284,6 +289,7 @@ pub fn run(ace: &mut Ace, cli: Cli) {
         Command::Skills { command, all, names } => skills::run(ace, command, all, names),
         Command::Explain { name } => explain::run(ace, &name),
         Command::Pull => pull::run(ace),
+        Command::Learn => learn::run(ace),
         Command::New { backend_args } => main::run(ace, backend_args, false, cli.one_shot_prompt),
         Command::Auto => yolo::run(ace, crate::config::ace_toml::Trust::Auto),
         Command::Yolo => yolo::run(ace, crate::config::ace_toml::Trust::Yolo),

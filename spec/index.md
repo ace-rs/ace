@@ -24,6 +24,7 @@ underlying AI coding tool.
 - [school/school-commands.md](school/school-commands.md) — `ace school` subcommands.
 - [testing.md](testing.md) — Integration test strategy, TestEnv pattern.
 - [upgrade.md](upgrade.md) — Self-update: version check, background upgrade, `ace upgrade`.
+- [learn.md](learn.md) — `ace learn`: project study, instructions-file edit, `ace.toml` skills filter narrowing.
 
 ## Philosophy
 

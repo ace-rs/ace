@@ -38,9 +38,17 @@ This logic lives in the cmd/TUI layer. The Setup action always receives a resolv
 
 1. Write `ace.toml` with `school = "<owner/repo>"`.
 2. Call **Prepare** (see below).
+3. **Skill-count check** — if the resolved school exposes more than 10
+   skills and the project's `ace.toml` does not have `skills` set
+   explicitly (any value, including `skills = []`), prompt inline (y/N)
+   to run `ace learn` now. On `y`, invoke `LearnAction` directly — the
+   inline prompt is the confirm; the action itself does no prompting.
+   Same trigger fires from `ace school pull-imports` and `ace` startup.
+   See [learn.md](learn.md).
 
-That's it. Setup's only unique responsibility is writing `ace.toml`. Everything else is delegated
-to Prepare, which is shared with the normal `ace` run.
+Setup's only unique responsibilities are writing `ace.toml` and the
+post-prepare learn hint. Everything else is delegated to Prepare, which is
+shared with the normal `ace` run.
 
 ## Prepare
 
@@ -83,6 +91,7 @@ All consumer-side actions live in `src/actions/project/` (see
 | Clone     | `git clone`, index, register MCP                         | School not in cache      |
 | Pull      | `git pull --ff-only` on cached repo                     | School already cached    |
 | Link      | Symlink school folders from cache into project          | Always (after clone/pull) |
+| Learn     | Study project, edit instructions file, narrow `skills`  | `ace learn` / setup hint |
 
 ## Error Cases
 

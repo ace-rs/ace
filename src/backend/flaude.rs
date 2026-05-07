@@ -56,26 +56,37 @@ pub(super) fn exec_one_shot(launch: &[String], req: OneShotRequest) -> Result<Ou
         writeln!(file, "{record}")?;
     }
 
-    // Synthesize a successful Output so callers can exercise the capture path.
-    // ExitStatus has no cross-platform constructor; spawn a no-op child to mint one.
-    let probe = synthesize_success_status()?;
-    Ok(Output {
-        status: probe,
-        stdout: serde_json::to_vec(&record).unwrap_or_default(),
-        stderr: Vec::new(),
-    })
+    // Test hooks for integration tests that need deterministic agent output:
+    //   FLAUDE_ONE_SHOT_STDOUT    — replace stdout (default: synthesized JSON record).
+    //   FLAUDE_ONE_SHOT_STDERR    — replace stderr (default: empty).
+    //   FLAUDE_ONE_SHOT_EXIT_CODE — exit status (default: 0).
+    let stdout = match std::env::var("FLAUDE_ONE_SHOT_STDOUT") {
+        Ok(v) => v.into_bytes(),
+        Err(_) => serde_json::to_vec(&record).unwrap_or_default(),
+    };
+    let stderr = std::env::var("FLAUDE_ONE_SHOT_STDERR")
+        .map(String::into_bytes)
+        .unwrap_or_default();
+    let exit_code: i32 = std::env::var("FLAUDE_ONE_SHOT_EXIT_CODE")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    let status = synthesize_status(exit_code)?;
+
+    Ok(Output { status, stdout, stderr })
 }
 
 #[cfg(unix)]
-fn synthesize_success_status() -> Result<std::process::ExitStatus, std::io::Error> {
+fn synthesize_status(code: i32) -> Result<std::process::ExitStatus, std::io::Error> {
     use std::os::unix::process::ExitStatusExt;
-    Ok(std::process::ExitStatus::from_raw(0))
+    // Unix raw status: code << 8.
+    Ok(std::process::ExitStatus::from_raw(code << 8))
 }
 
 #[cfg(windows)]
-fn synthesize_success_status() -> Result<std::process::ExitStatus, std::io::Error> {
+fn synthesize_status(code: i32) -> Result<std::process::ExitStatus, std::io::Error> {
     use std::os::windows::process::ExitStatusExt;
-    Ok(std::process::ExitStatus::from_raw(0))
+    Ok(std::process::ExitStatus::from_raw(code as u32))
 }
 
 pub(super) fn mcp_list() -> HashSet<String> {

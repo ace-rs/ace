@@ -32,6 +32,11 @@ fn run_inner(
 
     let prepare_result = prepare_school(ace, &specifier)?;
 
+    // Auto-trigger learn check. First-time path (no `skills` filter) prompts
+    // inline; pinned-filter path soft-hints when the school skill set changed.
+    crate::school::skill_count::maybe_offer_learn(ace)?;
+    crate::school::skill_count::maybe_hint_relearn(ace, &prepare_result.changes);
+
     let project_dir = ace.project_dir().to_path_buf();
     let school_clone = ace.require_school()?.clone_path.clone();
 
