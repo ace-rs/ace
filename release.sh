@@ -8,9 +8,11 @@ set -euo pipefail
 #                     changes. Commit or stash everything BEFORE bumping.
 #   1. Bump version:  cargo set-version 0.2.0  (or --bump patch/minor/major)
 #                     Install: cargo install cargo-edit
-#   2. Commit:        git commit -am "Bump version to 0.2.0"
-#   3. Tag:           git tag v0.2.0
-#   4. Run:           ./release.sh
+#   2. Update latest: echo "v0.2.0" > latest
+#   3. Commit:        git commit -am "Bump version to 0.2.0"
+#   4. Push:          git push gh main
+#   5. Tag + push:    git tag v0.2.0 && git push gh v0.2.0
+#   6. Run:           ./release.sh
 
 VERSION="$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')"
 TAG="v$VERSION"
