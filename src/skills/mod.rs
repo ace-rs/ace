@@ -57,6 +57,18 @@ pub struct SkillChange {
     pub kind: ChangeKind,
 }
 
+/// One skill name claimed by two import sources during a multi-source merge.
+/// `kept` is the source already in the accumulator (first-write-wins); `dropped`
+/// is the rejected candidate. The caller surfaces these as warnings so the user
+/// can de-conflict their `school.toml` (drop the redundant explicit decl or the
+/// `*` import that overlaps with it).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Shadowed {
+    pub name: String,
+    pub kept: String,
+    pub dropped: String,
+}
+
 /// Render a pull summary. Both `ace pull` and `ace school pull` emit through
 /// this helper so the user-visible shape stays identical:
 ///
@@ -80,7 +92,7 @@ pub fn format_pull_summary(changes: &[SkillChange]) -> String {
     msg
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Discovered;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -94,6 +106,10 @@ pub struct Skill<S> {
     pub name: String,
     pub path: PathBuf,
     pub tier: Tier,
+    /// Origin label (`owner/repo`) when the skill was pulled from an import
+    /// source. `None` for skills discovered directly from a school's own
+    /// `skills/` tree.
+    pub source: Option<String>,
     pub state: S,
 }
 
@@ -119,16 +135,55 @@ impl Skills<Discovered> {
     }
 
     pub fn from_discovered(discovered: &[DiscoveredSkill]) -> Self {
+        Self::from_discovered_inner(discovered, None)
+    }
+
+    /// Like `from_discovered`, but tags every skill with an origin source label
+    /// (e.g. `"owner/repo"`). Used by `pull_imports` to build a multi-source
+    /// accumulator where each skill remembers where it came from.
+    pub fn from_discovered_with_source(discovered: &[DiscoveredSkill], source: &str) -> Self {
+        Self::from_discovered_inner(discovered, Some(source.to_string()))
+    }
+
+    fn from_discovered_inner(discovered: &[DiscoveredSkill], source: Option<String>) -> Self {
         let items = discovered
             .iter()
             .map(|d| Skill {
                 name: d.name.clone(),
                 path: d.path.clone(),
                 tier: d.tier,
+                source: source.clone(),
                 state: Discovered,
             })
             .collect();
         Self { items, diagnostics: Diagnostics::default() }
+    }
+
+    /// Fold `other` into `self`, first-write-wins. Skills already present in
+    /// `self` keep their slot; matching names in `other` are dropped and
+    /// returned as `Shadowed { name, kept, dropped }`. Source labels come from
+    /// each skill's own `source` field (set by `from_discovered_with_source`);
+    /// items without a source render as `<unknown>` in the warning, which
+    /// shouldn't happen for import flows.
+    pub fn merge(&mut self, other: Skills<Discovered>) -> Vec<Shadowed> {
+        let existing: std::collections::HashSet<String> =
+            self.items.iter().map(|s| s.name.clone()).collect();
+        let mut shadowed = Vec::new();
+        for skill in other.items {
+            if existing.contains(&skill.name) {
+                let kept = self
+                    .items
+                    .iter()
+                    .find(|s| s.name == skill.name)
+                    .and_then(|s| s.source.clone())
+                    .unwrap_or_else(|| "<unknown>".to_string());
+                let dropped = skill.source.unwrap_or_else(|| "<unknown>".to_string());
+                shadowed.push(Shadowed { name: skill.name, kept, dropped });
+            } else {
+                self.items.push(skill);
+            }
+        }
+        shadowed
     }
 
     /// Run the three-layer resolver against the given config tree.
@@ -141,21 +196,22 @@ impl Skills<Discovered> {
         let local = tree.local.as_ref().unwrap_or(&default);
         let resolution = resolver::resolve_skills(&names, user, project, local);
 
-        let mut by_name: HashMap<String, (PathBuf, Tier)> = self
+        let mut by_name: HashMap<String, (PathBuf, Tier, Option<String>)> = self
             .items
             .into_iter()
-            .map(|s| (s.name, (s.path, s.tier)))
+            .map(|s| (s.name, (s.path, s.tier, s.source)))
             .collect();
 
         let items = resolution
             .skills
             .into_iter()
             .filter_map(|r| {
-                let (path, tier) = by_name.remove(&r.name)?;
+                let (path, tier, source) = by_name.remove(&r.name)?;
                 Some(Skill {
                     name: r.name,
                     path,
                     tier,
+                    source,
                     state: Decided {
                         decision: r.decision,
                         trace: r.trace,
@@ -383,6 +439,83 @@ mod tests {
         let s = Skills::<Discovered>::from_discovered(&[]);
         let changes = s.copy_into(dest.path(), &["nonexistent"]).expect("copy");
         assert!(changes.is_empty());
+    }
+
+    #[test]
+    fn merge_disjoint_keeps_all_no_shadowed() {
+        let mut acc = Skills::<Discovered>::from_discovered_with_source(
+            &[discovered("alpha", Tier::Curated)],
+            "owner/a",
+        );
+        let other = Skills::<Discovered>::from_discovered_with_source(
+            &[discovered("beta", Tier::Curated)],
+            "owner/b",
+        );
+
+        let shadowed = acc.merge(other);
+
+        assert!(shadowed.is_empty());
+        let mut names: Vec<&str> = acc.names().collect();
+        names.sort();
+        assert_eq!(names, vec!["alpha", "beta"]);
+    }
+
+    #[test]
+    fn merge_collision_keeps_first_records_shadowed() {
+        let mut acc = Skills::<Discovered>::from_discovered_with_source(
+            &[discovered("skill-creator", Tier::System)],
+            "anthropics/skills",
+        );
+        let other = Skills::<Discovered>::from_discovered_with_source(
+            &[discovered("skill-creator", Tier::System)],
+            "ace-rs/school",
+        );
+
+        let shadowed = acc.merge(other);
+
+        assert_eq!(shadowed.len(), 1);
+        assert_eq!(shadowed[0].name, "skill-creator");
+        assert_eq!(shadowed[0].kept, "anthropics/skills");
+        assert_eq!(shadowed[0].dropped, "ace-rs/school");
+
+        // Accumulator still has only the first-merged copy.
+        let names: Vec<&str> = acc.names().collect();
+        assert_eq!(names, vec!["skill-creator"]);
+    }
+
+    #[test]
+    fn merge_records_each_collision_independently() {
+        let mut acc = Skills::<Discovered>::from_discovered_with_source(
+            &[
+                discovered("a", Tier::Curated),
+                discovered("b", Tier::Curated),
+            ],
+            "src/one",
+        );
+        let other = Skills::<Discovered>::from_discovered_with_source(
+            &[
+                discovered("a", Tier::Curated),
+                discovered("b", Tier::Curated),
+                discovered("c", Tier::Curated),
+            ],
+            "src/two",
+        );
+
+        let shadowed = acc.merge(other);
+
+        assert_eq!(shadowed.len(), 2);
+        let mut shadowed_names: Vec<&str> =
+            shadowed.iter().map(|s| s.name.as_str()).collect();
+        shadowed_names.sort();
+        assert_eq!(shadowed_names, vec!["a", "b"]);
+        for s in &shadowed {
+            assert_eq!(s.kept, "src/one");
+            assert_eq!(s.dropped, "src/two");
+        }
+
+        let mut names: Vec<&str> = acc.names().collect();
+        names.sort();
+        assert_eq!(names, vec!["a", "b", "c"]);
     }
 
     #[test]

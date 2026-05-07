@@ -381,6 +381,72 @@ fn import_populates_persistent_source_cache() {
     );
 }
 
+// PROD9-187: when a `*` import overlaps with an explicit decl for the same
+// skill name, pull-imports must dedup so disk doesn't get clobbered twice and
+// must surface the collision so the user can de-conflict their school.toml.
+#[test]
+fn pull_imports_dedups_overlapping_sources_and_warns() {
+    let env = TestEnv::new();
+    env.git_init();
+
+    env.setup_tiered_origin("anthropics/skills", &[
+        "skills/.system/skill-creator",
+    ]);
+    env.setup_tiered_origin("ace-rs/school", &[
+        "skills/.system/skill-creator",
+        "skills/.curated/other-skill",
+    ]);
+
+    // Explicit decl listed first; `*` import second. With --include-system
+    // both sources expose skill-creator, so without dedup the school's
+    // skill-creator/ dir gets clobbered twice.
+    env.write_file(
+        "school.toml",
+        r#"name = "test-school"
+
+[[imports]]
+skill = "skill-creator"
+source = "anthropics/skills"
+include_system = true
+
+[[imports]]
+skill = "*"
+source = "ace-rs/school"
+include_system = true
+"#,
+    );
+    env.mkdir("skills");
+
+    let assert = env.ace().args(["school", "update"]).assert().success();
+    let output = assert.get_output();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let combined = format!("{stdout}{stderr}");
+
+    // One summary line per skill — no duplicate ~skill-creator.
+    let creator_lines = combined.matches("skill-creator").count();
+    assert!(
+        creator_lines >= 1,
+        "expected skill-creator to appear in output: {combined}"
+    );
+    let summary_dupes = combined.matches("~skill-creator").count()
+        + combined.matches("+skill-creator").count();
+    assert_eq!(
+        summary_dupes, 1,
+        "skill-creator appears {summary_dupes} times in summary; expected exactly 1: {combined}"
+    );
+
+    // Shadow warning surfaces both source labels so user can de-conflict.
+    assert!(
+        combined.contains("anthropics/skills") && combined.contains("ace-rs/school"),
+        "expected shadow warning naming both sources: {combined}"
+    );
+
+    // Other-skill from the `*` import still lands.
+    env.assert_exists("skills/skill-creator/SKILL.md");
+    env.assert_exists("skills/other-skill/SKILL.md");
+}
+
 #[test]
 fn import_reuses_source_cache_on_second_call() {
     let env = TestEnv::new();

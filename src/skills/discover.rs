@@ -23,6 +23,7 @@ impl Tier {
     }
 }
 
+#[derive(Clone)]
 pub struct DiscoveredSkill {
     pub name: String,
     pub path: PathBuf,

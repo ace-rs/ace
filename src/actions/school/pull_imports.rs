@@ -4,8 +4,8 @@ use std::path::Path;
 use crate::ace::Ace;
 use crate::config;
 use crate::glob;
-use crate::skills::discover::{Tier, discover_skills};
-use crate::skills::{Discovered, SkillChange, Skills};
+use crate::skills::discover::{DiscoveredSkill, Tier, discover_skills};
+use crate::skills::{Discovered, Shadowed, Skills};
 
 pub struct PullImports<'a> {
     pub school_root: &'a Path,
@@ -40,9 +40,11 @@ impl PullImports<'_> {
 
         let by_source = group_by_source(&school.imports);
         let skills_dir = self.school_root.join("skills");
-        let mut all_changes: Vec<SkillChange> = Vec::new();
 
-        for (source, decls) in &by_source {
+        // Discover each source once. Multiple decls against the same source
+        // share the cached clone + discovery rather than re-walking per decl.
+        let mut discovery: HashMap<&str, Vec<DiscoveredSkill>> = HashMap::new();
+        for (source, _) in &by_source {
             ace.progress(&format!("Fetching {source}"));
             let cached = match crate::git::ensure_source_cache(source) {
                 Ok(p) => p,
@@ -52,28 +54,86 @@ impl PullImports<'_> {
                     return Err(e.into());
                 }
             };
+            discovery.insert(source, discover_skills(&cached)?);
+        }
 
-            let discovered = discover_skills(&cached)?;
-            let source_set = Skills::<Discovered>::from_discovered(&discovered);
+        // Two passes so explicit decls beat globs on collision: pass 1 claims
+        // every explicit name first, pass 2 fills in glob matches and reports
+        // skills that lost their slot.
+        let mut accumulator: Skills<Discovered> = Skills::default();
+        for pass in [Pass::Explicit, Pass::Glob] {
+            for (source, decls) in &by_source {
+                let discovered = &discovery[source];
+                let full = Skills::<Discovered>::from_discovered_with_source(discovered, source);
 
-            for decl in decls {
-                let names = resolve_import_names(&source_set, decl);
-
+                let mut names: Vec<String> = Vec::new();
+                for decl in decls {
+                    if !pass.matches(decl) {
+                        continue;
+                    }
+                    let resolved = resolve_import_names(&full, decl);
+                    if resolved.is_empty() {
+                        // Only emit "no match" once per decl, in the pass it
+                        // belongs to.
+                        ace.warn(&format!("no skills matching {} in {source}", decl.skill));
+                        continue;
+                    }
+                    for n in resolved {
+                        if !names.contains(&n) {
+                            names.push(n);
+                        }
+                    }
+                }
                 if names.is_empty() {
-                    ace.warn(&format!("no skills matching {} in {source}", decl.skill));
                     continue;
                 }
 
-                let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-                let changes = source_set.copy_into(&skills_dir, &name_refs)?;
-                all_changes.extend(changes);
+                let batch_discovered: Vec<DiscoveredSkill> = discovered
+                    .iter()
+                    .filter(|d| names.iter().any(|n| n == &d.name))
+                    .cloned()
+                    .collect();
+                let batch = Skills::<Discovered>::from_discovered_with_source(
+                    &batch_discovered,
+                    source,
+                );
+                for shadow in accumulator.merge(batch) {
+                    ace.warn(&format_shadow(&shadow));
+                }
             }
         }
 
-        let count = all_changes.len();
-        ace.done(&crate::skills::format_pull_summary(&all_changes));
+        let winning_names: Vec<String> = accumulator.names().map(String::from).collect();
+        let name_refs: Vec<&str> = winning_names.iter().map(String::as_str).collect();
+        let changes = accumulator.copy_into(&skills_dir, &name_refs)?;
+
+        let count = changes.len();
+        ace.done(&crate::skills::format_pull_summary(&changes));
         Ok(PullImportsResult::Updated { count })
     }
+}
+
+#[derive(Clone, Copy)]
+enum Pass {
+    Explicit,
+    Glob,
+}
+
+impl Pass {
+    fn matches(self, decl: &config::school_toml::ImportDecl) -> bool {
+        let is_glob = glob::is_glob(&decl.skill);
+        match self {
+            Pass::Explicit => !is_glob,
+            Pass::Glob => is_glob,
+        }
+    }
+}
+
+fn format_shadow(s: &Shadowed) -> String {
+    format!(
+        "{}: kept {}, dropped {} (declared by both)",
+        s.name, s.kept, s.dropped
+    )
 }
 
 /// Resolve the list of skill names to copy for an import entry given a
@@ -103,16 +163,26 @@ fn resolve_import_names(
     }
 }
 
+/// Group decls by source preserving school.toml encounter order. Two sources
+/// colliding on the same skill within a single pass resolve in declaration
+/// order — first-declared wins — which would not be deterministic with a
+/// `HashMap`.
 fn group_by_source(
     imports: &[config::school_toml::ImportDecl],
-) -> HashMap<&str, Vec<&config::school_toml::ImportDecl>> {
+) -> Vec<(&str, Vec<&config::school_toml::ImportDecl>)> {
+    let mut order: Vec<&str> = Vec::new();
     let mut by_source: HashMap<&str, Vec<&config::school_toml::ImportDecl>> = HashMap::new();
     for imp in imports {
-        by_source.entry(imp.source.as_str())
-            .or_default()
-            .push(imp);
+        let key = imp.source.as_str();
+        if !by_source.contains_key(key) {
+            order.push(key);
+        }
+        by_source.entry(key).or_default().push(imp);
     }
-    by_source
+    order
+        .into_iter()
+        .map(|s| (s, by_source.remove(s).expect("seeded above")))
+        .collect()
 }
 
 #[cfg(test)]
