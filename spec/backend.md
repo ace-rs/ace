@@ -42,11 +42,19 @@ Each backend must provide:
 - **`instructions_file()`** — markdown file generated per-project during setup.
 - **`is_ready()`** — heuristic check that the backend is authenticated/configured.
 - **`supports_trust(trust)`** — validate whether the backend supports the given trust level.
-- **`exec_session(opts)`** — launch the backend session. Each backend builds its own Command
-  internally from `SessionOpts` (trust, session prompt, project dir, env, extra args, resume).
-  When `resume = true`, some backends may fail if no prior session exists (Claude) while others
-  handle it gracefully (Codex). ACE prints a hint before exec so the user knows to run
-  `ace new` on failure. See per-backend specs and `decisions/004-resume-fallback.md`.
+- **`exec_session(req)`** — launch an interactive backend session via exec-replace. Builds its
+  Command from `SessionRequest` (trust, session prompt, project dir, env, extra args, resume).
+  Returns `io::Error` on spawn failure; never returns on success (terminal hands off to the
+  child). When `resume = true`, some backends may fail if no prior session exists (Claude)
+  while others handle it gracefully (Codex). ACE prints a hint before exec so the user knows
+  to run `ace new` on failure. See `decisions/004-resume-fallback.md`.
+- **`exec_one_shot(req)`** — spawn the backend non-interactively and capture stdout/stderr.
+  Builds its Command from `OneShotRequest` (prompt source, project dir, env, extra args; no
+  resume, trust, or session prompt — the non-interactive entry point doesn't take approval
+  modes or system-prompt injection). Returns `io::Result<std::process::Output>` — caller
+  inspects `status.success()` and `stderr` for non-zero exits. Used by `ace -p` (CLI) and
+  ACE-internal consumers (e.g. `ace learn`) that need a programmatic backend invocation.
+  See `decisions/009-polymorphic-flags.md`.
 - **`mcp_list()`** — list currently registered MCP server names.
 - **`mcp_add(entry)`** — register a remote MCP server.
 - **`mcp_remove(name)`** — unregister a remote MCP server by name.
@@ -56,6 +64,29 @@ Each backend must provide:
   of name/ok pairs. Best-effort: returns empty on failure or if unsupported.
 
 See per-backend specs for implementation details.
+
+## Intent Mapping
+
+`exec_session` and `exec_one_shot` are the two transport methods. Each backend builds its
+argv from the matching request type. The argv builder is the polymorphic core; transport
+just decides whether to exec-replace or spawn-and-capture.
+
+### Per-Backend Argv
+
+| Intent           | claude                                                | codex                                  |
+|------------------|-------------------------------------------------------|----------------------------------------|
+| Session          | `--system-prompt <prompt>` (or `--continue` if resume) | `-c developer_instructions=<prompt>` (or `resume --last`) |
+| OneShot, Inline  | `-p <text>`                                           | `exec <text>`                          |
+| OneShot, Stdin   | `-p` + piped child stdin                              | `exec -` + piped child stdin           |
+
+Trust flags (`--permission-mode` / `--ask-for-approval` / sandbox) attach to Session only.
+OneShot is non-interactive — approval modes don't apply.
+
+### Prompt Source
+
+`OneShotRequest.prompt: PromptInput` is `Inline(String)` for argv-passed prompts, `Stdin` for
+piped stdin. Backends translate per the table above. When `Stdin`, the spawned child inherits
+the parent's stdin (`Stdio::inherit()`); the caller must arrange the piped data themselves.
 
 ## MCP Server Registration
 
