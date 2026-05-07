@@ -9,6 +9,14 @@ keeps skills, agents, conventions, and credentials provisioned per-project.
 Read `spec/architecture.md` first; load specs for the feature area you're touching
 (`ls spec/`). Decisions live under `spec/decisions/`.
 
+## Load these skills
+
+Default skill set for this project (also reflected in `ace.toml`):
+`general-coding`, `rust-coding`, `shell`, `markdown-writing`, `rtk`,
+`issue-creator`, `skill-creator`, `note-taker`, and the full `ace*` family
+(`ace`, `ace-audit`, `ace-realign`, `ace-save`, `ace-school`) — this repo IS
+the ACE tool.
+
 ## Coding Style
 
 - Load `simplify`, `general-coding`, `rust-coding` before proposing changes.

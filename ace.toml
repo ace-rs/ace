@@ -1,3 +1,12 @@
 school = "prod9/school"
-
-[env]
+skills = [
+    "ace*",
+    "general-coding",
+    "rust-coding",
+    "shell",
+    "markdown-writing",
+    "rtk",
+    "issue-creator",
+    "skill-creator",
+    "note-taker",
+]
