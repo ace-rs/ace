@@ -19,8 +19,10 @@ if ! cargo set-version --help &>/dev/null; then
 fi
 
 cargo set-version "$VERSION"
+cargo build --quiet 2>/dev/null || true
 echo "v$VERSION" > latest
-git commit -am "v$VERSION"
+git add Cargo.toml Cargo.lock latest
+git commit -m "v$VERSION"
 git tag "v$VERSION"
 
 echo "==> Tagged v$VERSION — run ./release.sh to publish"
