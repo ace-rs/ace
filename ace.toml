@@ -1,6 +1,5 @@
 school = "prod9/school"
 skills = [
-    "ace*",
     "general-coding",
     "rust-coding",
     "shell",
@@ -9,4 +8,5 @@ skills = [
     "issue-creator",
     "skill-creator",
     "note-taker",
+    "ace*",
 ]
