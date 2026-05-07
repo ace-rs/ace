@@ -1,7 +1,7 @@
 use std::collections::HashSet;
-use std::process::Command;
+use std::process::{Command, Output, Stdio};
 
-use super::{McpDecl, McpStatus, SessionOpts};
+use super::{McpDecl, McpStatus, OneShotRequest, PromptInput, SessionRequest};
 use crate::config::ace_toml::Trust;
 
 pub(super) fn is_ready() -> bool {
@@ -11,47 +11,75 @@ pub(super) fn is_ready() -> bool {
     home.join(".claude.json").exists()
 }
 
-pub(super) fn exec_session(launch: &[String], opts: SessionOpts) -> Result<(), std::io::Error> {
+pub(super) fn exec_session(launch: &[String], req: SessionRequest) -> Result<(), std::io::Error> {
     let (program, prefix) = launch.split_first()
         .map(|(p, rest)| (p.as_str(), rest))
         .unwrap_or(("claude", &[][..]));
     let mut cmd = Command::new(program);
     cmd.args(prefix);
-    cmd.current_dir(&opts.project_dir);
+    cmd.current_dir(&req.project_dir);
 
-    for (key, val) in &opts.env {
+    for (key, val) in &req.env {
         cmd.env(key, val);
     }
 
-    cmd.args(build_session_args(&opts));
+    cmd.args(build_session_args(&req));
 
     Err(crate::platform::exec_replace(cmd))
 }
 
-/// Translate `SessionOpts` into Claude's CLI argv (post-binary). Pure
+pub(super) fn exec_one_shot(launch: &[String], req: OneShotRequest) -> Result<Output, std::io::Error> {
+    let (program, prefix) = launch.split_first()
+        .map(|(p, rest)| (p.as_str(), rest))
+        .unwrap_or(("claude", &[][..]));
+    let mut cmd = Command::new(program);
+    cmd.args(prefix);
+    cmd.current_dir(&req.project_dir);
+
+    for (key, val) in &req.env {
+        cmd.env(key, val);
+    }
+
+    cmd.args(build_one_shot_args(&req));
+
+    if matches!(req.prompt, PromptInput::Stdin) {
+        cmd.stdin(Stdio::inherit());
+    }
+
+    cmd.output()
+}
+
+/// Translate `SessionRequest` into Claude's CLI argv (post-binary). Pure
 /// function — no I/O, no `Command`. Tested below.
-fn build_session_args(opts: &SessionOpts) -> Vec<String> {
+fn build_session_args(req: &SessionRequest) -> Vec<String> {
     let mut args = Vec::new();
 
-    if opts.resume {
+    if req.resume {
         args.push("--continue".to_string());
     } else {
         args.push("--system-prompt".to_string());
-        args.push(opts.session_prompt.clone());
+        args.push(req.session_prompt.clone());
     }
 
-    match opts.trust {
+    match req.trust {
         Trust::Auto => args.extend(["--permission-mode", "auto"].map(String::from)),
         Trust::Yolo => args.extend(["--permission-mode", "bypassPermissions"].map(String::from)),
         Trust::Default => {}
     }
 
-    if let Some(prompt) = &opts.one_shot_prompt {
-        args.push("-p".to_string());
-        args.push(prompt.clone());
-    }
+    args.extend(req.extra_args.iter().cloned());
+    args
+}
 
-    args.extend(opts.extra_args.iter().cloned());
+/// Translate `OneShotRequest` into Claude's `-p` argv. Inline prompts pass
+/// the text as the `-p` value; Stdin omits the value and the child reads
+/// from inherited stdin.
+fn build_one_shot_args(req: &OneShotRequest) -> Vec<String> {
+    let mut args = vec!["-p".to_string()];
+    if let PromptInput::Inline(text) = &req.prompt {
+        args.push(text.clone());
+    }
+    args.extend(req.extra_args.iter().cloned());
     args
 }
 
@@ -210,56 +238,67 @@ mod tests {
     use std::collections::HashMap;
     use std::path::PathBuf;
 
-    fn opts() -> SessionOpts {
-        SessionOpts {
+    fn req() -> SessionRequest {
+        SessionRequest {
             trust: Trust::Default,
             session_prompt: "SP".to_string(),
             project_dir: PathBuf::from("/tmp"),
             env: HashMap::new(),
             extra_args: Vec::new(),
             resume: false,
-            one_shot_prompt: None,
+        }
+    }
+
+    fn one_shot(prompt: PromptInput) -> OneShotRequest {
+        OneShotRequest {
+            prompt,
+            project_dir: PathBuf::from("/tmp"),
+            env: HashMap::new(),
+            extra_args: Vec::new(),
         }
     }
 
     #[test]
     fn session_args_default() {
-        let args = build_session_args(&opts());
+        let args = build_session_args(&req());
         assert_eq!(args, vec!["--system-prompt".to_string(), "SP".to_string()]);
     }
 
     #[test]
     fn session_args_resume_replaces_system_prompt() {
-        let mut o = opts();
-        o.resume = true;
-        let args = build_session_args(&o);
+        let mut r = req();
+        r.resume = true;
+        let args = build_session_args(&r);
         assert_eq!(args, vec!["--continue".to_string()]);
     }
 
     #[test]
-    fn session_args_one_shot_appends_dash_p() {
-        let mut o = opts();
-        o.one_shot_prompt = Some("hello".to_string());
-        let args = build_session_args(&o);
-        assert_eq!(
-            args,
-            vec![
-                "--system-prompt".to_string(),
-                "SP".to_string(),
-                "-p".to_string(),
-                "hello".to_string(),
-            ],
-        );
+    fn session_args_extra_args_come_last() {
+        let mut r = req();
+        r.extra_args = vec!["--model".to_string(), "opus".to_string()];
+        let args = build_session_args(&r);
+        let last_two = &args[args.len() - 2..];
+        assert_eq!(last_two, ["--model", "opus"]);
     }
 
     #[test]
-    fn session_args_extra_args_come_last() {
-        let mut o = opts();
-        o.one_shot_prompt = Some("hi".to_string());
-        o.extra_args = vec!["--model".to_string(), "opus".to_string()];
-        let args = build_session_args(&o);
-        let last_two = &args[args.len() - 2..];
-        assert_eq!(last_two, ["--model", "opus"]);
+    fn one_shot_args_inline_passes_prompt_after_dash_p() {
+        let args = build_one_shot_args(&one_shot(PromptInput::Inline("hello".into())));
+        assert_eq!(args, vec!["-p".to_string(), "hello".to_string()]);
+    }
+
+    #[test]
+    fn one_shot_args_stdin_omits_value_after_dash_p() {
+        let args = build_one_shot_args(&one_shot(PromptInput::Stdin));
+        assert_eq!(args, vec!["-p".to_string()]);
+    }
+
+    #[test]
+    fn one_shot_args_extra_args_come_last() {
+        let mut r = one_shot(PromptInput::Inline("hi".into()));
+        r.extra_args = vec!["--model".to_string(), "opus".to_string()];
+        let args = build_one_shot_args(&r);
+        assert_eq!(args, vec!["-p", "hi", "--model", "opus"]);
     }
 
     #[test]

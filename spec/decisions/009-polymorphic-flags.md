@@ -41,9 +41,15 @@ Considered `Backend::exec(Intent) -> ?`. Rejected: return types differ fundament
 match on intent to know what to do with the return value, and complicates the trait. Two
 methods make the contract explicit at the type level.
 
-The polymorphic core is the **argv builder**, not the transport. Each backend has one
-private argv function that takes an `Intent` enum and returns `Vec<String>`. The two
-transport methods are thin shells around it.
+The polymorphic core is the **argv builder**, not the transport. Each backend has two
+private argv functions (`build_session_args`, `build_one_shot_args`); the two transport
+methods are thin shells around them.
+
+An earlier sketch threaded an `Intent { Session(&SessionRequest), OneShot(&OneShotRequest) }`
+enum through a single per-backend `build_args(Intent)` dispatcher. Dropped — the dispatcher
+just matched and called one of the two argv functions, and the enum existed only to be
+matched on at the only callsite. Two free functions per backend communicates the same
+"argv-per-intent" structure without the indirection.
 
 ## Why no dedicated error type
 

@@ -1,5 +1,5 @@
 use crate::ace::{Ace, OutputMode};
-use crate::backend::{Kind, SessionOpts};
+use crate::backend::{Kind, OneShotRequest, PromptInput, SessionRequest};
 use crate::config::ace_toml::Trust;
 use crate::actions::project::RegisterMcp;
 use crate::actions::project::{Prepare, PrepareResult};
@@ -69,20 +69,40 @@ fn run_inner(
     }
 
     let resume = should_resume && resume_pref;
+
+    if let Some(prompt) = one_shot_prompt {
+        // One-shot path: spawn-and-capture, print captured output, propagate exit code.
+        // No resume hint, no separator — output should be clean for piping.
+        let output = ace.backend()?.exec_one_shot(OneShotRequest {
+            prompt: PromptInput::Inline(prompt),
+            project_dir,
+            env,
+            extra_args: backend_args,
+        })?;
+
+        use std::io::Write;
+        let _ = std::io::stdout().write_all(&output.stdout);
+        let _ = std::io::stderr().write_all(&output.stderr);
+
+        if !output.status.success() {
+            std::process::exit(output.status.code().unwrap_or(1));
+        }
+        return Ok(());
+    }
+
     if resume {
         ace.hint("Resuming previous session. If this fails, run: ace new");
     }
 
     ace.separator();
 
-    ace.backend()?.exec_session(SessionOpts {
+    ace.backend()?.exec_session(SessionRequest {
         trust,
         session_prompt,
         project_dir,
         env,
         extra_args: backend_args,
         resume,
-        one_shot_prompt,
     })?;
 
     Ok(())

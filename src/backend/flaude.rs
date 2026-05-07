@@ -1,11 +1,12 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::process::Output;
 
-use super::{McpDecl, McpStatus, SessionOpts};
+use super::{McpDecl, McpStatus, OneShotRequest, PromptInput, SessionRequest};
 
 pub(super) fn is_ready() -> bool { true }
 
-pub(super) fn exec_session(launch: &[String], opts: SessionOpts) -> Result<(), std::io::Error> {
+pub(super) fn exec_session(launch: &[String], req: SessionRequest) -> Result<(), std::io::Error> {
     let Some(path) = exec_record_path() else {
         return Ok(());
     };
@@ -13,13 +14,12 @@ pub(super) fn exec_session(launch: &[String], opts: SessionOpts) -> Result<(), s
     use std::io::Write;
 
     let record = serde_json::json!({
-        "action": "exec",
-        "trust": opts.trust,
-        "resume": opts.resume,
-        "session_prompt": opts.session_prompt,
-        "project_dir": opts.project_dir.to_string_lossy(),
-        "extra_args": opts.extra_args,
-        "one_shot_prompt": opts.one_shot_prompt,
+        "action": "exec_session",
+        "trust": req.trust,
+        "resume": req.resume,
+        "session_prompt": req.session_prompt,
+        "project_dir": req.project_dir.to_string_lossy(),
+        "extra_args": req.extra_args,
         "cmd": launch,
     });
 
@@ -30,6 +30,52 @@ pub(super) fn exec_session(launch: &[String], opts: SessionOpts) -> Result<(), s
 
     writeln!(file, "{record}")?;
     Ok(())
+}
+
+pub(super) fn exec_one_shot(launch: &[String], req: OneShotRequest) -> Result<Output, std::io::Error> {
+    use std::io::Write;
+
+    let prompt_repr = match &req.prompt {
+        PromptInput::Inline(text) => serde_json::json!({"kind": "inline", "text": text}),
+        PromptInput::Stdin => serde_json::json!({"kind": "stdin"}),
+    };
+
+    let record = serde_json::json!({
+        "action": "exec_one_shot",
+        "prompt": prompt_repr,
+        "project_dir": req.project_dir.to_string_lossy(),
+        "extra_args": req.extra_args,
+        "cmd": launch,
+    });
+
+    if let Some(path) = exec_record_path() {
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)?;
+        writeln!(file, "{record}")?;
+    }
+
+    // Synthesize a successful Output so callers can exercise the capture path.
+    // ExitStatus has no cross-platform constructor; spawn a no-op child to mint one.
+    let probe = synthesize_success_status()?;
+    Ok(Output {
+        status: probe,
+        stdout: serde_json::to_vec(&record).unwrap_or_default(),
+        stderr: Vec::new(),
+    })
+}
+
+#[cfg(unix)]
+fn synthesize_success_status() -> Result<std::process::ExitStatus, std::io::Error> {
+    use std::os::unix::process::ExitStatusExt;
+    Ok(std::process::ExitStatus::from_raw(0))
+}
+
+#[cfg(windows)]
+fn synthesize_success_status() -> Result<std::process::ExitStatus, std::io::Error> {
+    use std::os::windows::process::ExitStatusExt;
+    Ok(std::process::ExitStatus::from_raw(0))
 }
 
 pub(super) fn mcp_list() -> HashSet<String> {

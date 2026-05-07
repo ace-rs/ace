@@ -15,7 +15,10 @@ pub struct FlaudeRecord {
     pub trust: String,
     pub session_prompt: String,
     pub cmd: Vec<String>,
-    pub one_shot_prompt: Option<String>,
+    /// `exec_one_shot` records: PromptInput kind ("inline" | "stdin").
+    pub prompt_kind: Option<String>,
+    /// `exec_one_shot` records with PromptInput::Inline: the inline text.
+    pub prompt_text: Option<String>,
 }
 
 fn parse_flaude_records(path: &Path) -> Vec<FlaudeRecord> {
@@ -51,7 +54,8 @@ fn parse_flaude_records(path: &Path) -> Vec<FlaudeRecord> {
                             .collect()
                     })
                     .unwrap_or_default(),
-                one_shot_prompt: v["one_shot_prompt"].as_str().map(String::from),
+                prompt_kind: v["prompt"]["kind"].as_str().map(String::from),
+                prompt_text: v["prompt"]["text"].as_str().map(String::from),
             }
         })
         .collect()
@@ -265,11 +269,19 @@ impl TestEnv {
             .collect()
     }
 
-    /// Read exec records written by flaude's exec recording.
+    /// Read interactive session exec records written by flaude.
     pub fn read_flaude_exec_records(&self) -> Vec<FlaudeRecord> {
         parse_flaude_records(&self.path(".flaude-exec-records.jsonl"))
             .into_iter()
-            .filter(|r| r.action == "exec")
+            .filter(|r| r.action == "exec_session")
+            .collect()
+    }
+
+    /// Read one-shot exec records written by flaude.
+    pub fn read_flaude_one_shot_records(&self) -> Vec<FlaudeRecord> {
+        parse_flaude_records(&self.path(".flaude-exec-records.jsonl"))
+            .into_iter()
+            .filter(|r| r.action == "exec_one_shot")
             .collect()
     }
 

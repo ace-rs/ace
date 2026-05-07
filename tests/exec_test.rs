@@ -16,31 +16,36 @@ fn exec_records_session() {
 }
 
 #[test]
-fn exec_records_one_shot_prompt() {
+fn one_shot_routes_to_exec_one_shot_with_inline_prompt() {
     let env = TestEnv::new();
     env.setup_flaude_school("name = \"test-school\"\n");
 
     env.ace().args(["-p", "what is rust"]).assert().success();
 
-    let records = env.read_flaude_exec_records();
-    assert_eq!(records.len(), 1, "should record one exec call");
-    assert_eq!(
-        records[0].one_shot_prompt.as_deref(),
-        Some("what is rust"),
-        "one_shot_prompt should reach the backend",
+    let session = env.read_flaude_exec_records();
+    assert!(
+        session.is_empty(),
+        "ace -p should not trigger an interactive session record",
     );
+
+    let one_shot = env.read_flaude_one_shot_records();
+    assert_eq!(one_shot.len(), 1, "should record one exec_one_shot call");
+    assert_eq!(one_shot[0].prompt_kind.as_deref(), Some("inline"));
+    assert_eq!(one_shot[0].prompt_text.as_deref(), Some("what is rust"));
 }
 
 #[test]
-fn exec_records_no_one_shot_prompt_by_default() {
+fn bare_ace_routes_to_exec_session() {
     let env = TestEnv::new();
     env.setup_flaude_school("name = \"test-school\"\n");
 
     env.ace().assert().success();
 
-    let records = env.read_flaude_exec_records();
-    assert_eq!(records.len(), 1);
-    assert!(records[0].one_shot_prompt.is_none(), "no -p flag → None");
+    assert_eq!(env.read_flaude_exec_records().len(), 1);
+    assert!(
+        env.read_flaude_one_shot_records().is_empty(),
+        "bare ace must not trigger one-shot path",
+    );
 }
 
 #[test]

@@ -26,29 +26,46 @@ pub enum BackendError {
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::process::Output;
 
 use serde::{Deserialize, Serialize};
 
 use crate::config::ace_toml::Trust;
 use crate::config::school_toml::McpDecl;
 
-/// Everything a backend needs to launch a session.
+/// Inputs to an interactive session launch — exec-replace transport.
 ///
 /// `cmd` (the launch argv) is *not* in here — it's a property of the
 /// backend instance, not session input. Per-backend `exec_session` takes
 /// it as a separate parameter, populated by `Backend::exec_session` from
 /// `self.cmd`.
-pub struct SessionOpts {
+pub struct SessionRequest {
     pub trust: Trust,
     pub session_prompt: String,
     pub project_dir: PathBuf,
     pub env: HashMap<String, String>,
     pub extra_args: Vec<String>,
     pub resume: bool,
-    /// One-shot prompt: when set, the backend runs in non-interactive mode
-    /// answering this prompt and exits. Each backend translates the effect
-    /// to its native invocation (claude `-p`, codex `exec`, etc.).
-    pub one_shot_prompt: Option<String>,
+}
+
+/// Inputs to a one-shot (non-interactive) launch — spawn-and-capture transport.
+///
+/// No `trust`, `session_prompt`, or `resume` — the non-interactive entry point
+/// doesn't need approval modes or system-prompt injection. See
+/// `spec/decisions/009-polymorphic-flags.md`.
+pub struct OneShotRequest {
+    pub prompt: PromptInput,
+    pub project_dir: PathBuf,
+    pub env: HashMap<String, String>,
+    pub extra_args: Vec<String>,
+}
+
+/// Source of the one-shot prompt. `Inline` passes the prompt as argv;
+/// `Stdin` lets the spawned child inherit the parent's stdin.
+#[derive(Debug, Clone)]
+pub enum PromptInput {
+    Inline(String),
+    Stdin,
 }
 
 /// Health check result for a single MCP server.
@@ -118,8 +135,12 @@ impl Kind {
         }
     }
 
-    pub fn exec_session(&self, cmd: &[String], opts: SessionOpts) -> Result<(), std::io::Error> {
-        dispatch!(self, exec_session, cmd, opts)
+    pub fn exec_session(&self, cmd: &[String], req: SessionRequest) -> Result<(), std::io::Error> {
+        dispatch!(self, exec_session, cmd, req)
+    }
+
+    pub fn exec_one_shot(&self, cmd: &[String], req: OneShotRequest) -> Result<Output, std::io::Error> {
+        dispatch!(self, exec_one_shot, cmd, req)
     }
 
     #[allow(dead_code)]
@@ -197,12 +218,19 @@ impl Backend {
         self.kind.instructions_file()
     }
 
-    pub fn exec_session(&self, mut opts: SessionOpts) -> Result<(), std::io::Error> {
+    pub fn exec_session(&self, mut req: SessionRequest) -> Result<(), std::io::Error> {
         // per-backend env merges over global env (later wins on collision).
         for (k, v) in &self.env {
-            opts.env.insert(k.clone(), v.clone());
+            req.env.insert(k.clone(), v.clone());
         }
-        self.kind.exec_session(&self.cmd, opts)
+        self.kind.exec_session(&self.cmd, req)
+    }
+
+    pub fn exec_one_shot(&self, mut req: OneShotRequest) -> Result<Output, std::io::Error> {
+        for (k, v) in &self.env {
+            req.env.insert(k.clone(), v.clone());
+        }
+        self.kind.exec_one_shot(&self.cmd, req)
     }
 
     pub fn mcp_list(&self) -> HashSet<String> {

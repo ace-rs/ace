@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output, Stdio};
 
-use super::{McpDecl, McpStatus, SessionOpts};
+use super::{McpDecl, McpStatus, OneShotRequest, PromptInput, SessionRequest};
 use crate::config::ace_toml::Trust;
 
 pub(super) fn is_ready() -> bool {
@@ -13,53 +13,76 @@ pub(super) fn is_ready() -> bool {
             .unwrap_or(false)
 }
 
-pub(super) fn exec_session(launch: &[String], opts: SessionOpts) -> Result<(), std::io::Error> {
+pub(super) fn exec_session(launch: &[String], req: SessionRequest) -> Result<(), std::io::Error> {
     let (program, prefix) = launch.split_first()
         .map(|(p, rest)| (p.as_str(), rest))
         .unwrap_or(("codex", &[][..]));
     let mut cmd = Command::new(program);
     cmd.args(prefix);
-    cmd.current_dir(&opts.project_dir);
+    cmd.current_dir(&req.project_dir);
 
-    for (key, val) in &opts.env {
+    for (key, val) in &req.env {
         cmd.env(key, val);
     }
 
-    cmd.args(build_session_args(&opts));
+    cmd.args(build_session_args(&req));
 
     Err(crate::platform::exec_replace(cmd))
 }
 
-/// Translate `SessionOpts` into codex's CLI argv (post-binary). Pure function.
-/// One-shot prompt mode (`-p`) maps to `codex exec '<prompt>'`, which is
-/// codex's non-interactive entry point. Resume is ignored when one-shot is
-/// active — the two modes don't compose.
-fn build_session_args(opts: &SessionOpts) -> Vec<String> {
-    if let Some(prompt) = &opts.one_shot_prompt {
-        let mut args = vec!["exec".to_string()];
-        args.extend(trust_args(opts.trust).iter().map(|s| (*s).to_string()));
-        args.extend(opts.extra_args.iter().cloned());
-        args.push(prompt.clone());
-        return args;
+pub(super) fn exec_one_shot(launch: &[String], req: OneShotRequest) -> Result<Output, std::io::Error> {
+    let (program, prefix) = launch.split_first()
+        .map(|(p, rest)| (p.as_str(), rest))
+        .unwrap_or(("codex", &[][..]));
+    let mut cmd = Command::new(program);
+    cmd.args(prefix);
+    cmd.current_dir(&req.project_dir);
+
+    for (key, val) in &req.env {
+        cmd.env(key, val);
     }
 
+    cmd.args(build_one_shot_args(&req));
+
+    if matches!(req.prompt, PromptInput::Stdin) {
+        cmd.stdin(Stdio::inherit());
+    }
+
+    cmd.output()
+}
+
+/// Translate `SessionRequest` into codex's CLI argv (post-binary). Pure function.
+fn build_session_args(req: &SessionRequest) -> Vec<String> {
     let mut args = Vec::new();
 
-    if opts.resume {
+    if req.resume {
         args.extend(["resume", "--last"].map(String::from));
     }
 
-    args.extend(trust_args(opts.trust).iter().map(|s| (*s).to_string()));
+    args.extend(trust_args(req.trust).iter().map(|s| (*s).to_string()));
 
-    if !opts.resume {
+    if !req.resume {
         args.push("-c".to_string());
         args.push(format!(
             "developer_instructions={}",
-            toml::Value::String(opts.session_prompt.clone()),
+            toml::Value::String(req.session_prompt.clone()),
         ));
     }
 
-    args.extend(opts.extra_args.iter().cloned());
+    args.extend(req.extra_args.iter().cloned());
+    args
+}
+
+/// Translate `OneShotRequest` into codex's `exec` argv. Inline prompts are
+/// passed as the positional prompt argument; Stdin uses codex's `-` sentinel
+/// (verified against codex-rs/exec/src/cli.rs `StdinPromptBehavior::Forced`).
+fn build_one_shot_args(req: &OneShotRequest) -> Vec<String> {
+    let mut args = vec!["exec".to_string()];
+    args.extend(req.extra_args.iter().cloned());
+    match &req.prompt {
+        PromptInput::Inline(text) => args.push(text.clone()),
+        PromptInput::Stdin => args.push("-".to_string()),
+    }
     args
 }
 
@@ -432,43 +455,54 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
 
-    fn opts() -> SessionOpts {
-        SessionOpts {
+    fn req() -> SessionRequest {
+        SessionRequest {
             trust: Trust::Default,
             session_prompt: "SP".to_string(),
             project_dir: PathBuf::from("/tmp"),
             env: HashMap::new(),
             extra_args: Vec::new(),
             resume: false,
-            one_shot_prompt: None,
+        }
+    }
+
+    fn one_shot(prompt: PromptInput) -> OneShotRequest {
+        OneShotRequest {
+            prompt,
+            project_dir: PathBuf::from("/tmp"),
+            env: HashMap::new(),
+            extra_args: Vec::new(),
         }
     }
 
     #[test]
     fn session_args_default_includes_developer_instructions() {
-        let args = build_session_args(&opts());
+        let args = build_session_args(&req());
         assert!(args.iter().any(|a| a == "-c"));
         assert!(args.iter().any(|a| a.starts_with("developer_instructions=")));
     }
 
     #[test]
-    fn session_args_one_shot_uses_exec_subcommand() {
-        let mut o = opts();
-        o.one_shot_prompt = Some("hello".to_string());
-        let args = build_session_args(&o);
+    fn one_shot_args_inline_uses_exec_subcommand() {
+        let args = build_one_shot_args(&one_shot(PromptInput::Inline("hello".into())));
         assert_eq!(args.first().map(String::as_str), Some("exec"));
         assert_eq!(args.last().map(String::as_str), Some("hello"));
         assert!(!args.iter().any(|a| a.starts_with("developer_instructions=")),
-            "one-shot mode should skip developer_instructions");
+            "one-shot must not carry session-only flags");
     }
 
     #[test]
-    fn session_args_one_shot_yolo_includes_bypass_flag() {
-        let mut o = opts();
-        o.one_shot_prompt = Some("hi".to_string());
-        o.trust = Trust::Yolo;
-        let args = build_session_args(&o);
-        assert!(args.iter().any(|a| a == "--dangerously-bypass-approvals-and-sandbox"));
+    fn one_shot_args_stdin_uses_dash_sentinel() {
+        let args = build_one_shot_args(&one_shot(PromptInput::Stdin));
+        assert_eq!(args, vec!["exec", "-"]);
+    }
+
+    #[test]
+    fn one_shot_args_extra_args_precede_prompt() {
+        let mut r = one_shot(PromptInput::Inline("hi".into()));
+        r.extra_args = vec!["--model".to_string(), "gpt-5".to_string()];
+        let args = build_one_shot_args(&r);
+        assert_eq!(args, vec!["exec", "--model", "gpt-5", "hi"]);
     }
 
     #[test]
