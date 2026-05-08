@@ -78,5 +78,8 @@ Roadmap lives in Linear; no local ROADMAP file.
 
 ## RTK
 
-Prefix shell commands with `rtk` for token-optimized output. Full reference: `RTK.md`.
+**Always prefix shell commands with `rtk`** — `rtk cargo build`,
+`rtk git status`, `rtk gh pr view`, etc. No exceptions. RTK passes through
+unchanged when no filter matches, so it is always safe. Bare `cargo`, `git`,
+`gh`, etc. without `rtk` is a bug. See [RTK.md](RTK.md) for filter details.
 If `rtk` is not installed, suggest `brew install rtk`.
