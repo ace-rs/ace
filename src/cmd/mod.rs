@@ -208,6 +208,8 @@ enum Command {
     /// 🛩️
     #[command(hide = true)]
     Maverick,
+    /// Print version information
+    Version,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -295,6 +297,9 @@ pub fn run(ace: &mut Ace, cli: Cli) {
         Command::Yolo => yolo::run(ace, crate::config::ace_toml::Trust::Yolo),
         Command::Upgrade { silent, force, version } => upgrade::run(ace, silent, force, version),
         Command::Maverick => maverick::run(ace),
+        Command::Version => {
+            println!("ace {}", concat!(env!("CARGO_PKG_VERSION"), " (", env!("ACE_GIT_HASH"), ")"));
+        }
     }
 }
 
