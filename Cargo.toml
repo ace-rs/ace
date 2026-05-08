@@ -4,7 +4,7 @@ version = "0.6.0"
 edition = "2024"
 description = "Accelerated Coding Environment — setup and manage AI coding assistants"
 repository = "https://github.com/ace-rs/ace"
-homepage = "https://prod9.github.io/ace"
+homepage = "https://ace-rs.dev"
 license = "MIT"
 
 [dependencies]

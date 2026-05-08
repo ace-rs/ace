@@ -77,14 +77,14 @@ mod tests {
         let cache_root = tmp.path();
 
         std::fs::create_dir_all(cache_root.join("imports/owner/repo")).unwrap();
-        std::fs::create_dir_all(cache_root.join("prod9/school")).unwrap();
+        std::fs::create_dir_all(cache_root.join("ace-rs/school")).unwrap();
         std::fs::create_dir_all(cache_root.join("other-owner/other-repo")).unwrap();
 
         let stray = detect_stray_cache_dirs(cache_root);
 
         assert!(
-            stray.iter().any(|p| p.ends_with("prod9")),
-            "should flag prod9/ as stray; got {stray:?}",
+            stray.iter().any(|p| p.ends_with("ace-rs")),
+            "should flag ace-rs/ as stray; got {stray:?}",
         );
         assert!(
             stray.iter().any(|p| p.ends_with("other-owner")),
