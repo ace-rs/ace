@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use once_cell::unsync::OnceCell;
 
+use crate::backend::registry::TemplateCtx;
 use crate::backend::{registry, Backend, BackendError};
 use crate::config;
 use crate::config::ace_toml::AceToml;
@@ -134,8 +135,23 @@ impl Ace {
     pub fn backend(&self) -> Result<&Backend, BackendError> {
         self.backend.get_or_try_init(|| {
             let resolved = self.require_resolved()?;
-            registry::bind(resolved)
+            registry::bind(resolved, &self.template_ctx())
         })
+    }
+
+    /// Build the `TemplateCtx` used to render `{{ ... }}` placeholders inside
+    /// `[[backends]].cmd` and `env`. Unresolved school path → empty string,
+    /// matching the unknown-placeholder rule in
+    /// `spec/decisions/010-backend-cmd-templating.md`.
+    fn template_ctx(&self) -> TemplateCtx {
+        let school_dir = self
+            .require_school()
+            .ok()
+            .map(|p| p.root.display().to_string())
+            .unwrap_or_default();
+        let project_dir = self.project_dir.display().to_string();
+        let home = std::env::var("HOME").unwrap_or_default();
+        TemplateCtx { school_dir, project_dir, home }
     }
 
     /// Resolve school paths. See spec/school/overview.md (Context Resolution)

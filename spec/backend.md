@@ -161,6 +161,22 @@ school → user → project → local. Later layers may add new entries or parti
 earlier ones. The selected backend name (resolved per the [Resolution Order](#resolution-order)
 above) is then looked up in the final registry; an unknown name is `BackendError::Unknown`.
 
+### Path Templating
+
+`cmd[]` entries and `env` values may use `{{ ... }}` placeholders, rendered at bind
+time. Shell-style `$VAR` and `~` are **not** expanded — use a placeholder or a
+literal absolute path.
+
+| Placeholder        | Resolves to                                                  |
+|--------------------|--------------------------------------------------------------|
+| `{{ school_dir }}` | Active school root.                                          |
+| `{{ project_dir }}`| Project working directory.                                   |
+| `{{ home }}`       | `$HOME`.                                                     |
+| `{{ backend_dir }}`| `<project_dir>/<kind.backend_dir()>` for the resolved kind.  |
+
+Unknown names render to empty (a future `ace school validate` will surface typos).
+See [decisions/010-backend-cmd-templating.md](decisions/010-backend-cmd-templating.md).
+
 ### Use Cases
 
 - **Override env or cmd for a built-in** — e.g. point `claude` at a corporate proxy by

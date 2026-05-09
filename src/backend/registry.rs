@@ -4,17 +4,40 @@
 //! Layer-walk logic lives here so `Registry` (in `super`) stays independent
 //! of config-layer types.
 
+use std::collections::HashMap;
 use std::path::Path;
 
 use super::{Backend, BackendError, Kind, Registry};
 use crate::config::ace_toml::BackendDecl;
 use crate::resolver::{Resolved, Sourced};
+use crate::templates::Template;
+
+/// Render context for `{{ ... }}` placeholders inside `[[backends]].cmd` and
+/// `env` values. `{{ backend_dir }}` is derived per-decl from the resolved
+/// `Kind`, not carried here. See `spec/decisions/010-backend-cmd-templating.md`.
+#[derive(Debug, Default, Clone)]
+pub struct TemplateCtx {
+    pub school_dir: String,
+    pub project_dir: String,
+    pub home: String,
+}
+
+#[cfg(test)]
+impl TemplateCtx {
+    /// All-empty context — placeholders render to empty. Test-only helper.
+    pub fn empty() -> Self {
+        Self::default()
+    }
+}
 
 /// Build the registry from declarations carried on a merged `Resolved` view
 /// and look up the selected backend name. Unknown name →
 /// `BackendError::Unknown`.
-pub fn bind(resolved: &Resolved) -> Result<Backend, BackendError> {
-    let registry = build_registry(resolved.backend_decls.iter().map(|s: &Sourced<BackendDecl>| &s.value))?;
+pub fn bind(resolved: &Resolved, ctx: &TemplateCtx) -> Result<Backend, BackendError> {
+    let registry = build_registry(
+        resolved.backend_decls.iter().map(|s: &Sourced<BackendDecl>| &s.value),
+        ctx,
+    )?;
     let name = &resolved.backend_name.value;
     registry
         .lookup(name)
@@ -25,13 +48,13 @@ pub fn bind(resolved: &Resolved) -> Result<Backend, BackendError> {
 /// Build a `Registry` seeded with built-ins, then fold each declaration in
 /// order. Caller controls layer order (typically school → user → project →
 /// local). Per-decl rule documented on `merge_decl`.
-pub fn build_registry<'a, I>(decls: I) -> Result<Registry, BackendError>
+pub fn build_registry<'a, I>(decls: I, ctx: &TemplateCtx) -> Result<Registry, BackendError>
 where
     I: IntoIterator<Item = &'a BackendDecl>,
 {
     let mut registry = Registry::with_builtins();
     for decl in decls {
-        merge_decl(&mut registry, decl)?;
+        merge_decl(&mut registry, decl, ctx)?;
     }
     Ok(registry)
 }
@@ -45,7 +68,7 @@ where
 /// - Else (new name): resolve kind via explicit field → name match →
 ///   `cmd[0]` basename match → error. Resolve cmd via explicit `cmd` else
 ///   `[kind.name()]`. Insert.
-fn merge_decl(registry: &mut Registry, decl: &BackendDecl) -> Result<(), BackendError> {
+fn merge_decl(registry: &mut Registry, decl: &BackendDecl, ctx: &TemplateCtx) -> Result<(), BackendError> {
     if let Some(existing) = registry.get_mut(&decl.name) {
         if let Some(declared) = &decl.kind
             && Kind::from_name(declared) != Some(existing.kind)
@@ -56,28 +79,56 @@ fn merge_decl(registry: &mut Registry, decl: &BackendDecl) -> Result<(), Backend
                 actual: existing.kind.name().to_string(),
             });
         }
+        let vars = render_vars(ctx, existing.kind);
         if !decl.cmd.is_empty() {
-            existing.cmd = decl.cmd.clone();
+            existing.cmd = decl.cmd.iter().map(|s| render(s, &vars)).collect();
         }
         for (k, v) in &decl.env {
-            existing.env.insert(k.clone(), v.clone());
+            existing.env.insert(k.clone(), render(v, &vars));
         }
         return Ok(());
     }
 
     let kind = resolve_kind(decl)?;
+    let vars = render_vars(ctx, kind);
     let cmd = if decl.cmd.is_empty() {
         vec![kind.name().to_string()]
     } else {
-        decl.cmd.clone()
+        decl.cmd.iter().map(|s| render(s, &vars)).collect()
     };
+    let env = decl.env.iter().map(|(k, v)| (k.clone(), render(v, &vars))).collect();
     registry.insert(Backend {
         name: decl.name.clone(),
         kind,
         cmd,
-        env: decl.env.clone(),
+        env,
     });
     Ok(())
+}
+
+/// Build the placeholder map for a single decl. `backend_dir` is per-decl
+/// because it depends on the resolved `Kind`. See
+/// `spec/decisions/010-backend-cmd-templating.md`.
+fn render_vars(ctx: &TemplateCtx, kind: Kind) -> HashMap<String, String> {
+    let backend_dir = if ctx.project_dir.is_empty() {
+        String::new()
+    } else {
+        format!("{}/{}", ctx.project_dir.trim_end_matches('/'), kind.backend_dir())
+    };
+    let mut vars = HashMap::with_capacity(4);
+    vars.insert("school_dir".into(), ctx.school_dir.clone());
+    vars.insert("project_dir".into(), ctx.project_dir.clone());
+    vars.insert("home".into(), ctx.home.clone());
+    vars.insert("backend_dir".into(), backend_dir);
+    vars
+}
+
+/// Fast-path literal strings; only parse-and-substitute when `{{` is present.
+fn render(input: &str, vars: &HashMap<String, String>) -> String {
+    if !input.contains("{{") {
+        return input.to_string();
+    }
+    Template::parse(input).substitute(vars)
 }
 
 fn resolve_kind(decl: &BackendDecl) -> Result<Kind, BackendError> {
@@ -117,12 +168,12 @@ mod tests {
         let mut d = decl("claude");
         d.env.insert("A".into(), "1".into());
         d.env.insert("B".into(), "2".into());
-        merge_decl(&mut reg, &d).expect("first merge");
+        merge_decl(&mut reg, &d, &TemplateCtx::empty()).expect("first merge");
 
         let mut d2 = decl("claude");
         d2.env.insert("B".into(), "two".into());
         d2.env.insert("C".into(), "3".into());
-        merge_decl(&mut reg, &d2).expect("second merge");
+        merge_decl(&mut reg, &d2, &TemplateCtx::empty()).expect("second merge");
 
         let claude = reg.lookup("claude").unwrap();
         assert_eq!(claude.env.get("A").map(String::as_str), Some("1"));
@@ -135,12 +186,12 @@ mod tests {
         let mut reg = Registry::with_builtins();
         let mut d = decl("claude");
         d.cmd = vec!["claude-bedrock".into()];
-        merge_decl(&mut reg, &d).expect("merge");
+        merge_decl(&mut reg, &d, &TemplateCtx::empty()).expect("merge");
 
         assert_eq!(reg.lookup("claude").unwrap().cmd, vec!["claude-bedrock"]);
 
         let d2 = decl("claude"); // empty cmd — must not clobber
-        merge_decl(&mut reg, &d2).expect("merge2");
+        merge_decl(&mut reg, &d2, &TemplateCtx::empty()).expect("merge2");
         assert_eq!(reg.lookup("claude").unwrap().cmd, vec!["claude-bedrock"]);
     }
 
@@ -149,7 +200,7 @@ mod tests {
         let mut reg = Registry::with_builtins();
         let mut d = decl("claude");
         d.kind = Some("codex".into());
-        let err = merge_decl(&mut reg, &d).expect_err("should reject");
+        let err = merge_decl(&mut reg, &d, &TemplateCtx::empty()).expect_err("should reject");
         match err {
             BackendError::KindMismatch { name, declared, actual } => {
                 assert_eq!(name, "claude");
@@ -166,7 +217,7 @@ mod tests {
         let mut d = decl("bailer");
         d.kind = Some("claude".into());
         d.env.insert("ANTHROPIC_BASE_URL".into(), "https://x".into());
-        merge_decl(&mut reg, &d).expect("merge");
+        merge_decl(&mut reg, &d, &TemplateCtx::empty()).expect("merge");
 
         let bailer = reg.lookup("bailer").expect("bailer registered");
         assert_eq!(bailer.kind, Kind::Claude);
@@ -179,7 +230,7 @@ mod tests {
         let mut reg = Registry::with_builtins();
         let mut d = decl("bedrock-claude");
         d.cmd = vec!["/usr/local/bin/claude".into()];
-        merge_decl(&mut reg, &d).expect("merge");
+        merge_decl(&mut reg, &d, &TemplateCtx::empty()).expect("merge");
 
         let b = reg.lookup("bedrock-claude").unwrap();
         assert_eq!(b.kind, Kind::Claude);
@@ -190,7 +241,7 @@ mod tests {
     fn new_name_unresolvable_errors() {
         let mut reg = Registry::with_builtins();
         let d = decl("mystery"); // no kind, no cmd, name doesn't match built-in
-        let err = merge_decl(&mut reg, &d).expect_err("should error");
+        let err = merge_decl(&mut reg, &d, &TemplateCtx::empty()).expect_err("should error");
         assert!(matches!(err, BackendError::Unresolvable(name) if name == "mystery"));
     }
 
@@ -199,8 +250,93 @@ mod tests {
         let mut reg = Registry::with_builtins();
         let mut d = decl("bailer");
         d.kind = Some("nonsense".into());
-        let err = merge_decl(&mut reg, &d).expect_err("should error");
+        let err = merge_decl(&mut reg, &d, &TemplateCtx::empty()).expect_err("should error");
         assert!(matches!(err, BackendError::Unresolvable(name) if name == "bailer"));
+    }
+
+    // -- templating: rendering `{{ ... }}` placeholders in cmd[] and env values --
+
+    fn ctx(school: &str, project: &str, home: &str) -> TemplateCtx {
+        TemplateCtx {
+            school_dir: school.to_string(),
+            project_dir: project.to_string(),
+            home: home.to_string(),
+        }
+    }
+
+    #[test]
+    fn cmd_templating_substitutes_school_dir() {
+        let mut reg = Registry::with_builtins();
+        let mut d = decl("codex-ace");
+        d.kind = Some(Kind::Codex.into());
+        d.cmd = vec!["{{ school_dir }}/skills/ace-connect/scripts/codex.sh".into()];
+        merge_decl(&mut reg, &d, &ctx("/sch", "/proj", "/home/u")).expect("merge");
+
+        let b = reg.lookup("codex-ace").expect("registered");
+        assert_eq!(b.cmd, vec!["/sch/skills/ace-connect/scripts/codex.sh".to_string()]);
+    }
+
+    #[test]
+    fn cmd_templating_project_home_and_backend_dir() {
+        let mut reg = Registry::with_builtins();
+        let mut d = decl("wrap");
+        d.kind = Some(Kind::Codex.into());
+        d.cmd = vec![
+            "{{ project_dir }}/bin/wrap".into(),
+            "--home={{ home }}".into(),
+            "--bd={{ backend_dir }}".into(),
+        ];
+        merge_decl(&mut reg, &d, &ctx("/sch", "/proj", "/home/u")).expect("merge");
+
+        let b = reg.lookup("wrap").expect("registered");
+        assert_eq!(b.cmd[0], "/proj/bin/wrap");
+        assert_eq!(b.cmd[1], "--home=/home/u");
+        // backend_dir derives from resolved Kind::Codex (".agents") joined under project_dir.
+        assert_eq!(b.cmd[2], "--bd=/proj/.agents");
+    }
+
+    #[test]
+    fn cmd_templating_unknown_placeholder_left_empty() {
+        let mut reg = Registry::with_builtins();
+        let mut d = decl("custom");
+        d.kind = Some(Kind::Claude.into());
+        d.cmd = vec!["{{ bogus }}/x".into()];
+        merge_decl(&mut reg, &d, &ctx("/sch", "/proj", "/home/u")).expect("merge");
+
+        assert_eq!(reg.lookup("custom").unwrap().cmd, vec!["/x".to_string()]);
+    }
+
+    #[test]
+    fn env_values_templating_substitutes_school_dir() {
+        let mut reg = Registry::with_builtins();
+        let mut d = decl("custom");
+        d.kind = Some(Kind::Claude.into());
+        d.env.insert("CFG".into(), "{{ school_dir }}/conf".into());
+        merge_decl(&mut reg, &d, &ctx("/sch", "/proj", "/home/u")).expect("merge");
+
+        assert_eq!(reg.lookup("custom").unwrap().env.get("CFG").map(String::as_str), Some("/sch/conf"));
+    }
+
+    #[test]
+    fn cmd_templating_dollar_var_not_expanded() {
+        let mut reg = Registry::with_builtins();
+        let mut d = decl("custom");
+        d.kind = Some(Kind::Claude.into());
+        d.cmd = vec!["$HOME/foo".into(), "~/bar".into()];
+        merge_decl(&mut reg, &d, &ctx("/sch", "/proj", "/home/u")).expect("merge");
+
+        assert_eq!(reg.lookup("custom").unwrap().cmd, vec!["$HOME/foo".to_string(), "~/bar".to_string()]);
+    }
+
+    #[test]
+    fn cmd_templating_no_template_no_change() {
+        let mut reg = Registry::with_builtins();
+        let mut d = decl("custom");
+        d.kind = Some(Kind::Claude.into());
+        d.cmd = vec!["/usr/local/bin/claude".into()];
+        merge_decl(&mut reg, &d, &ctx("/sch", "/proj", "/home/u")).expect("merge");
+
+        assert_eq!(reg.lookup("custom").unwrap().cmd, vec!["/usr/local/bin/claude".to_string()]);
     }
 
     // -- bind() integration tests: covers merge → registry → name lookup as a
@@ -229,7 +365,7 @@ mod tests {
     }
 
     fn bind_default(t: &Tree) -> Result<Backend, BackendError> {
-        bind(&resolver::merge(t, &AceToml::default()))
+        bind(&resolver::merge(t, &AceToml::default()), &TemplateCtx::empty())
     }
 
     #[test]
