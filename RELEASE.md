@@ -133,6 +133,11 @@ configuration pages) can be regenerated. Include:
 
 See the `ace-connect` skill for the send/receive flow.
 
+The bridge truncates lines past ~500 chars. For a release announcement that
+lists more than a couple of changes, write the full notes to a tmp file
+(`/tmp/ace-<ver>-www.md`) and send a short body that links to it, rather
+than stuffing the whole changelog into one line.
+
 ## 8. Discord announcement
 
 After the release is live and the website agent has been notified, print a brief
