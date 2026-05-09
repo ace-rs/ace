@@ -235,7 +235,7 @@ mechanism.
 This surface is a template file under `src/templates/builtins/`. Updates to
 it land in the same PR as `ace learn` itself. The `ace-school` skill (now
 provided by the `ace-rs/school` standard import — see
-`spec/school/standard-imports.md`) is the other natural place to document
+`docs/spec/school/standard-imports.md`) is the other natural place to document
 the workflow, but it lives in a separate repo and is updated through that
 school's own change process.
 

@@ -28,7 +28,7 @@ Steps:
    source = "ace-rs/school"
    ```
    The `ace-rs/school` import is the canonical source of `ace-school` and
-   any other base skills. See `spec/school/standard-imports.md`. Users
+   any other base skills. See `docs/spec/school/standard-imports.md`. Users
    may remove the entry for a fully standalone school.
 4. Create `CLAUDE.md` and `README.md` if missing.
 5. Create `.gitignore` if missing.
@@ -153,7 +153,7 @@ Re-fetch all imported skills from their sources.
 - Exact imports update only the named skill. If not found in the source, warns and skips.
 - Wildcard imports re-discover on every update — new skills matching the pattern are picked up
   automatically. Existing skills are overwritten with the latest from the source, consistent
-  with ACE's always-latest versioning philosophy (see `spec/index.md`).
+  with ACE's always-latest versioning philosophy (see `docs/spec/index.md`).
 
 ## `ace diff`
 

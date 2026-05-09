@@ -53,7 +53,7 @@ pub struct SessionRequest {
 ///
 /// No `trust`, `session_prompt`, or `resume` — the non-interactive entry point
 /// doesn't need approval modes or system-prompt injection. See
-/// `spec/decisions/009-polymorphic-flags.md`.
+/// `docs/decisions/2026-05-07-polymorphic-flags.md`.
 pub struct OneShotRequest {
     pub prompt: PromptInput,
     pub project_dir: PathBuf,

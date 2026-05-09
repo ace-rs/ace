@@ -151,7 +151,7 @@ impl Skills<Discovered> {
     /// Fold `other` into `self`, last-wins. Skills in `other` whose name
     /// already exists in `self` silently replace the existing entry. This
     /// ensures every pull converges to the latest version regardless of
-    /// declaration order — see `spec/skills-sync.md` § Import Merge Strategy.
+    /// declaration order — see `docs/spec/skills-sync.md` § Import Merge Strategy.
     pub fn merge(&mut self, other: Skills<Discovered>) {
         for skill in other.items {
             if let Some(existing) = self.items.iter_mut().find(|s| s.name == skill.name) {

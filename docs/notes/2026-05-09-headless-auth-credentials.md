@@ -1,3 +1,5 @@
+_Predates the `docs/notes/` convention; preserved as-is for historical context._
+
 # Authentication & Credentials for Web-Hosted ACE
 
 Date: 2025-03-21

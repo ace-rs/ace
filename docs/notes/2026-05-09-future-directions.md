@@ -1,3 +1,5 @@
+_Predates the `docs/notes/` convention; preserved as-is for historical context._
+
 # Future Directions
 
 Explored but parked. Each section captures the key finding and why it was shelved.
@@ -25,7 +27,7 @@ evaluated:
 
 **Conclusion:** ttyd wrapper is the simplest MVP (zero ACE changes). Worth revisiting if
 browser-based ACE becomes a product requirement. Blocked by headless MCP issues (see
-`headless-mcp.md`).
+`2026-05-09-headless-mcp.md`).
 
 ## Self-Hosted Backend via Claude Agent SDK
 

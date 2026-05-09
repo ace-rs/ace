@@ -74,7 +74,7 @@ if user feedback flags it.
 
 ## Per-backend argv mapping
 
-See `spec/backend.md` for the full table. Summary:
+See `docs/spec/backend.md` for the full table. Summary:
 
 | Intent          | claude                          | codex             |
 |-----------------|---------------------------------|-------------------|

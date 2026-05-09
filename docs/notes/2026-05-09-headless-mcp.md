@@ -1,3 +1,5 @@
+_Predates the `docs/notes/` convention; preserved as-is for historical context._
+
 # MCP in Headless/Web-Hosted ACE
 
 Date: 2025-03-21

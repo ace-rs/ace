@@ -74,4 +74,4 @@ renderer, same closed placeholder set — no extra surface.
 
 - `src/backend/registry.rs` — `bind` and `merge_decl`.
 - `src/templates/mod.rs` — `Template`.
-- `spec/backend.md` — user-facing docs.
+- `docs/spec/backend.md` — user-facing docs.

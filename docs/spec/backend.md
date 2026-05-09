@@ -48,14 +48,14 @@ Each backend must provide:
   Returns `io::Error` on spawn failure; never returns on success (terminal hands off to the
   child). When `resume = true`, some backends may fail if no prior session exists (Claude)
   while others handle it gracefully (Codex). ACE prints a hint before exec so the user knows
-  to run `ace new` on failure. See `decisions/004-resume-fallback.md`.
+  to run `ace new` on failure. See `docs/decisions/2026-04-09-resume-fallback.md`.
 - **`exec_one_shot(req)`** — spawn the backend non-interactively and capture stdout/stderr.
   Builds its Command from `OneShotRequest` (prompt source, project dir, env, extra args; no
   resume, trust, or session prompt — the non-interactive entry point doesn't take approval
   modes or system-prompt injection). Returns `io::Result<std::process::Output>` — caller
   inspects `status.success()` and `stderr` for non-zero exits. Used by `ace -p` (CLI) and
   ACE-internal consumers (e.g. `ace learn`) that need a programmatic backend invocation.
-  See `decisions/009-polymorphic-flags.md`.
+  See `docs/decisions/2026-05-07-polymorphic-flags.md`.
 - **`mcp_list()`** — list currently registered MCP server names.
 - **`mcp_add(entry)`** — register a remote MCP server.
 - **`mcp_remove(name)`** — unregister a remote MCP server by name.
@@ -175,7 +175,7 @@ literal absolute path.
 | `{{ backend_dir }}`| `<project_dir>/<kind.backend_dir()>` for the resolved kind.  |
 
 Unknown names render to empty (a future `ace school validate` will surface typos).
-See [decisions/010-backend-cmd-templating.md](decisions/010-backend-cmd-templating.md).
+See [docs/decisions/2026-05-09-backend-cmd-templating.md](docs/decisions/2026-05-09-backend-cmd-templating.md).
 
 ### Use Cases
 

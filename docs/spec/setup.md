@@ -82,7 +82,7 @@ When the user runs `ace` (no subcommand) in a project that already has `ace.toml
 ## Actions Summary
 
 All consumer-side actions live in `src/actions/project/` (see
-`spec/decisions/005-action-layout.md`).
+`docs/decisions/2026-04-22-action-layout.md`).
 
 | Action    | Responsibility                                          | When                     |
 |-----------|---------------------------------------------------------|--------------------------|

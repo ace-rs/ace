@@ -27,7 +27,7 @@ pub fn merge(tree: &Tree, overrides: &AceToml) -> Resolved {
 
     // Personal-only fields skip the project layer entirely; user, local, and
     // the runtime override layer are all "personal" and contribute. See
-    // spec/configuration.md.
+    // docs/spec/configuration.md.
     let personal: [(Source, &AceToml); 3] = [
         (Source::User, user),
         (Source::Local, local),

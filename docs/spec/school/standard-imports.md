@@ -60,5 +60,5 @@ written; re-running with network restores correctness.
 
 ## Related
 
-- `spec/school/school-commands.md` — `ace school init` step list.
-- `spec/decisions/005-action-layout.md` — action role split.
+- `docs/spec/school/school-commands.md` — `ace school init` step list.
+- `docs/decisions/2026-04-22-action-layout.md` — action role split.

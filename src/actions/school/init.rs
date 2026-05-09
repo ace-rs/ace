@@ -8,7 +8,7 @@ use crate::templates;
 
 /// Default school imported by every fresh school. Provides `ace-school` and
 /// any other base skills. Users may remove the import for a fully
-/// standalone school. See `spec/school/standard-imports.md`.
+/// standalone school. See `docs/spec/school/standard-imports.md`.
 const STANDARD_SCHOOL_SOURCE: &str = "ace-rs/school";
 
 #[derive(Debug, thiserror::Error)]

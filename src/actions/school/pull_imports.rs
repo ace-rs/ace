@@ -58,7 +58,7 @@ impl PullImports<'_> {
         }
 
         // Single pass in declaration order, last-wins on collision. See
-        // spec/skills-sync.md § Import Merge Strategy.
+        // docs/spec/skills-sync.md § Import Merge Strategy.
         let mut accumulator: Skills<Discovered> = Skills::default();
         for (source, decls) in &by_source {
             let discovered = &discovery[source];

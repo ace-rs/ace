@@ -1,3 +1,5 @@
+_Predates the `docs/notes/` convention; preserved as-is for historical context._
+
 # Plugins & Macros
 
 ## Problem
@@ -205,7 +207,7 @@ predictable and safe.
 
 - `src/config/tree.rs` — macros load via existing `AceToml` / `SchoolToml` parse
 - `src/state/actions/link.rs` — `plugins/` is not a linkable folder
-- `spec/architecture.md` — no layer boundary changes (plugins are actions, macros are config)
+- `docs/spec/architecture.md` — no layer boundary changes (plugins are actions, macros are config)
 
 ## What This Does NOT Cover
 

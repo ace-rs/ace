@@ -71,7 +71,7 @@ impl Ace {
     /// Replace the runtime-override layer wholesale. The CLI builds an
     /// `AceToml` from global flags (--backend, --trust, --session-prompt,
     /// --env, ...) and hands it in once at startup. Higher-priority than
-    /// any on-disk layer (see `spec/decisions/007.md`).
+    /// any on-disk layer (see `docs/decisions/2026-04-27-config-resolution-redesign.md`).
     pub fn set_overrides(&mut self, overrides: AceToml) {
         self.overrides = overrides;
         self.invalidate_resolved();
@@ -142,7 +142,7 @@ impl Ace {
     /// Build the `TemplateCtx` used to render `{{ ... }}` placeholders inside
     /// `[[backends]].cmd` and `env`. Unresolved school path → empty string,
     /// matching the unknown-placeholder rule in
-    /// `spec/decisions/010-backend-cmd-templating.md`.
+    /// `docs/decisions/2026-05-09-backend-cmd-templating.md`.
     fn template_ctx(&self) -> TemplateCtx {
         let school_dir = self
             .require_school()
@@ -154,7 +154,7 @@ impl Ace {
         TemplateCtx { school_dir, project_dir, home }
     }
 
-    /// Resolve school paths. See spec/school/overview.md (Context Resolution)
+    /// Resolve school paths. See docs/spec/school/overview.md (Context Resolution)
     /// for the full case matrix. Summary:
     /// - school.toml in workdir → Ok (school-repo).
     /// - Else require_tree → specifier → resolve.
@@ -277,7 +277,7 @@ impl Ace {
 mod tests {
     use super::*;
 
-    /// spec/school/overview.md case 5: ace.toml with local specifier `.`,
+    /// docs/spec/school/overview.md case 5: ace.toml with local specifier `.`,
     /// no school.toml at resolved root → MissingSchool, not Ok with stale paths.
     #[test]
     fn require_school_local_specifier_uninitialized_returns_not_initialized() {
@@ -296,7 +296,7 @@ mod tests {
         assert!(err.to_string().contains("ace school init"), "msg: {err}");
     }
 
-    /// spec/school/overview.md case 1: school.toml in workdir short-circuits to Ok.
+    /// docs/spec/school/overview.md case 1: school.toml in workdir short-circuits to Ok.
     #[test]
     fn require_school_workdir_school_toml_returns_ok() {
         let tmp = tempfile::TempDir::new().unwrap();
@@ -307,7 +307,7 @@ mod tests {
         assert!(paths.clone_path.is_none());
     }
 
-    /// spec/school/overview.md case 3: ace.toml without specifier → Missing.
+    /// docs/spec/school/overview.md case 3: ace.toml without specifier → Missing.
     #[test]
     fn require_school_no_specifier_returns_no_specifier() {
         let tmp = tempfile::TempDir::new().unwrap();

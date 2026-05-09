@@ -1,3 +1,5 @@
+_Predates the `docs/notes/` convention; preserved as-is for historical context._
+
 # Headless Backend Mode — Research Notes
 
 Date: 2025-03-21

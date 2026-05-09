@@ -3,7 +3,7 @@
 ## Layers
 
 Five layers, demand-driven. Each binding loads on first request and caches.
-See `spec/decisions/007-config-resolution-redesign.md` for the rationale.
+See `docs/decisions/2026-04-27-config-resolution-redesign.md` for the rationale.
 
 ```
 disk → Tree → Resolved → Bindings (Backend / School / Skills) → Ace → Actions / Cmd
@@ -29,7 +29,7 @@ Pure logic. Given `Tree` + an `AceToml`-shaped overrides layer, produce a merged
 with per-field provenance. Infallible past parse.
 
 - `merge(tree, overrides) -> Resolved` — fold the four layers (user → project → local →
-  overrides) plus the school layer per the rules in `spec/configuration.md`.
+  overrides) plus the school layer per the rules in `docs/spec/configuration.md`.
 - `Resolved` — the merged scalars: `school_specifier`, `backend_name`, `backend_decls`,
   `session_prompt`, `env`, `trust`, `resume`, `skip_update`. Each value is `Sourced<T>`
   carrying a `Source { User, Project, Local, School, Override, Default }`.
@@ -51,7 +51,7 @@ Each binding is independent and fallible. No shared trait — operations differ 
 - `src/school.rs` — `School` domain object built by `From<SchoolToml>`.
   `SchoolError::NoSpecifier` when ace.toml lacks `school = ...`;
   `SchoolError::NotInitialized` when the resolved root has no `school.toml`
-  (see `spec/school/overview.md` Context Resolution).
+  (see `docs/spec/school/overview.md` Context Resolution).
 - `src/skills/` — `Skills<Discovered>` / `Skills<Decided>` typestate. `Skills::discover`
   walks `<school>/skills/`; `.resolve(&Tree)` produces the resolved set with diagnostics.
   `SkillError` wraps discovery I/O plus upstream `ConfigError` / `SchoolError`.
@@ -80,7 +80,7 @@ Commands declare what they need by calling accessors on the existing instance:
 
 Failures stay local. `ace config show` calling `resolved()` is unaffected by an unknown
 backend selector. `cmd::main` matches `BackendError::Unknown` directly to drive the
-recovery picker (see `spec/decisions/007` §"Recovery UX").
+recovery picker (see `docs/decisions/2026-04-27-config-resolution-redesign` §"Recovery UX").
 
 Commands fall into three tiers:
 
@@ -96,7 +96,7 @@ loading rather than bypassing it.
 ### Actions (`src/actions/`)
 
 Peer to bindings, not nested inside them. Actions are operations *on* `Ace` and the
-filesystem. Grouped by user role (see `spec/decisions/005-action-layout.md`):
+filesystem. Grouped by user role (see `docs/decisions/2026-04-22-action-layout.md`):
 
 - **`actions/project/`** — consumer-side. User is in their own repo that consumes a
   school. Covers setup, prepare, clone, link, register/remove MCP, update gitignore,

@@ -1,3 +1,5 @@
+_Predates the `docs/notes/` convention; preserved as-is for historical context._
+
 # Codex CLI as ACE Backend — Comprehensive Review
 
 Date: 2025-03-21

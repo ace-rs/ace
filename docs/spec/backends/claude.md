@@ -39,7 +39,7 @@ rejected before `--system-prompt` is considered.
 
 **ACE strategy:** ACE prints a hint before exec'ing with `--continue`, telling the user to
 run `ace new` if resume fails. No automatic retry — the user handles it.
-See `spec/decisions/004-resume-fallback.md`.
+See `docs/decisions/2026-04-09-resume-fallback.md`.
 
 ## MCP Registration
 

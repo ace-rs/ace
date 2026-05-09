@@ -70,7 +70,7 @@ pub struct AceToml {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub backend: Option<String>,
     // TODO: add `role` and `description` fields so non-dev roles (e.g. PM) can
-    // configure ace for requirements-only repos, spec/ workflows, Jira/Trello sync, etc.
+    // configure ace for requirements-only repos, docs/spec/ workflows, Jira/Trello sync, etc.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_prompt: Option<String>,
     #[serde(skip_serializing_if = "is_empty_map")]

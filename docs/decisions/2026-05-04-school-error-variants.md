@@ -36,12 +36,12 @@ state so the remediation reads off the variant:
   `Ace::require_school()` only.
 
 The `is_dir()` guard in `require_school()` is essential: when the resolved root
-is *absent* (case 8 in `spec/school/overview.md`), `require_school` returns `Ok`
+is *absent* (case 8 in `docs/spec/school/overview.md`), `require_school` returns `Ok`
 so `cmd/pull.rs` can self-heal by cloning. `NotInitialized` fires only when the
 directory is present but uninitialized.
 
 Both variants are unit variants. A single fixed message suffices for each
-cause; the matrix in `spec/school/overview.md` covers both
+cause; the matrix in `docs/spec/school/overview.md` covers both
 "local-pre-init" (case 5) and "remote-clone-without-school.toml" (case 7) under
 the same remediation.
 

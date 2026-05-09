@@ -1,6 +1,6 @@
 # MCP Servers
 
-Remote-only. See [decisions/002-remote-only-mcp.md](decisions/002-remote-only-mcp.md) for rationale.
+Remote-only. See [docs/decisions/2026-03-04-remote-only-mcp.md](docs/decisions/2026-03-04-remote-only-mcp.md) for rationale.
 
 ## school.toml Format
 

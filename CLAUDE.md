@@ -6,8 +6,16 @@ session through the `ace` command instead of running the backend directly.
 **ACE** (Accelerated Coding Environment) — entrypoint to Claude Code / Codex / etc. that
 keeps skills, agents, conventions, and credentials provisioned per-project.
 
-Read `spec/architecture.md` first; load specs for the feature area you're touching
-(`ls spec/`). Decisions live under `spec/decisions/`.
+Read `docs/spec/architecture.md` first; load specs for the feature area you're touching
+(`ls docs/spec/`). Decisions live under `docs/decisions/`.
+
+## Durable artifacts
+
+`docs/{spec,decisions,notes}/` — sorted by permanence. `spec/` is current intent
+(forward-looking, edited in place). `decisions/` is point-in-time rulings against
+defaults (frozen, supersede with new dated entries). `notes/` is impermanent —
+research, surveys, drafts. Default to `notes/` when unsure. See per-dir READMEs
+for the picker.
 
 ## Load these skills
 
@@ -31,9 +39,9 @@ Two distinct user contexts. Confusing them is the most common reasoning error he
 
 - **Project-repo** — workdir is the user's codebase consuming a school. Marker:
   `ace.toml` with `school = "<specifier>"`. Actions in `src/actions/project/`.
-  See `spec/setup.md`.
+  See `docs/spec/setup.md`.
 - **School-repo** — workdir IS the school being authored. Marker: `school.toml` at root.
-  Actions in `src/actions/school/`. See `spec/school/`.
+  Actions in `src/actions/school/`. See `docs/spec/school/`.
 
 `ace setup .` is project-repo with an embedded school (monorepo). It does NOT bootstrap
 `school.toml`; "local school" is a separate, undesigned feature.
@@ -43,19 +51,19 @@ first; else resolves the ace.toml specifier and verifies `school.toml` at the re
 root. Errors split by cause: `SchoolError::NoSpecifier` ("run `ace setup`") when ace.toml
 lacks `school = ...`; `SchoolError::NotInitialized` ("run `ace school init`") when the
 resolved root exists but has no `school.toml`. Full case matrix in
-`spec/school/overview.md` (Context Resolution).
+`docs/spec/school/overview.md` (Context Resolution).
 
 ## Conventions
 
 - **Action pattern**: `run(&self, ace: &mut Ace)` in `src/actions/`. Split by role
-  (`project/` vs `school/`) — see `spec/decisions/005-action-layout.md`.
+  (`project/` vs `school/`) — see `docs/decisions/2026-04-22-action-layout.md`.
 - **Testing**: `cargo test`, `cargo test --test <name>`. Pure-logic in `#[cfg(test)]`;
-  fs/git/symlinks in `tests/` with `TestEnv`. See `spec/testing.md`.
+  fs/git/symlinks in `tests/` with `TestEnv`. See `docs/spec/testing.md`.
 - **TUI**: `term_ui::Tui` + `Workflow` enum dispatch (no traits). `inquire` for prompts.
-  See `spec/decisions/001-no-crossterm.md`.
+  See `docs/decisions/2026-03-15-no-crossterm.md`.
 - **CLI**: `ace paths` is `key\tvalue`, prints regardless of on-disk existence. Help
   text lives in clap doc comments; keep `--help` aligned with behavior.
-- **Storage**: see `spec/decisions/006-index-toml-data-dir.md`. Git via
+- **Storage**: see `docs/decisions/2026-04-22-index-toml-data-dir.md`. Git via
   `std::process::Command` only (no sqlite, no git crate).
 - **Flaude is test-only.** Don't mention it in user-facing help or public docs.
   Specs/code comments/CLAUDE.md are fine.
