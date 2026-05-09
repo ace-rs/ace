@@ -1,6 +1,7 @@
 mod config;
 mod diff;
 mod explain;
+mod link;
 mod maverick;
 mod fmt;
 mod import;
@@ -186,6 +187,8 @@ enum Command {
     },
     /// Fetch latest school changes (force, ignoring cooldown)
     Pull,
+    /// Re-link school folders into the project (no pull)
+    Link,
     /// Study the project, edit instructions file, narrow `skills` filter
     Learn,
     /// Start a fresh session (skip auto-resume)
@@ -295,6 +298,7 @@ pub fn run(ace: &mut Ace, cli: Cli) {
         Command::Skills { command, all, names } => skills::run(ace, command, all, names),
         Command::Explain { name } => explain::run(ace, &name),
         Command::Pull => pull::run(ace),
+        Command::Link => link::run(ace),
         Command::Learn => learn::run(ace),
         Command::New { backend_args } => main::run(ace, backend_args, false, cli.one_shot_prompt),
         Command::Auto => yolo::run(ace, crate::config::ace_toml::Trust::Auto),
