@@ -1,5 +1,21 @@
 use std::path::{Path, PathBuf};
 
+/// Homebrew-managed prefixes. If the running binary lives under one of these,
+/// `ace upgrade` should refuse and tell the user to `brew upgrade` instead.
+const HOMEBREW_PREFIXES: &[&str] = &[
+    "/opt/homebrew/",     // macOS ARM
+    "/usr/local/Cellar/", // macOS Intel (legacy)
+    "/home/linuxbrew/",   // Linux Homebrew
+];
+
+/// Returns `true` if `exe_path` appears to be managed by Homebrew.
+pub fn is_homebrew_managed(exe_path: &Path) -> bool {
+    let Some(s) = exe_path.to_str() else {
+        return false;
+    };
+    HOMEBREW_PREFIXES.iter().any(|prefix| s.starts_with(prefix))
+}
+
 #[cfg(unix)]
 pub fn staging_path(exe: &Path) -> PathBuf {
     let mut p = exe.as_os_str().to_owned();
@@ -78,6 +94,28 @@ mod tests {
 
         let perms = std::fs::metadata(&exe_path).unwrap().permissions();
         assert_eq!(perms.mode() & 0o755, 0o755);
+    }
+
+    #[test]
+    fn homebrew_managed_detects_arm_prefix() {
+        assert!(is_homebrew_managed(Path::new("/opt/homebrew/bin/ace")));
+        assert!(is_homebrew_managed(Path::new("/opt/homebrew/Cellar/ace/0.6.0/bin/ace")));
+    }
+
+    #[test]
+    fn homebrew_managed_detects_intel_prefix() {
+        assert!(is_homebrew_managed(Path::new("/usr/local/Cellar/ace/0.6.0/bin/ace")));
+    }
+
+    #[test]
+    fn homebrew_managed_detects_linux_prefix() {
+        assert!(is_homebrew_managed(Path::new("/home/linuxbrew/.linuxbrew/bin/ace")));
+    }
+
+    #[test]
+    fn homebrew_managed_rejects_normal_paths() {
+        assert!(!is_homebrew_managed(Path::new("/usr/local/bin/ace")));
+        assert!(!is_homebrew_managed(Path::new("/home/user/.local/bin/ace")));
     }
 
     #[cfg(unix)]

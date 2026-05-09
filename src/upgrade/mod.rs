@@ -61,6 +61,14 @@ pub fn check_for_update(ace: &mut Ace) {
         return;
     }
 
+    // Homebrew-managed binaries can't self-update — hint the user instead.
+    if let Ok(exe) = std::env::current_exe() {
+        if replace::is_homebrew_managed(&exe) {
+            ace.hint(&format!("ace {latest} available — run `brew upgrade ace`"));
+            return;
+        }
+    }
+
     ace.hint(&format!("ace {latest} available — upgrading in background"));
     spawn_background_upgrade();
 }

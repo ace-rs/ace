@@ -44,14 +44,29 @@ the source build with a release binary. Source-build developers should set
 `ACE_SKIP_UPDATE=1` in their shell profile or `skip_update = true` in their
 user-level config (`~/.config/ace/ace.toml`).
 
+### Homebrew installs
+
+When the running binary lives under a Homebrew-managed prefix (`/opt/homebrew/`,
+`/usr/local/Cellar/`, `/home/linuxbrew/`), self-update is refused:
+
+- **Startup check**: prints `ace X.Y.Z available — run 'brew upgrade ace'`
+  instead of spawning a background upgrade.
+- **`ace upgrade`**: exits with error: "this binary is managed by Homebrew —
+  run `brew upgrade ace` instead".
+
+Detection uses `std::env::current_exe()` prefix matching
+(`replace::is_homebrew_managed`). This covers both the Cellar path and the
+`/opt/homebrew/bin/` symlink target.
+
 ## Background Upgrade
 
 When the check finds a newer version:
 
-1. Print: `ace X.Y.Z available — upgrading in background`
-2. Spawn `current_exe() upgrade --silent` as a detached child process with
+1. If the binary is Homebrew-managed, print a `brew upgrade` hint and return.
+2. Print: `ace X.Y.Z available — upgrading in background`
+3. Spawn `current_exe() upgrade --silent` as a detached child process with
    stdin/stdout/stderr redirected to null.
-3. Main command proceeds immediately — no blocking.
+4. Main command proceeds immediately — no blocking.
 
 The child process downloads and replaces the binary. Next invocation runs the
 new version. Failures are silent.
@@ -84,8 +99,8 @@ ace upgrade [--silent] [--force [VERSION]]
 
 ### Self-replacement
 
-Uses `std::env::current_exe()` to locate the running binary — works regardless
-of install path (`~/.local/bin`, `/usr/local/bin`, or any custom location).
+Uses `std::env::current_exe()` to locate the running binary. Homebrew-managed
+paths are rejected before this point (see "Homebrew installs" above).
 
 #### Unix
 

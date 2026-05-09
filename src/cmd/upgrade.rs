@@ -47,6 +47,13 @@ fn run_inner(
 
     let exe_path = std::env::current_exe()
         .map_err(|e| super::CmdError::Other(format!("cannot locate binary: {e}")))?;
+
+    if replace::is_homebrew_managed(&exe_path) {
+        return Err(super::CmdError::Other(
+            "this binary is managed by Homebrew — run `brew upgrade ace` instead".to_string(),
+        ));
+    }
+
     replace::replace_binary(&exe_path, &binary)?;
 
     if let Some(marker) = check::cache_marker_path() {
