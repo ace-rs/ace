@@ -9,15 +9,14 @@ set -euo pipefail
 #
 # Prerequisites:
 #   cargo install cargo-zigbuild
-#   zig 0.14.x — https://ziglang.org/download/
+#   zig 0.14.x or 0.15.2 — https://ziglang.org/download/
 #
 # Zig version notes:
-#   - 0.14 is the known-good version. Pinned because:
-#   - 0.16 ships a broken `ar` (regression of zig#14707), which breaks
-#     `ring` and other crates: rust-cross/cargo-zigbuild#433.
+#   - 0.16 has a known `ar` regression that breaks `ring` and other crates:
+#     rust-cross/cargo-zigbuild#433. Use 0.14.x or 0.15.2 instead.
 #   - 0.13 / earlier may also work but are not actively tested.
-#   `brew install zig` currently pulls 0.16 — install 0.14 manually
-#   from the ziglang.org archives if your package manager is too new.
+#   `brew install zig` currently pulls 0.16 — install a known-good version
+#   manually from the ziglang.org archives if your package manager is too new.
 #
 # macOS cross-compilation note:
 #   *-apple-darwin targets are built with plain `cargo build` (Apple's

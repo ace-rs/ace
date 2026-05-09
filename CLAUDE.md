@@ -81,10 +81,8 @@ ACE has real users. CLI verbs, subcommand names, config keys (`ace.toml`, `schoo
 
 ## Release Process
 
-After cutting a release or shipping user-visible changes, send a bridge message
-to the ace-rs-www agent so the website (schools, commands, configuration pages)
-gets updated. Use `ace-connect` (`ace-rs-www.claude` peer) — see the skill for
-the send/receive flow.
+See [RELEASE.md](RELEASE.md). It is the only place release steps live — do not
+duplicate them here or in any other doc.
 
 ## Linear
 

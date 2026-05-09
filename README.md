@@ -116,31 +116,11 @@ Integration tests live in `tests/` and use `TestEnv` (tempdir sandbox + `assert_
 test file covers one CLI command. Tests that require network (clone) are not yet supported —
 see ROADMAP.
 
-## Cross-build
+## Releases & cross-build
 
-Builds for linux/mac × arm64/amd64. Host-native target uses `cargo`, everything else uses
-`cargo-zigbuild`.
-
-Prerequisites: `cargo install cargo-zigbuild`, `zig`, stable Rust toolchain. Darwin targets
-must be built from macOS.
-
-```sh
-./build-all.sh            # output to target/dist/
-./build-all.sh out/       # custom output dir
-```
-
-`ureq` uses `rustls` (pure Rust TLS) so there are no system OpenSSL dependencies.
-
-## Releases
-
-Manual release flow:
-
-```sh
-./bump.sh 0.2.0
-./release.sh
-```
-
-`release.sh` cross-builds release binaries and publishes a GitHub release from the current tag.
+See [RELEASE.md](RELEASE.md) — the canonical runbook for cutting releases,
+cross-building binaries, prereqs, Homebrew, the `latest` marker, and the
+website notification step.
 
 ## License
 
