@@ -35,9 +35,13 @@ fn learn_writes_skills_to_ace_toml_from_stdout() {
 
     let ace_toml = env.read_file("ace.toml");
     assert!(
-        ace_toml.contains("skills = [\"test-skill\", \"extra-*\"]")
-            || ace_toml.contains("skills = [\n    \"test-skill\",\n    \"extra-*\",\n]"),
-        "ace.toml should contain rewritten skills array, got:\n{ace_toml}",
+        ace_toml.contains("test-skill") && ace_toml.contains("extra-*"),
+        "ace.toml should contain agent-selected skills, got:\n{ace_toml}",
+    );
+    // Hardcoded ACE skills always present.
+    assert!(
+        ace_toml.contains("\"ace\"") && ace_toml.contains("\"ace-*\""),
+        "ace.toml must include hardcoded ace skills, got:\n{ace_toml}",
     );
 
     // Verify the one-shot was actually invoked.
@@ -143,11 +147,11 @@ fn learn_with_empty_stdout_writes_empty_skills() {
         .assert()
         .success();
 
-    // Empty list serializes as no key (skip_serializing_if Vec::is_empty).
+    // Even with empty agent output, hardcoded ACE skills are present.
     let ace_toml = env.read_file("ace.toml");
     assert!(
-        !ace_toml.contains("skills = ["),
-        "empty parse result should leave no skills array: {ace_toml}",
+        ace_toml.contains("\"ace\"") && ace_toml.contains("\"ace-*\""),
+        "empty agent output should still include hardcoded ace skills: {ace_toml}",
     );
 }
 

@@ -79,7 +79,8 @@ impl LearnAction {
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let known: HashSet<&str> = available.iter().map(String::as_str).collect();
-        let parsed = parse_stdout(&stdout, &known);
+        let mut parsed = parse_stdout(&stdout, &known);
+        ensure_ace_skills(&mut parsed.kept);
 
         for warn in &parsed.warnings {
             ace.warn(warn);
@@ -169,6 +170,21 @@ pub(crate) fn parse_stdout(stdout: &str, known: &HashSet<&str>) -> ParseResult {
     }
 
     result
+}
+
+/// ACE's own skills must always be present — they're the tool's runtime
+/// contract with the school. Hardcoded so `ace learn` can't drop them
+/// regardless of what the agent emits.
+const ACE_SKILLS: &[&str] = &["ace", "ace-*"];
+
+/// Ensure the ACE skill entries are in `kept`. Appends any missing entries;
+/// skips those already present (exact match).
+fn ensure_ace_skills(kept: &mut Vec<String>) {
+    for &entry in ACE_SKILLS {
+        if !kept.iter().any(|s| s == entry) {
+            kept.push(entry.to_string());
+        }
+    }
 }
 
 fn is_fence_marker(s: &str) -> bool {
@@ -305,5 +321,30 @@ mod tests {
         let stdout = "frontend-?\n";
         let r = parse_stdout(stdout, &known(&[]));
         assert_eq!(r.kept, vec!["frontend-?"]);
+    }
+
+    #[test]
+    fn ensure_ace_skills_appends_when_missing() {
+        let mut kept = vec!["rust-coding".to_string()];
+        ensure_ace_skills(&mut kept);
+        assert_eq!(kept, vec!["rust-coding", "ace", "ace-*"]);
+    }
+
+    #[test]
+    fn ensure_ace_skills_skips_when_present() {
+        let mut kept = vec![
+            "rust-coding".to_string(),
+            "ace".to_string(),
+            "ace-*".to_string(),
+        ];
+        ensure_ace_skills(&mut kept);
+        assert_eq!(kept, vec!["rust-coding", "ace", "ace-*"]);
+    }
+
+    #[test]
+    fn ensure_ace_skills_partial_adds_missing_only() {
+        let mut kept = vec!["ace".to_string(), "rust-coding".to_string()];
+        ensure_ace_skills(&mut kept);
+        assert_eq!(kept, vec!["ace", "rust-coding", "ace-*"]);
     }
 }
