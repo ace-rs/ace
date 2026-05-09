@@ -32,9 +32,8 @@ Optional: `cargo install sccache` to speed up repeat cross-builds.
 From a clean working tree on `main`:
 
 ```sh
-./bump.sh 0.7.0                       # bump, write latest, commit, tag
-git push gh main && git push gh v0.7.0
-./release.sh                          # build, publish, update Homebrew formula
+./bump.sh 0.7.0     # bump, build, patch formula, commit, tag (all in one)
+./release.sh        # rebuild (cached), push, gh release, subtree push
 ```
 
 Then notify the website agent (see §7).
@@ -42,23 +41,28 @@ Then notify the website agent (see §7).
 ## 3. What each script does
 
 **`bump.sh <version>`** — refuses to run with a dirty tree. Calls
-`cargo set-version` to update `Cargo.toml` + `Cargo.lock`, runs a quiet
-`cargo build` to refresh the lockfile, writes `v<version>` to `./latest`,
-commits as `v<version>`, and creates an annotated tag `v<version>`.
+`cargo set-version` to update `Cargo.toml` + `Cargo.lock`, writes `v<version>`
+to `./latest`, runs `./build-all.sh`, computes the sha256 of
+`target/dist/ace-aarch64-apple-darwin`, sed-patches
+`homebrew-tap/Formula/ace.rb` (version, download URL, sha), then makes a
+single commit `v<version>` containing all of the above and tags it. The
+formula update lands in the same commit as the version bump — no follow-up
+formula commit, so the source tarball at `v<version>` carries the correct
+formula.
 
-**`build-all.sh`** — invoked by `release.sh`. Cross-builds all seven targets
-into `target/dist/ace-<triple>` (`ace-<triple>.exe` for Windows). Builds
-`*-apple-darwin` with plain `cargo build` + `SDKROOT` (Zig 0.14 can't resolve
-Apple frameworks); builds the rest with `cargo zigbuild`. Builds each target
-group in a single multi-target invocation; on group failure, retries
-per-target to isolate which one broke.
+**`build-all.sh`** — invoked by both `bump.sh` and `release.sh`. Cross-builds
+all seven targets into `target/dist/ace-<triple>` (`ace-<triple>.exe` for
+Windows). Builds `*-apple-darwin` with plain `cargo build` + `SDKROOT` (Zig
+0.14 can't resolve Apple frameworks); builds the rest with `cargo zigbuild`.
+Builds each target group in a single multi-target invocation; on group
+failure, retries per-target to isolate which one broke. The `release.sh`
+re-run is a cache hit when nothing changed since `bump.sh`.
 
 **`release.sh`** — verifies the current `Cargo.toml` version has a matching
-tag on HEAD and the tree is clean, runs `build-all.sh`, then
-`gh release create v<ver> --generate-notes <binaries>`. Patches
-`homebrew-tap/Formula/ace.rb` (version, download URL, sha256 of the macOS
-aarch64 binary), commits the formula change, and pushes via
-`git subtree push --prefix=homebrew-tap gh-tap main`.
+tag on HEAD and the tree is clean, re-runs `build-all.sh` (cached no-op if
+`bump.sh` already built), pushes `main` and the tag, runs
+`gh release create v<ver> --generate-notes <binaries>`, and pushes the
+formula via `git subtree push --prefix=homebrew-tap gh-tap main`.
 
 **`install.sh`** — end-user installer for macOS/Linux. Resolves the latest
 tag from `https://ace-rs.dev/latest`, downloads the matching binary from the
@@ -169,16 +173,6 @@ Notes on the template:
 
 ## 9. Open gaps
 
-- **Homebrew formula lags the version-bump commit by one.** The formula lives
-  in-tree under `homebrew-tap/` (git subtree), but `release.sh` patches and
-  commits it *after* the `v<ver>` tag is created — because the macOS aarch64
-  sha256 isn't known until `build-all.sh` finishes. Result: the source tarball
-  attached to release `v<ver>` carries the *previous* version's formula. The
-  tap repo gets the right formula via subtree push, so `brew install` users
-  are unaffected; only people reading `homebrew-tap/Formula/ace.rb` at the
-  release tag see stale content. To fix this we'd need to build first, compute
-  the sha, then bump+commit+tag with the formula update folded in — i.e.
-  invert the order of `bump.sh` and the build step. Not done yet.
 - **Checksums / signing** — only the Homebrew sha256 is computed. Publishing
   a `SHA256SUMS` file alongside release assets and verifying it from
   `install.sh` / `install.ps1` would be a nice add.
