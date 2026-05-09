@@ -12,10 +12,10 @@ Read `spec/architecture.md` first; load specs for the feature area you're touchi
 ## Load these skills
 
 Default skill set for this project (also reflected in `ace.toml`):
-`general-coding`, `rust-coding`, `shell`, `markdown-writing`, `rtk`,
-`issue-creator`, `skill-creator`, `note-taker`, and the full `ace*` family
+`general-coding`, `rust-coding`, `shell`, `markdown-writing`,
+`issue-creator`, `skill-creator`, and the full `ace*` family
 (`ace`, `ace-audit`, `ace-realign`, `ace-save`, `ace-school`) — this repo IS
-the ACE tool.
+the ACE tool. `rtk` and `note-taker` load on demand, not by default.
 
 ## Coding Style
 
