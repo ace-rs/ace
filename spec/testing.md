@@ -47,3 +47,53 @@ tests/
 - `unwrap()` / `expect()` are fine in test code
 - Test file names: `tests/*_test.rs`
 - Helper functions go in `tests/common/mod.rs`
+
+## Backend Testing Strategy
+
+Integration tests verify ACE's behavior, not backend CLI syntax.
+Real backends (`claude`, `codex`) are external binaries whose CLI
+interface can change between versions — coupling tests to their
+argument shapes creates false failures and maintenance burden.
+
+### Flaude is the integration test backend
+
+All integration tests that exercise exec, MCP, or session dispatch
+MUST use the Flaude fixture backend. Flaude records the *intent*
+ACE passes (trust, resume, session_prompt, env, cmd, prompt) as
+JSONL — tests assert on those fields.
+
+**Never** shell out to a real backend binary (or a fake shell script
+impersonating one) in integration tests. If a test needs a binary on
+`$PATH` it is testing the wrong layer.
+
+### Unit tests own backend-specific behavior
+
+Backend-specific logic — argument construction, MCP CLI syntax,
+config file formats, trust flag mapping — belongs in unit tests
+inside `src/backend/<name>.rs`. These tests call the backend
+module's free functions directly with known inputs and assert on
+the produced `Command` args or output.
+
+This split gives us:
+
+| Layer                      | What it tests                                                    | Backend used         |
+|----------------------------|------------------------------------------------------------------|----------------------|
+| Unit (`src/backend/*.rs`)  | Arg building, parsing, flag mapping                              | Direct function calls |
+| Integration (`tests/`)     | Dispatch routing, env merging, trust/resume flow, MCP registration | Flaude only          |
+
+### What Flaude records
+
+Flaude writes JSONL to `$HOME/.flaude-exec-records.jsonl` and
+`$HOME/.flaude-mcp-records.jsonl`. Fields available for assertion:
+
+- **exec_session**: `trust`, `resume`, `session_prompt`, `env`,
+  `project_dir`, `extra_args`, `cmd`
+- **exec_one_shot**: `prompt` (`kind` + `text`), `env`,
+  `project_dir`, `extra_args`, `cmd`
+- **mcp_add**: `name`, `url`, `headers`
+- **mcp_remove**: `name`
+
+One-shot output is controllable via env vars
+(`FLAUDE_ONE_SHOT_STDOUT`, `FLAUDE_ONE_SHOT_STDERR`,
+`FLAUDE_ONE_SHOT_EXIT_CODE`) for testing exit code propagation
+and output passthrough.

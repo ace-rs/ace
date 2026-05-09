@@ -21,6 +21,7 @@ pub(super) fn exec_session(launch: &[String], req: SessionRequest) -> Result<(),
         "project_dir": req.project_dir.to_string_lossy(),
         "extra_args": req.extra_args,
         "cmd": launch,
+        "env": req.env,
     });
 
     let mut file = std::fs::OpenOptions::new()
@@ -46,6 +47,7 @@ pub(super) fn exec_one_shot(launch: &[String], req: OneShotRequest) -> Result<Ou
         "project_dir": req.project_dir.to_string_lossy(),
         "extra_args": req.extra_args,
         "cmd": launch,
+        "env": req.env,
     });
 
     if let Some(path) = exec_record_path() {

@@ -244,3 +244,30 @@ fn setup_backend_flag_overrides_configured_backend() {
     env.assert_exists("AGENTS.md");
     env.assert_not_exists("CLAUDE.md");
 }
+
+#[test]
+fn setup_codex_warns_unsupported_folders() {
+    let env = TestEnv::new();
+    env.git_init();
+
+    env.write_file("school.toml", "name = \"slider\"\nbackend = \"codex\"\n");
+    env.mkdir("skills/test-skill");
+    env.write_file("skills/test-skill/SKILL.md", "# Test\n");
+    env.mkdir("rules/my-rule");
+    env.write_file("rules/my-rule/SKILL.md", "# Rule\n");
+
+    let output = env.ace()
+        .args(["setup", "."])
+        .output()
+        .expect("ace setup");
+
+    assert!(output.status.success());
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("not natively supported"),
+        "should warn about unsupported folder, got:\n{stderr}"
+    );
+    // rules/ still gets linked for forward compatibility.
+    env.assert_symlink(".agents/rules", "rules");
+}

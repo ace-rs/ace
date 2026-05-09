@@ -168,33 +168,16 @@ fn mcp_register_with_headers() {
 }
 
 #[test]
-fn mcp_backend_flag_uses_overridden_backend() {
+fn mcp_skips_already_registered_servers() {
     let env = TestEnv::new();
-    env.setup_flaude_school(SCHOOL_TOML_OAUTH);
-    env.mkdir("bin");
-    env.write_executable(
-        "bin/codex",
-        r#"#!/bin/sh
-if [ "$1" = "mcp" ] && [ "$2" = "list" ] && [ "$3" = "--json" ]; then
-  printf '[]'
-  exit 0
-fi
+    env.setup_flaude_school(SCHOOL_TOML_TWO_SERVERS);
+    // Pre-register one of the two servers.
+    env.write_flaude_mcp_list(&["linear"]);
 
-if [ "$1" = "mcp" ] && [ "$2" = "add" ]; then
-  printf '%s\n' "$@" > "$HOME/codex-mcp-add.txt"
-  exit 0
-fi
+    env.ace().args(["mcp"]).assert().success();
 
-echo "unexpected invocation: $*" >&2
-exit 1
-"#,
-    );
-
-    env.ace_with_path_prefix(&env.path("bin"))
-        .args(["--backend", "codex", "mcp"])
-        .assert()
-        .success();
-
-    env.assert_exists("codex-mcp-add.txt");
-    env.assert_not_exists(".flaude-mcp-records.jsonl");
+    // Only the missing server should get an mcp_add record.
+    let records = env.read_flaude_mcp_records();
+    assert_eq!(records.len(), 1, "should only register the missing server");
+    assert_eq!(records[0].name, "github", "should register github, not linear");
 }

@@ -131,22 +131,139 @@ fn exec_builtin_backend_records_default_cmd() {
 
 #[test]
 fn exec_backend_flag_overrides_configured_backend() {
+    // Declare a second flaude-kind backend and select it via --backend.
+    // The recorded cmd proves the override took effect.
     let env = TestEnv::new();
     env.setup_flaude_school("name = \"test-school\"\n");
-    env.mkdir("bin");
-    env.write_executable(
-        "bin/codex",
-        r#"#!/bin/sh
-printf '%s\n' "$@" > "$HOME/codex-exec-args.txt"
-exit 0
-"#,
+    env.write_file(
+        "ace.local.toml",
+        "[[backends]]\nname = \"alt\"\nkind = \"flaude\"\ncmd = [\"alt-binary\"]\n",
     );
 
-    env.ace_with_path_prefix(&env.path("bin"))
-        .args(["--backend", "codex"])
-        .assert()
-        .success();
+    env.ace().args(["--backend", "alt"]).assert().success();
 
-    env.assert_exists("codex-exec-args.txt");
-    env.assert_not_exists(".flaude-exec-records.jsonl");
+    let records = env.read_flaude_exec_records();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].cmd, vec!["alt-binary"], "should use overridden backend cmd");
+}
+
+// -- resume flag --
+
+#[test]
+fn exec_session_default_resumes() {
+    let env = TestEnv::new();
+    env.setup_flaude_school("name = \"test-school\"\n");
+
+    env.ace().assert().success();
+
+    let records = env.read_flaude_exec_records();
+    assert_eq!(records.len(), 1);
+    assert!(records[0].resume, "bare ace should default to resume=true");
+}
+
+#[test]
+fn exec_new_does_not_resume() {
+    let env = TestEnv::new();
+    env.setup_flaude_school("name = \"test-school\"\n");
+
+    env.ace().args(["new"]).assert().success();
+
+    let records = env.read_flaude_exec_records();
+    assert_eq!(records.len(), 1);
+    assert!(!records[0].resume, "ace new should set resume=false");
+    assert!(!records[0].session_prompt.is_empty(), "new session should include prompt");
+}
+
+// -- one-shot has no trust/resume --
+
+#[test]
+fn one_shot_omits_trust_and_resume() {
+    // One-shot uses OneShotRequest which has no trust/resume fields.
+    // Verify the recorded JSON has no trust or resume keys.
+    let env = TestEnv::new();
+    env.setup_flaude_school("name = \"test-school\"\n");
+    env.write_file("ace.local.toml", "trust = \"yolo\"\n");
+
+    env.ace().args(["-p", "hello"]).assert().success();
+
+    let records = env.read_flaude_one_shot_records();
+    assert_eq!(records.len(), 1);
+    // FlaudeRecord defaults: trust="" and resume=false when keys are absent.
+    assert_eq!(records[0].trust, "", "one-shot should not carry trust");
+    assert!(!records[0].resume, "one-shot should not carry resume");
+    assert_eq!(records[0].session_prompt, "", "one-shot should not carry session_prompt");
+}
+
+// -- env merging --
+
+#[test]
+fn custom_backend_env_reaches_exec() {
+    let env = TestEnv::new();
+    env.setup_flaude_school("name = \"test-school\"\n");
+    env.write_file(
+        "ace.local.toml",
+        "[[backends]]\nname = \"myflaude\"\nkind = \"flaude\"\n\n[backends.env]\nMY_VAR = \"hello\"\n",
+    );
+
+    env.ace().args(["--backend", "myflaude"]).assert().success();
+
+    let records = env.read_flaude_exec_records();
+    assert_eq!(records.len(), 1);
+    assert_eq!(
+        records[0].env.get("MY_VAR").map(String::as_str),
+        Some("hello"),
+        "per-backend env should reach exec, got: {:?}",
+        records[0].env,
+    );
+}
+
+#[test]
+fn project_env_merges_into_exec() {
+    let env = TestEnv::new();
+    env.setup_flaude_school("name = \"test-school\"\n");
+    env.write_file("ace.toml", "school = \".\"\nbackend = \"flaude\"\n\n[env]\nFOO = \"bar\"\n");
+
+    env.ace().assert().success();
+
+    let records = env.read_flaude_exec_records();
+    assert_eq!(records.len(), 1);
+    assert_eq!(
+        records[0].env.get("FOO").map(String::as_str),
+        Some("bar"),
+        "project-level env should reach exec, got: {:?}",
+        records[0].env,
+    );
+}
+
+// -- one-shot exit code and output --
+
+#[test]
+fn one_shot_exit_code_propagates() {
+    let env = TestEnv::new();
+    env.setup_flaude_school("name = \"test-school\"\n");
+
+    let output = env.ace()
+        .env("FLAUDE_ONE_SHOT_EXIT_CODE", "42")
+        .args(["-p", "test"])
+        .output()
+        .expect("ace run");
+
+    assert!(!output.status.success(), "should fail");
+    assert_eq!(output.status.code(), Some(42), "exit code should propagate");
+}
+
+#[test]
+fn one_shot_stdout_passthrough() {
+    let env = TestEnv::new();
+    env.setup_flaude_school("name = \"test-school\"\n");
+
+    let output = env.ace()
+        .env("FLAUDE_ONE_SHOT_STDOUT", "hello from agent")
+        .args(["-p", "test"])
+        .output()
+        .expect("ace run");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("hello from agent"), "stdout should pass through, got: {stdout}");
 }
