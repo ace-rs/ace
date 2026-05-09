@@ -15,7 +15,7 @@ Default skill set for this project (also reflected in `ace.toml`):
 `general-coding`, `rust-coding`, `shell`, `markdown-writing`,
 `issue-creator`, `skill-creator`, and the full `ace*` family
 (`ace`, `ace-audit`, `ace-realign`, `ace-save`, `ace-school`) — this repo IS
-the ACE tool. `rtk` and `note-taker` load on demand, not by default.
+the ACE tool.
 
 ## Coding Style
 

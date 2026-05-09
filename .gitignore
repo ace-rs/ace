@@ -17,6 +17,9 @@ wheels/
 # Codex
 .agents/
 
+# OpenCode
+.opencode/
+
 # Local config
 ace.local.toml
 
