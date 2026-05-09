@@ -25,7 +25,7 @@ ace.local.toml
 
 # Session scratch
 .tasks.md
-notes/
+.ace-connect-inbox.log
 
 # Added by cargo
 /target
