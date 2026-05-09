@@ -43,18 +43,11 @@ pub fn check_for_update(ace: &mut Ace) {
         };
         v
     } else {
-        let tag_filter = format!("v{}.*", current.major);
-        let Ok(tags) =
-            crate::git::ls_remote_tags("https://github.com/ace-rs/ace.git", &tag_filter)
-        else {
+        let Ok(v) = check::fetch_latest_version() else {
             return;
         };
-        let versions = check::parse_version_tags(&tags);
-        let Some(v) = check::latest_version(&versions) else {
-            return;
-        };
-        let _ = check::write_cache_marker(&marker_path, v);
-        v.clone()
+        let _ = check::write_cache_marker(&marker_path, &v);
+        v
     };
 
     if !check::needs_update(&current, &latest) {

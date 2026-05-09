@@ -28,7 +28,7 @@ fn run_inner(
 
     let current = semver::Version::parse(env!("CARGO_PKG_VERSION"))
         .expect("CARGO_PKG_VERSION is valid semver");
-    let target_version = resolve_target_version(ace, &current, silent, force, version.as_deref())?;
+    let target_version = resolve_target_version(ace, silent, force, version.as_deref())?;
 
     if !force && !check::needs_update(&current, &target_version) {
         if !silent { ace.done(&format!("already at latest version ({current})")); }
@@ -66,7 +66,6 @@ fn run_inner(
 
 fn resolve_target_version(
     ace: &mut Ace,
-    current: &semver::Version,
     silent: bool,
     force: bool,
     version: Option<&str>,
@@ -81,18 +80,12 @@ fn resolve_target_version(
 
     if !silent { ace.progress("checking for updates..."); }
 
-    let tag_filter = format!("v{}.*", current.major);
-    let tags = crate::git::ls_remote_tags("https://github.com/ace-rs/ace.git", &tag_filter)?;
-    let versions = check::parse_version_tags(&tags);
-
-    let Some(latest) = check::latest_version(&versions) else {
-        if !silent { ace.done("no releases found"); }
-        return Err(super::CmdError::Other("no releases found".to_string()));
-    };
+    let latest = check::fetch_latest_version()
+        .map_err(super::CmdError::Other)?;
 
     if let Some(marker) = check::cache_marker_path() {
-        let _ = check::write_cache_marker(&marker, latest);
+        let _ = check::write_cache_marker(&marker, &latest);
     }
 
-    Ok(latest.clone())
+    Ok(latest)
 }

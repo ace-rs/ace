@@ -10,22 +10,21 @@ Users can also run `ace upgrade` to upgrade explicitly.
 On every `ace` invocation (after state resolution, before exec):
 
 1. Read cache marker `~/.cache/ace/latest_version`.
-2. If marker mtime is < 4 hours old, use cached value. Otherwise run
-   `git ls-remote --tags https://github.com/ace-rs/ace.git 'v{MAJOR}.*'`
-   to discover tags matching the current major version. Parse each tag as
-   `semver::Version` (stripping `v` prefix at this boundary only), pick the
-   highest, write the canonical semver string to the marker.
+2. If marker mtime is < 4 hours old, use cached value. Otherwise GET
+   `https://ace-rs.dev/latest` (which redirects to the canonical `./latest`
+   file on `main`), parse the body as `vX.Y.Z` (stripping the `v` prefix at
+   this boundary only) into `semver::Version`, write the canonical semver
+   string to the marker.
 3. Parse marker value and current version (`CARGO_PKG_VERSION`) as
    `semver::Version`. All comparisons use semver — no raw string comparison.
 4. If latest > current: print hint via `ace.hint()`, then spawn background upgrade.
 
 Network failures are silent — leave the marker untouched, skip the hint.
 
-### Major version gating
-
-Auto-upgrade stays within the current major version. `git ls-remote` is filtered
-to `v{MAJOR}.*` so only same-major tags are considered. Crossing a major version
-boundary requires explicit `ace upgrade --force X.Y.Z`.
+The `latest` marker is the single source of truth for what users get; there is
+no major-version gating. `ace upgrade` is an explicit user action, and the
+installer scripts use the same marker, so the upgrade path stays consistent
+across major bumps. Use `ace upgrade --force X.Y.Z` to pin or downgrade.
 
 ### Skip conditions
 
@@ -87,8 +86,8 @@ ace upgrade [--silent] [--force [VERSION]]
 
 ### Steps
 
-1. If `--force VERSION` given, use that version directly (no git ls-remote).
-   Otherwise run `git ls-remote --tags` filtered to current major, pick highest.
+1. If `--force VERSION` given, use that version directly. Otherwise GET
+   `https://ace-rs.dev/latest` and parse it.
 2. Compare against current version using `semver::Version`. If equal and
    `--force` not set, print "Already at latest version (X.Y.Z)" and exit 0.
 3. Determine platform target triple (same mapping as `install.sh`).
@@ -146,16 +145,15 @@ Marker file: `~/.cache/ace/latest_version`
 
 ## Dependencies
 
-- `ureq` (already in deps) for binary download.
+- `ureq` (already in deps) for `https://ace-rs.dev/latest` lookup and binary download.
 - `semver` crate for version parsing and comparison.
-- `git ls-remote` for version discovery (no GitHub API dependency).
 
 ## Module layout
 
 `src/upgrade/` — standalone helper module, not an action:
 
 - `mod.rs` — public API: `check_for_update()`, `run_upgrade()`, `target_triple()`.
-- `check.rs` — cache read/write, git ls-remote, version comparison.
+- `check.rs` — cache read/write, latest-marker fetch, version comparison.
 - `download.rs` — binary download for current platform.
 - `replace.rs` — atomic self-replacement (platform-specific).
 

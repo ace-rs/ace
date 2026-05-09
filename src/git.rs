@@ -197,39 +197,6 @@ pub fn normalize_github_source(source: &str) -> String {
     s.trim_end_matches('/').to_string()
 }
 
-pub fn ls_remote_tags(repo_url: &str, tag_filter: &str) -> Result<Vec<String>, GitError> {
-    let cmd_str = format!("ls-remote --tags {repo_url} {tag_filter}");
-    let out = git_command()
-        .args(["ls-remote", "--tags", repo_url, tag_filter])
-        .output()
-        .map_err(|e| GitError::Exec {
-            cmd: cmd_str.clone(),
-            source: e,
-        })?;
-
-    if !out.status.success() {
-        return Err(GitError::Exit {
-            cmd: cmd_str,
-            status: out.status,
-            stderr: String::from_utf8_lossy(&out.stderr).trim().to_string(),
-        });
-    }
-
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    let tags = stdout
-        .lines()
-        .filter_map(|line| {
-            let refname = line.split('\t').nth(1)?;
-            let tag = refname.strip_prefix("refs/tags/")?;
-            if tag.ends_with("^{}") {
-                return None;
-            }
-            Some(tag.to_string())
-        })
-        .collect();
-    Ok(tags)
-}
-
 /// Standalone — no repo context needed.
 /// Performs a full clone (no `--depth`).
 pub fn clone_repo(url: &str, dest: &Path) -> Result<(), GitError> {
@@ -331,49 +298,6 @@ mod tests {
     #[test]
     fn normalize_preserves_dot_specifier() {
         assert_eq!(normalize_github_source("."), ".");
-    }
-
-    #[test]
-    fn ls_remote_tags_local_repo() {
-        let remote = TempDir::new().expect("remote tempdir");
-        let remote_path = remote.path();
-        Command::new("git")
-            .args(["init"])
-            .current_dir(remote_path)
-            .output()
-            .expect("git init");
-        std::fs::write(remote_path.join("f.txt"), "x").unwrap();
-        Command::new("git")
-            .args(["add", "."])
-            .current_dir(remote_path)
-            .output()
-            .expect("git add");
-        Command::new("git")
-            .args(["commit", "-m", "init"])
-            .current_dir(remote_path)
-            .output()
-            .expect("git commit");
-        Command::new("git")
-            .args(["tag", "v0.1.0"])
-            .current_dir(remote_path)
-            .output()
-            .expect("git tag v0.1.0");
-        Command::new("git")
-            .args(["tag", "v0.2.0"])
-            .current_dir(remote_path)
-            .output()
-            .expect("git tag v0.2.0");
-        Command::new("git")
-            .args(["tag", "unrelated"])
-            .current_dir(remote_path)
-            .output()
-            .expect("git tag unrelated");
-
-        let url = remote_path.to_string_lossy();
-        let tags = ls_remote_tags(&url, "v0.*").expect("ls_remote_tags");
-        assert!(tags.contains(&"v0.1.0".to_string()));
-        assert!(tags.contains(&"v0.2.0".to_string()));
-        assert!(!tags.contains(&"unrelated".to_string()));
     }
 
     #[test]

@@ -2,18 +2,22 @@ use std::path::Path;
 use std::time::{Duration, SystemTime};
 
 const CACHE_TTL: Duration = Duration::from_secs(4 * 3600);
+const LATEST_URL: &str = "https://ace-rs.dev/latest";
 
-pub fn parse_version_tags(tags: &[String]) -> Vec<semver::Version> {
-    tags.iter()
-        .filter_map(|tag| {
-            let version_str = tag.strip_prefix('v')?;
-            semver::Version::parse(version_str).ok()
-        })
-        .collect()
+pub fn parse_latest_marker(s: &str) -> Option<semver::Version> {
+    let trimmed = s.trim();
+    let stripped = trimmed.strip_prefix('v').unwrap_or(trimmed);
+    semver::Version::parse(stripped).ok()
 }
 
-pub fn latest_version(versions: &[semver::Version]) -> Option<&semver::Version> {
-    versions.iter().max()
+pub fn fetch_latest_version() -> Result<semver::Version, String> {
+    let body = ureq::get(LATEST_URL)
+        .call()
+        .map_err(|e| format!("fetch {LATEST_URL}: {e}"))?
+        .body_mut()
+        .read_to_string()
+        .map_err(|e| format!("read {LATEST_URL}: {e}"))?;
+    parse_latest_marker(&body).ok_or_else(|| format!("invalid version marker: {body:?}"))
 }
 
 pub fn read_cache_marker(path: &Path) -> Option<semver::Version> {
@@ -53,68 +57,28 @@ pub fn cache_marker_path() -> Option<std::path::PathBuf> {
 mod tests {
     use super::*;
 
-    // -- tag parsing --
+    // -- latest marker parsing --
 
     #[test]
-    fn parse_version_tags_extracts_versions() {
-        let tags = vec![
-            "v0.1.0".to_string(),
-            "v0.2.0".to_string(),
-            "v0.3.1".to_string(),
-        ];
-        let versions = parse_version_tags(&tags);
-        assert_eq!(versions.len(), 3);
-        assert_eq!(versions[0], semver::Version::new(0, 1, 0));
-        assert_eq!(versions[2], semver::Version::new(0, 3, 1));
+    fn parse_latest_marker_with_v_prefix() {
+        assert_eq!(parse_latest_marker("v0.6.0"), Some(semver::Version::new(0, 6, 0)));
     }
 
     #[test]
-    fn parse_version_tags_ignores_malformed() {
-        let tags = vec![
-            "v0.1.0".to_string(),
-            "not-semver".to_string(),
-            "v0.2.0".to_string(),
-        ];
-        let versions = parse_version_tags(&tags);
-        assert_eq!(versions.len(), 2);
+    fn parse_latest_marker_without_v_prefix() {
+        assert_eq!(parse_latest_marker("0.6.0"), Some(semver::Version::new(0, 6, 0)));
     }
 
     #[test]
-    fn parse_version_tags_strips_v_prefix() {
-        let tags = vec!["v1.2.3".to_string()];
-        let versions = parse_version_tags(&tags);
-        assert_eq!(versions[0], semver::Version::new(1, 2, 3));
+    fn parse_latest_marker_strips_whitespace() {
+        assert_eq!(parse_latest_marker("  v0.6.0\n"), Some(semver::Version::new(0, 6, 0)));
     }
 
     #[test]
-    fn parse_version_tags_empty() {
-        let versions = parse_version_tags(&[]);
-        assert!(versions.is_empty());
-    }
-
-    #[test]
-    fn parse_version_tags_requires_v_prefix() {
-        let tags = vec!["1.2.3".to_string()];
-        let versions = parse_version_tags(&tags);
-        assert!(versions.is_empty(), "tags without v prefix should be skipped");
-    }
-
-    // -- latest version selection --
-
-    #[test]
-    fn latest_from_tags_picks_highest() {
-        let versions = vec![
-            semver::Version::new(0, 1, 0),
-            semver::Version::new(0, 3, 0),
-            semver::Version::new(0, 2, 5),
-        ];
-        assert_eq!(latest_version(&versions), Some(&semver::Version::new(0, 3, 0)));
-    }
-
-    #[test]
-    fn latest_from_empty_is_none() {
-        let versions: Vec<semver::Version> = vec![];
-        assert_eq!(latest_version(&versions), None);
+    fn parse_latest_marker_rejects_garbage() {
+        assert_eq!(parse_latest_marker("not-a-version"), None);
+        assert_eq!(parse_latest_marker(""), None);
+        assert_eq!(parse_latest_marker("<html>404</html>"), None);
     }
 
     // -- cache marker --
