@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use assert_cmd::Command;
@@ -9,16 +10,45 @@ use assert_cmd::Command;
 #[derive(Debug)]
 pub struct FlaudeRecord {
     pub action: String,
+
+    // exec_session
+    pub trust: String,
+    pub resume: bool,
+    pub session_prompt: String,
+
+    // exec (shared)
+    pub env: HashMap<String, String>,
+    pub extra_args: Vec<String>,
+    pub cmd: Vec<String>,
+
+    // exec_one_shot
+    pub prompt_kind: Option<String>,
+    pub prompt_text: Option<String>,
+
+    // mcp
     pub name: String,
     pub url: String,
     pub headers: Vec<String>,
-    pub trust: String,
-    pub session_prompt: String,
-    pub cmd: Vec<String>,
-    /// `exec_one_shot` records: PromptInput kind ("inline" | "stdin").
-    pub prompt_kind: Option<String>,
-    /// `exec_one_shot` records with PromptInput::Inline: the inline text.
-    pub prompt_text: Option<String>,
+}
+
+fn json_str_vec(v: &serde_json::Value) -> Vec<String> {
+    v.as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn json_str_map(v: &serde_json::Value) -> HashMap<String, String> {
+    v.as_object()
+        .map(|m| {
+            m.iter()
+                .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn parse_flaude_records(path: &Path) -> Vec<FlaudeRecord> {
@@ -34,28 +64,21 @@ fn parse_flaude_records(path: &Path) -> Vec<FlaudeRecord> {
             let v: serde_json::Value = serde_json::from_str(line).expect("parse flaude record");
             FlaudeRecord {
                 action: v["action"].as_str().unwrap_or_default().to_string(),
-                name: v["name"].as_str().unwrap_or_default().to_string(),
-                url: v["url"].as_str().unwrap_or_default().to_string(),
-                headers: v["headers"]
-                    .as_array()
-                    .map(|a| {
-                        a.iter()
-                            .filter_map(|v| v.as_str().map(String::from))
-                            .collect()
-                    })
-                    .unwrap_or_default(),
+
                 trust: v["trust"].as_str().unwrap_or_default().to_string(),
+                resume: v["resume"].as_bool().unwrap_or_default(),
                 session_prompt: v["session_prompt"].as_str().unwrap_or_default().to_string(),
-                cmd: v["cmd"]
-                    .as_array()
-                    .map(|a| {
-                        a.iter()
-                            .filter_map(|v| v.as_str().map(String::from))
-                            .collect()
-                    })
-                    .unwrap_or_default(),
+
+                env: json_str_map(&v["env"]),
+                extra_args: json_str_vec(&v["extra_args"]),
+                cmd: json_str_vec(&v["cmd"]),
+
                 prompt_kind: v["prompt"]["kind"].as_str().map(String::from),
                 prompt_text: v["prompt"]["text"].as_str().map(String::from),
+
+                name: v["name"].as_str().unwrap_or_default().to_string(),
+                url: v["url"].as_str().unwrap_or_default().to_string(),
+                headers: json_str_vec(&v["headers"]),
             }
         })
         .collect()
@@ -477,19 +500,6 @@ impl TestEnv {
         self.mkdir(".claude");
         self.symlink("skills", ".claude/skills");
     }
-
-    /// Set up an embedded school with codex backend.
-    pub fn setup_codex_school(&self, school_toml: &str) {
-        self.git_init();
-        self.write_file("school.toml", school_toml);
-        self.write_file("ace.toml", "school = \".\"\nbackend = \"codex\"\n");
-        self.mkdir("skills/test-skill");
-        self.write_file("skills/test-skill/SKILL.md", "# Test\n");
-        self.write_file("AGENTS.md", "# Test\n");
-        self.mkdir(".agents");
-        self.symlink("skills", ".agents/skills");
-    }
-
     /// Returns an `assert_cmd::Command` for the `ace` binary, pre-configured
     /// with a clean environment and sandbox paths.
     pub fn ace(&self) -> Command {
