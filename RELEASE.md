@@ -133,7 +133,15 @@ configuration pages) can be regenerated. Include:
 
 See the `ace-connect` skill for the send/receive flow.
 
-## 8. Open gaps
+## 8. Discord announcement
+
+After the release is live and the website agent has been notified, print a brief
+Discord message (3–6 lines, casual tone) highlighting the cool new user-visible
+features in this release for posting to the internal Discord. Lead with the
+version tag, then bullet the headline changes — skip internal refactors, doc-only
+edits, and chores.
+
+## 9. Open gaps
 
 - **Checksums / signing** — only the Homebrew sha256 is computed. Publishing
   a `SHA256SUMS` file alongside release assets and verifying it from
