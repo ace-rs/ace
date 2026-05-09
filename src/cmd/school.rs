@@ -29,6 +29,7 @@ pub enum Command {
     /// List skills in the school
     Skills,
     /// Validate `school.toml` (typo-check `{{ ... }}` placeholders)
+    #[command(visible_alias = "check")]
     Validate,
 }
 
@@ -57,7 +58,10 @@ fn run_validate(ace: &mut Ace) -> Result<(), CmdError> {
     let school_root = ace.require_school()?.root.clone();
     let count = Validate { school_root: &school_root }.run(ace)?;
     match count {
-        0 => Ok(()),
+        0 => {
+            ace.done("school.toml looks good");
+            Ok(())
+        }
         1 => Err(CmdError::Other("1 validation issue found".into())),
         n => Err(CmdError::Other(format!("{n} validation issues found"))),
     }

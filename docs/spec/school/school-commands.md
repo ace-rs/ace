@@ -155,7 +155,7 @@ Re-fetch all imported skills from their sources.
   automatically. Existing skills are overwritten with the latest from the source, consistent
   with ACE's always-latest versioning philosophy (see `docs/spec/index.md`).
 
-## `ace school validate`
+## `ace school validate` (alias: `ace school check`)
 
 Typo-check `{{ ... }}` placeholders in `[[backends]].cmd[]` and `[[backends]].env` values
 against the closed set `{school_dir, project_dir, home, backend_dir}` (defined by
@@ -183,7 +183,7 @@ Suggestion is omitted when no close match exists.
 
 ### Exit code
 
-- `0` — clean (no issues).
+- `0` — clean. A success message (`school.toml looks good`) is emitted.
 - `1` — one or more issues reported. The error line `N validation issue(s) found`
   follows the issue list.
 
