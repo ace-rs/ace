@@ -140,11 +140,32 @@ than stuffing the whole changelog into one line.
 
 ## 8. Discord announcement
 
-After the release is live and the website agent has been notified, print a brief
+After the release is live and the website agent has been notified, draft a brief
 Discord message (3–6 lines, casual tone) highlighting the cool new user-visible
-features in this release for posting to the internal Discord. Lead with the
-version tag, then bullet the headline changes — skip internal refactors, doc-only
-edits, and chores.
+features. Lead with the version tag, then bullet the headline changes — skip
+internal refactors, doc-only edits, and chores.
+
+Write it to `/tmp/ace-<ver>-discord.md` so it can be copied verbatim without the
+harness mangling backticks/angle-brackets/etc.
+
+Discord-flavored markdown template (used for v0.7.0):
+
+```
+🎉 **ACE v<ver>** is out — <https://github.com/ace-rs/ace/releases/tag/v<ver>>
+
+- **<headline 1>**
+- **<headline 2>**
+- **<headline 3>**
+
+Plus: <comma-separated list of smaller user-visible changes>.
+```
+
+Notes on the template:
+- Wrap the URL in `<...>` so Discord doesn't auto-embed.
+- Bold the lead phrase of each bullet; inline-code (`` ` ``) for flag/command
+  names inside the bullet body.
+- Keep the "Plus:" line to one sentence — anything longer belongs in the
+  GitHub release notes, not Discord.
 
 ## 9. Open gaps
 
