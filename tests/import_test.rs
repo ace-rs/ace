@@ -385,7 +385,7 @@ fn import_populates_persistent_source_cache() {
 // skill name, pull-imports must dedup so disk doesn't get clobbered twice and
 // must surface the collision so the user can de-conflict their school.toml.
 #[test]
-fn pull_imports_dedups_overlapping_sources_and_warns() {
+fn pull_imports_overlapping_sources_last_wins_silently() {
     let env = TestEnv::new();
     env.git_init();
 
@@ -397,9 +397,8 @@ fn pull_imports_dedups_overlapping_sources_and_warns() {
         "skills/.curated/other-skill",
     ]);
 
-    // Explicit decl listed first; `*` import second. With --include-system
-    // both sources expose skill-creator, so without dedup the school's
-    // skill-creator/ dir gets clobbered twice.
+    // Both sources expose skill-creator. Last-wins: ace-rs/school's version
+    // silently replaces anthropics/skills'. No shadow warning.
     env.write_file(
         "school.toml",
         r#"name = "test-school"
@@ -424,11 +423,6 @@ include_system = true
     let combined = format!("{stdout}{stderr}");
 
     // One summary line per skill — no duplicate ~skill-creator.
-    let creator_lines = combined.matches("skill-creator").count();
-    assert!(
-        creator_lines >= 1,
-        "expected skill-creator to appear in output: {combined}"
-    );
     let summary_dupes = combined.matches("~skill-creator").count()
         + combined.matches("+skill-creator").count();
     assert_eq!(
@@ -436,13 +430,13 @@ include_system = true
         "skill-creator appears {summary_dupes} times in summary; expected exactly 1: {combined}"
     );
 
-    // Shadow warning surfaces both source labels so user can de-conflict.
+    // No shadow warning — last-wins is silent.
     assert!(
-        combined.contains("anthropics/skills") && combined.contains("ace-rs/school"),
-        "expected shadow warning naming both sources: {combined}"
+        !combined.contains("declared by both"),
+        "should not emit shadow warning: {combined}"
     );
 
-    // Other-skill from the `*` import still lands.
+    // Both skills land.
     env.assert_exists("skills/skill-creator/SKILL.md");
     env.assert_exists("skills/other-skill/SKILL.md");
 }

@@ -5,7 +5,7 @@ use crate::ace::Ace;
 use crate::config;
 use crate::glob;
 use crate::skills::discover::{DiscoveredSkill, Tier, discover_skills};
-use crate::skills::{Discovered, Shadowed, Skills};
+use crate::skills::{Discovered, Skills};
 
 pub struct PullImports<'a> {
     pub school_root: &'a Path,
@@ -57,50 +57,40 @@ impl PullImports<'_> {
             discovery.insert(source, discover_skills(&cached)?);
         }
 
-        // Two passes so explicit decls beat globs on collision: pass 1 claims
-        // every explicit name first, pass 2 fills in glob matches and reports
-        // skills that lost their slot.
+        // Single pass in declaration order, last-wins on collision. See
+        // spec/skills-sync.md § Import Merge Strategy.
         let mut accumulator: Skills<Discovered> = Skills::default();
-        for pass in [Pass::Explicit, Pass::Glob] {
-            for (source, decls) in &by_source {
-                let discovered = &discovery[source];
-                let full = Skills::<Discovered>::from_discovered_with_source(discovered, source);
+        for (source, decls) in &by_source {
+            let discovered = &discovery[source];
+            let full = Skills::<Discovered>::from_discovered_with_source(discovered, source);
 
-                let mut names: Vec<String> = Vec::new();
-                for decl in decls {
-                    if !pass.matches(decl) {
-                        continue;
-                    }
-                    let resolved = resolve_import_names(&full, decl);
-                    if resolved.is_empty() {
-                        // Only emit "no match" once per decl, in the pass it
-                        // belongs to.
-                        ace.warn(&format!("no skills matching {} in {source}", decl.skill));
-                        continue;
-                    }
-                    for n in resolved {
-                        if !names.contains(&n) {
-                            names.push(n);
-                        }
-                    }
-                }
-                if names.is_empty() {
+            let mut names: Vec<String> = Vec::new();
+            for decl in decls {
+                let resolved = resolve_import_names(&full, decl);
+                if resolved.is_empty() {
+                    ace.warn(&format!("no skills matching {} in {source}", decl.skill));
                     continue;
                 }
-
-                let batch_discovered: Vec<DiscoveredSkill> = discovered
-                    .iter()
-                    .filter(|d| names.iter().any(|n| n == &d.name))
-                    .cloned()
-                    .collect();
-                let batch = Skills::<Discovered>::from_discovered_with_source(
-                    &batch_discovered,
-                    source,
-                );
-                for shadow in accumulator.merge(batch) {
-                    ace.warn(&format_shadow(&shadow));
+                for n in resolved {
+                    if !names.contains(&n) {
+                        names.push(n);
+                    }
                 }
             }
+            if names.is_empty() {
+                continue;
+            }
+
+            let batch_discovered: Vec<DiscoveredSkill> = discovered
+                .iter()
+                .filter(|d| names.iter().any(|n| n == &d.name))
+                .cloned()
+                .collect();
+            let batch = Skills::<Discovered>::from_discovered_with_source(
+                &batch_discovered,
+                source,
+            );
+            accumulator.merge(batch);
         }
 
         let winning_names: Vec<String> = accumulator.names().map(String::from).collect();
@@ -113,28 +103,6 @@ impl PullImports<'_> {
     }
 }
 
-#[derive(Clone, Copy)]
-enum Pass {
-    Explicit,
-    Glob,
-}
-
-impl Pass {
-    fn matches(self, decl: &config::school_toml::ImportDecl) -> bool {
-        let is_glob = glob::is_glob(&decl.skill);
-        match self {
-            Pass::Explicit => !is_glob,
-            Pass::Glob => is_glob,
-        }
-    }
-}
-
-fn format_shadow(s: &Shadowed) -> String {
-    format!(
-        "{}: kept {}, dropped {} (declared by both)",
-        s.name, s.kept, s.dropped
-    )
-}
 
 /// Resolve the list of skill names to copy for an import entry given a
 /// discovered set from the source repo. Explicit names are looked up

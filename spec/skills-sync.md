@@ -26,15 +26,36 @@ Only folders that exist in the school are linked — absent folders are silently
 Not all backends natively support every folder. ACE links regardless and warns for unsupported
 combos:
 
-| Folder     | Claude | Codex |
-|------------|--------|-------|
-| `skills/`  | ✓      | ✓     |
-| `rules/`   | ✓      | ✗     |
-| `commands/`| ✓      | ✗     |
-| `agents/`  | ✓      | ✗     |
+| Folder     | Claude | Codex | OpenCode | Droid |
+|------------|--------|-------|----------|-------|
+| `skills/`  | ✓      | ✓     | ✓        | ✓     |
+| `rules/`   | ✓      | ✗     | ✗        | ✗     |
+| `commands/`| ✓      | ✗     | ✓        | ✗     |
+| `agents/`  | ✓      | ✗     | ✓        | ✗     |
 
 Linking still happens for unsupported combos — the warning is informational only (linked for
 future compatibility).
+
+## Import Merge Strategy
+
+When `ace pull` / `ace school update` processes `[[imports]]` in
+`school.toml`, skills from multiple sources may share the same name. The
+merge rule is **last-wins in declaration order** — sources are processed
+top-to-bottom as declared in `school.toml`, and a later source's skill
+silently replaces an earlier one with the same name. No warning, no
+tracking.
+
+This is intentional: imported skills are upstream snapshots, not
+locally-authored content. A school that imports `skill-creator` from
+`anthropics/skills` gets that skill copied into its own `skills/` dir. If
+the school is later used as a source by another import (or by itself via a
+`*` glob), the same skill is re-discovered. Last-wins ensures every pull
+converges to the latest version regardless of declaration order — the
+final state is the same because all sources eventually carry the same
+upstream content.
+
+No provenance is tracked. If a school author wants to fork and diverge a
+skill, they stop importing it and maintain it directly.
 
 ## Fetch and Sync
 

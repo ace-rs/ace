@@ -1,5 +1,3 @@
-**Status: WIP — not currently implemented. Backend module removed to simplify codebase.**
-
 # Backend: Droid (Factory.ai)
 
 Binary: `droid` | Dir: `.factory` | Instructions: `AGENTS.md`
@@ -10,17 +8,42 @@ Binary: `droid` | Dir: `.factory` | Instructions: `AGENTS.md`
 
 ## Session Prompt
 
-**No `--system-prompt` flag.** Interactive mode accepts an inline prompt as positional args
-(`droid "prompt here"`), and `droid exec` takes a `prompt` argument — but neither supports
-system prompt injection.
+**No `--system-prompt` flag for interactive mode.**
 
-Options under consideration:
+### Interactive mode — managed AGENTS.md block
 
-1. Prepend session prompt to `AGENTS.md` during setup (written content, not runtime flag).
-2. Use `droid exec -f <tmpfile>` with prompt baked in.
-3. Wait for Factory to add a `--system-prompt` flag.
+ACE injects the session prompt into `AGENTS.md` using a managed block with
+markers, same pattern as `.gitignore`:
 
-**This needs a design decision before implementation.**
+```markdown
+<!-- ACE-managed — do not edit this block. -->
+<session prompt here>
+<!-- end ACE -->
+```
+
+User content outside the managed block is preserved. The block is
+idempotently replaced on each `ace setup` / `ace` run. Droid loads
+`AGENTS.md` automatically at task start in both interactive and exec modes.
+
+### Exec mode (one-shot)
+
+`droid exec` supports `--append-system-prompt-file <path>` — appends the
+contents of a file to the built-in system prompt. ACE writes the session
+prompt to a tmpfile and passes this flag. This bypasses `AGENTS.md` for
+one-shot runs.
+
+Other flags: `--append-system-prompt <text>` passes inline text (less
+suitable for long session prompts).
+
+### Exec mode flags
+
+- `-f, --file <path>` — read prompt from file.
+- `--auto <low|medium|high>` — autonomy level.
+- `-m, --model <id>` — model selection.
+- `-s, --session-id <id>` — continue existing session.
+- `-o, --output-format <format>` — output format (default: text).
+- `--cwd <path>` — working directory.
+- `--enabled-tools` / `--disabled-tools` — tool filtering.
 
 ## Yolo Mode
 
@@ -56,18 +79,20 @@ Key differences from Claude's CLI:
 - User-level: `~/.factory/mcp.json`
 - Project-level: `.factory/mcp.json`
 
-User config takes priority. Project-defined servers cannot be removed via CLI.
+User config takes priority. Project-defined servers cannot be removed via
+CLI.
 
 **MCP list**: parsed from `~/.factory/mcp.json`.
 
 ## Linked Folders
 
-| Folder      | Supported | Target Dir Name |
-|-------------|-----------|-----------------|
-| `skills/`   | ✓         | `skills/`       |
-| `rules/`    | ✗         | —               |
-| `commands/` | ✓         | `commands/`     |
-| `agents/`   | ✓         | `droids/`       |
+| Folder      | Supported |
+|-------------|-----------|
+| `skills/`   | ✓         |
+| `rules/`    | ✗         |
+| `commands/` | ✗         |
+| `agents/`   | ✗         |
 
-Note: school `agents/` folder is symlinked as `.factory/droids/` — DROID uses `droids/` as
-its convention for custom subagents.
+Note: Droid uses `droids/` for custom subagents (not `agents/`). Agent
+support deferred — requires folder name mapping (`agents/` → `droids/`)
+that the current link system doesn't handle.

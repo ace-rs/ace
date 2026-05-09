@@ -57,17 +57,6 @@ pub struct SkillChange {
     pub kind: ChangeKind,
 }
 
-/// One skill name claimed by two import sources during a multi-source merge.
-/// `kept` is the source already in the accumulator (first-write-wins); `dropped`
-/// is the rejected candidate. The caller surfaces these as warnings so the user
-/// can de-conflict their `school.toml` (drop the redundant explicit decl or the
-/// `*` import that overlaps with it).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Shadowed {
-    pub name: String,
-    pub kept: String,
-    pub dropped: String,
-}
 
 /// Render a pull summary. Both `ace pull` and `ace school pull` emit through
 /// this helper so the user-visible shape stays identical:
@@ -159,31 +148,18 @@ impl Skills<Discovered> {
         Self { items, diagnostics: Diagnostics::default() }
     }
 
-    /// Fold `other` into `self`, first-write-wins. Skills already present in
-    /// `self` keep their slot; matching names in `other` are dropped and
-    /// returned as `Shadowed { name, kept, dropped }`. Source labels come from
-    /// each skill's own `source` field (set by `from_discovered_with_source`);
-    /// items without a source render as `<unknown>` in the warning, which
-    /// shouldn't happen for import flows.
-    pub fn merge(&mut self, other: Skills<Discovered>) -> Vec<Shadowed> {
-        let existing: std::collections::HashSet<String> =
-            self.items.iter().map(|s| s.name.clone()).collect();
-        let mut shadowed = Vec::new();
+    /// Fold `other` into `self`, last-wins. Skills in `other` whose name
+    /// already exists in `self` silently replace the existing entry. This
+    /// ensures every pull converges to the latest version regardless of
+    /// declaration order — see `spec/skills-sync.md` § Import Merge Strategy.
+    pub fn merge(&mut self, other: Skills<Discovered>) {
         for skill in other.items {
-            if existing.contains(&skill.name) {
-                let kept = self
-                    .items
-                    .iter()
-                    .find(|s| s.name == skill.name)
-                    .and_then(|s| s.source.clone())
-                    .unwrap_or_else(|| "<unknown>".to_string());
-                let dropped = skill.source.unwrap_or_else(|| "<unknown>".to_string());
-                shadowed.push(Shadowed { name: skill.name, kept, dropped });
+            if let Some(existing) = self.items.iter_mut().find(|s| s.name == skill.name) {
+                *existing = skill;
             } else {
                 self.items.push(skill);
             }
         }
-        shadowed
     }
 
     /// Run the three-layer resolver against the given config tree.
@@ -442,7 +418,7 @@ mod tests {
     }
 
     #[test]
-    fn merge_disjoint_keeps_all_no_shadowed() {
+    fn merge_disjoint_keeps_all() {
         let mut acc = Skills::<Discovered>::from_discovered_with_source(
             &[discovered("alpha", Tier::Curated)],
             "owner/a",
@@ -452,16 +428,15 @@ mod tests {
             "owner/b",
         );
 
-        let shadowed = acc.merge(other);
+        acc.merge(other);
 
-        assert!(shadowed.is_empty());
         let mut names: Vec<&str> = acc.names().collect();
         names.sort();
         assert_eq!(names, vec!["alpha", "beta"]);
     }
 
     #[test]
-    fn merge_collision_keeps_first_records_shadowed() {
+    fn merge_collision_last_wins() {
         let mut acc = Skills::<Discovered>::from_discovered_with_source(
             &[discovered("skill-creator", Tier::System)],
             "anthropics/skills",
@@ -471,20 +446,17 @@ mod tests {
             "ace-rs/school",
         );
 
-        let shadowed = acc.merge(other);
+        acc.merge(other);
 
-        assert_eq!(shadowed.len(), 1);
-        assert_eq!(shadowed[0].name, "skill-creator");
-        assert_eq!(shadowed[0].kept, "anthropics/skills");
-        assert_eq!(shadowed[0].dropped, "ace-rs/school");
-
-        // Accumulator still has only the first-merged copy.
         let names: Vec<&str> = acc.names().collect();
         assert_eq!(names, vec!["skill-creator"]);
+        // Last source wins.
+        let source = acc.items[0].source.as_deref();
+        assert_eq!(source, Some("ace-rs/school"));
     }
 
     #[test]
-    fn merge_records_each_collision_independently() {
+    fn merge_collision_replaces_and_keeps_new_entries() {
         let mut acc = Skills::<Discovered>::from_discovered_with_source(
             &[
                 discovered("a", Tier::Curated),
@@ -501,21 +473,17 @@ mod tests {
             "src/two",
         );
 
-        let shadowed = acc.merge(other);
-
-        assert_eq!(shadowed.len(), 2);
-        let mut shadowed_names: Vec<&str> =
-            shadowed.iter().map(|s| s.name.as_str()).collect();
-        shadowed_names.sort();
-        assert_eq!(shadowed_names, vec!["a", "b"]);
-        for s in &shadowed {
-            assert_eq!(s.kept, "src/one");
-            assert_eq!(s.dropped, "src/two");
-        }
+        acc.merge(other);
 
         let mut names: Vec<&str> = acc.names().collect();
         names.sort();
         assert_eq!(names, vec!["a", "b", "c"]);
+        // All colliding entries replaced by src/two.
+        for item in &acc.items {
+            if item.name == "a" || item.name == "b" || item.name == "c" {
+                assert_eq!(item.source.as_deref(), Some("src/two"));
+            }
+        }
     }
 
     #[test]
