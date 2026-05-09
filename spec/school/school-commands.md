@@ -19,14 +19,21 @@ Steps:
 
 1. Check cwd is a git repo.
 2. Ask for school display name (or accept via `--name` arg).
-3. Write minimal `school.toml`:
+3. Write `school.toml` with the standard import seeded:
    ```toml
-   [school]
    name = "<name>"
+
+   [[imports]]
+   skill = "*"
+   source = "ace-rs/school"
    ```
-4. Create `CLAUDE.md` if missing.
-5. Create `skills/ace-school/SKILL.md` from built-in template if missing.
-6. Done. User commits and pushes to their school repo.
+   The `ace-rs/school` import is the canonical source of `ace-school` and
+   any other base skills. See `spec/school/standard-imports.md`. Users
+   may remove the entry for a fully standalone school.
+4. Create `CLAUDE.md` and `README.md` if missing.
+5. Create `.gitignore` if missing.
+6. Run `PullImports` to fetch the standard skills into `skills/`.
+7. Done. User commits and pushes to their school repo.
 
 Prerequisites: create and clone a git repo first (e.g. `gh repo create org/school --private`).
 
@@ -53,8 +60,9 @@ The AI backend handles the full PR workflow: `ace diff` to review, branch in the
 cache, commit, push, create PR via GitHub MCP. No dedicated `ace` command needed — the AI
 has all the tools (git + GitHub MCP).
 
-The `ace-school` skill (created by `ace school init`) provides detailed instructions for
-this workflow.
+The `ace-school` skill (provided by the `ace-rs/school` standard import,
+seeded by `ace school init`) provides detailed instructions for this
+workflow.
 
 ## `ace import <source> [--skill <name>] [--all]`
 

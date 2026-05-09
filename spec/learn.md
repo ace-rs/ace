@@ -225,19 +225,19 @@ mechanism.
 
 ## Documentation Surfaces
 
-`ace learn` must be documented in two places that ship with ACE:
+`ace learn` must be documented in:
 
-- **`tpl_ace_school_skill.md`** (the `ace-school` skill scaffolded into every
-  school) — short section explaining what `ace learn` does, when to run it
-  (project bootstrap, after schools grow), and how it interacts with
-  `ace.toml` `skills` and the instructions file.
 - **`prompt_session.md`** (the session prompt injected into every backend
   session) — one short paragraph noting that `ace learn` exists, that the
   agent's instructions file may include "load these skills" guidance left by
   a prior `ace learn` run, and that those should be honored.
 
-Both surfaces are template files under `src/templates/builtins/`. Updates to
-them land in the same PR as `ace learn` itself.
+This surface is a template file under `src/templates/builtins/`. Updates to
+it land in the same PR as `ace learn` itself. The `ace-school` skill (now
+provided by the `ace-rs/school` standard import — see
+`spec/school/standard-imports.md`) is the other natural place to document
+the workflow, but it lives in a separate repo and is updated through that
+school's own change process.
 
 ## Module Layout
 

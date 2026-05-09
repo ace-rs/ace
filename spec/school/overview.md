@@ -93,6 +93,10 @@ entries, `[[roles]]` prompts, `[[projects]]` catalog, and `[[imports]]` skill pr
 (including wholesale-imports of another school via `skill = "*"`). See
 [school-toml.md](school-toml.md) for the full reference.
 
+Every school created by `ace school init` is seeded with a `[[imports]]`
+entry for `ace-rs/school` (the standard school) — see
+[standard-imports.md](standard-imports.md).
+
 ## Relationship to Projects
 
 A school is independent of any single project. Multiple projects (e.g. frontend and backend

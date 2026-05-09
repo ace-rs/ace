@@ -1,9 +1,15 @@
 use std::path::Path;
 
 use crate::ace::Ace;
-use crate::config::school_toml;
+use crate::actions::school::pull_imports::{PullImports, PullImportsError};
+use crate::config::school_toml::{self, ImportDecl};
 use crate::config::ConfigError;
 use crate::templates;
+
+/// Default school imported by every fresh school. Provides `ace-school` and
+/// any other base skills. Users may remove the import for a fully
+/// standalone school. See `spec/school/standard-imports.md`.
+const STANDARD_SCHOOL_SOURCE: &str = "ace-rs/school";
 
 #[derive(Debug, thiserror::Error)]
 pub enum InitError {
@@ -15,6 +21,8 @@ pub enum InitError {
     Config(#[from] ConfigError),
     #[error("write failed: {0}")]
     Write(std::io::Error),
+    #[error("{0}")]
+    Pull(#[from] PullImportsError),
 }
 
 pub struct Init<'a> {
@@ -37,12 +45,14 @@ impl Init<'_> {
         if self.force && toml_path.exists() {
             let mut toml = school_toml::load(&toml_path)?;
             toml.name = self.name.to_string();
+            ensure_standard_import(&mut toml);
             school_toml::save(&toml_path, &toml)?;
         } else {
-            let toml = school_toml::SchoolToml {
+            let mut toml = school_toml::SchoolToml {
                 name: self.name.to_string(),
                 ..Default::default()
             };
+            ensure_standard_import(&mut toml);
             school_toml::save(&toml_path, &toml)?;
         }
         ace.done("Created school.toml");
@@ -67,15 +77,6 @@ impl Init<'_> {
             ace.done("Created README.md");
         }
 
-        let skill_dir = self.project_dir.join("skills").join("ace-school");
-        let skill_path = skill_dir.join("SKILL.md");
-        if !skill_path.exists() {
-            std::fs::create_dir_all(&skill_dir).map_err(InitError::Write)?;
-            std::fs::write(&skill_path, templates::builtins::ACE_SCHOOL_SKILL)
-                .map_err(InitError::Write)?;
-            ace.done("Created skills/ace-school/SKILL.md");
-        }
-
         let gitignore = self.project_dir.join(".gitignore");
         if !gitignore.exists() {
             std::fs::write(&gitignore, templates::builtins::GITIGNORE)
@@ -83,6 +84,22 @@ impl Init<'_> {
             ace.done("Created .gitignore");
         }
 
+        PullImports { school_root: self.project_dir }.run(ace)?;
+
         Ok(())
+    }
+}
+
+fn ensure_standard_import(toml: &mut school_toml::SchoolToml) {
+    let already = toml.imports.iter().any(|i|
+        i.source == STANDARD_SCHOOL_SOURCE && i.skill == "*"
+    );
+    if !already {
+        toml.imports.push(ImportDecl {
+            skill: "*".to_string(),
+            source: STANDARD_SCHOOL_SOURCE.to_string(),
+            include_experimental: false,
+            include_system: false,
+        });
     }
 }
