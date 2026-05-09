@@ -53,6 +53,10 @@ pub struct Cli {
     #[arg(long, global = true)]
     codex: bool,
 
+    /// Shortcut for `--backend opencode`
+    #[arg(long, global = true)]
+    opencode: bool,
+
     /// Shortcut for `--backend flaude` — test-only fixture backend, dev builds only.
     #[cfg(debug_assertions)]
     #[arg(long, global = true, hide = true)]
@@ -349,6 +353,9 @@ fn resolve_backend_override(cli: &Cli) -> Result<Option<String>, CmdError> {
     if cli.codex {
         selected.push(crate::backend::Kind::Codex.into());
     }
+    if cli.opencode {
+        selected.push(crate::backend::Kind::OpenCode.into());
+    }
     #[cfg(debug_assertions)]
     if cli.flaude {
         selected.push(crate::backend::Kind::Flaude.into());
@@ -420,6 +427,13 @@ mod tests {
     fn root_dash_dash_passthrough() {
         let cli = Cli::try_parse_from(["ace", "--", "-p", "hi"]).expect("parse");
         assert_eq!(cli.backend_args, vec!["-p".to_string(), "hi".to_string()]);
+    }
+
+    #[test]
+    fn opencode_flag_resolves_to_opencode_backend() {
+        let cli = Cli::try_parse_from(["ace", "--opencode"]).expect("parse");
+        let resolved = resolve_backend_override(&cli).expect("resolve");
+        assert_eq!(resolved.as_deref(), Some("opencode"));
     }
 
     #[test]
