@@ -37,8 +37,9 @@ OAuth metadata and handles authentication automatically.
 
 ## Commit Messages
 
-Every commit to this repo is a policy change — it affects how every developer using this school
-writes code. Commit messages must explain the decision, not just the diff.
+Every commit to this repo is a policy change — it affects how every
+developer using this school writes code. Commit messages must explain the
+decision, not just the diff.
 
 Summary line: short, imperative, what changed.
 

@@ -1,6 +1,7 @@
 # {{ school_name }}
 
-ACE school repository — shared skills, conventions, and session prompts for your team.
+ACE school repository — shared skills, conventions, and session prompts for
+your team.
 
 ## For Developers
 
@@ -10,28 +11,29 @@ Subscribe a project to this school:
 ace setup {school_specifier}
 ```
 
-This clones the school, symlinks skills into your project, and configures your AI coding
-session. Run `ace` to start.
+This clones the school, symlinks skills into your project, and configures
+your AI coding session. Run `ace` to start.
 
 ## Structure
 
 ```
 school.toml       # School configuration
 skills/           # Skill directories (each has a SKILL.md)
-  ace-school/     # Built-in school management skill
+  ace-school/     # Imported from ace-rs/school
 CLAUDE.md         # AI session instructions for this repo
 ```
 
-`school.toml` defines: env vars, MCP server endpoints, project catalog, and skill imports.
-See `CLAUDE.md` for section details.
+`school.toml` defines: env vars, MCP server endpoints, project catalog, and
+skill imports. See `CLAUDE.md` for section details.
 
 ## Managing Skills
 
-| Task | Command |
-|---|---|
-| Import a skill | `ace import <owner/repo>` |
-| Re-fetch imports | `ace school pull` |
-| Review local edits | `ace diff` |
+| Task               | Command                   |
+|--------------------|---------------------------|
+| Import a skill     | `ace import <owner/repo>` |
+| Re-fetch imports   | `ace school pull`         |
+| Review local edits | `ace diff`                |
 
-Skills are the primary content of this repo. Each skill is a directory under `skills/` with
-a `SKILL.md` that the AI backend reads during coding sessions.
+Skills are the primary content of this repo. Each skill is a directory
+under `skills/` with a `SKILL.md` that the AI backend reads during coding
+sessions.
