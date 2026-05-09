@@ -143,6 +143,16 @@ edits, and chores.
 
 ## 9. Open gaps
 
+- **Homebrew formula lags the version-bump commit by one.** The formula lives
+  in-tree under `homebrew-tap/` (git subtree), but `release.sh` patches and
+  commits it *after* the `v<ver>` tag is created — because the macOS aarch64
+  sha256 isn't known until `build-all.sh` finishes. Result: the source tarball
+  attached to release `v<ver>` carries the *previous* version's formula. The
+  tap repo gets the right formula via subtree push, so `brew install` users
+  are unaffected; only people reading `homebrew-tap/Formula/ace.rb` at the
+  release tag see stale content. To fix this we'd need to build first, compute
+  the sha, then bump+commit+tag with the formula update folded in — i.e.
+  invert the order of `bump.sh` and the build step. Not done yet.
 - **Checksums / signing** — only the Homebrew sha256 is computed. Publishing
   a `SHA256SUMS` file alongside release assets and verifying it from
   `install.sh` / `install.ps1` would be a nice add.
