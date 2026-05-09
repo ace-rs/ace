@@ -79,6 +79,13 @@ ACE has real users. CLI verbs, subcommand names, config keys (`ace.toml`, `schoo
 - Storage migrations: detect-and-hint (see `warn_stray_cache_dirs` in `src/main.rs`),
   not silent auto-migration.
 
+## Release Process
+
+After cutting a release or shipping user-visible changes, send a bridge message
+to the ace-rs-www agent so the website (schools, commands, configuration pages)
+gets updated. Use `ace-connect` (`ace-rs-www.claude` peer) — see the skill for
+the send/receive flow.
+
 ## Linear
 
 Project ACE (team PRODIGY9, key PROD9). Always scope queries to `project:"ACE"`.
