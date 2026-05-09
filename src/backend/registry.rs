@@ -30,6 +30,45 @@ impl TemplateCtx {
     }
 }
 
+/// Per-decl placeholder catalogue: typed bag of allowed names *and* their
+/// resolved values. `NAMES` and `into_map` cannot drift — adding a field
+/// requires updating both at the same site. Validators read `NAMES`; the
+/// renderer reads `into_map`.
+pub struct BackendVars {
+    pub school_dir: String,
+    pub project_dir: String,
+    pub home: String,
+    pub backend_dir: String,
+}
+
+impl BackendVars {
+    pub const NAMES: &'static [&'static str] =
+        &["school_dir", "project_dir", "home", "backend_dir"];
+
+    pub fn build(ctx: &TemplateCtx, kind: Kind) -> Self {
+        let backend_dir = if ctx.project_dir.is_empty() {
+            String::new()
+        } else {
+            format!("{}/{}", ctx.project_dir.trim_end_matches('/'), kind.backend_dir())
+        };
+        Self {
+            school_dir: ctx.school_dir.clone(),
+            project_dir: ctx.project_dir.clone(),
+            home: ctx.home.clone(),
+            backend_dir,
+        }
+    }
+
+    pub fn into_map(self) -> HashMap<String, String> {
+        let mut vars = HashMap::with_capacity(Self::NAMES.len());
+        vars.insert("school_dir".into(), self.school_dir);
+        vars.insert("project_dir".into(), self.project_dir);
+        vars.insert("home".into(), self.home);
+        vars.insert("backend_dir".into(), self.backend_dir);
+        vars
+    }
+}
+
 /// Build the registry from declarations carried on a merged `Resolved` view
 /// and look up the selected backend name. Unknown name →
 /// `BackendError::Unknown`.
@@ -110,17 +149,7 @@ fn merge_decl(registry: &mut Registry, decl: &BackendDecl, ctx: &TemplateCtx) ->
 /// because it depends on the resolved `Kind`. See
 /// `docs/decisions/2026-05-09-backend-cmd-templating.md`.
 fn render_vars(ctx: &TemplateCtx, kind: Kind) -> HashMap<String, String> {
-    let backend_dir = if ctx.project_dir.is_empty() {
-        String::new()
-    } else {
-        format!("{}/{}", ctx.project_dir.trim_end_matches('/'), kind.backend_dir())
-    };
-    let mut vars = HashMap::with_capacity(4);
-    vars.insert("school_dir".into(), ctx.school_dir.clone());
-    vars.insert("project_dir".into(), ctx.project_dir.clone());
-    vars.insert("home".into(), ctx.home.clone());
-    vars.insert("backend_dir".into(), backend_dir);
-    vars
+    BackendVars::build(ctx, kind).into_map()
 }
 
 /// Fast-path literal strings; only parse-and-substitute when `{{` is present.

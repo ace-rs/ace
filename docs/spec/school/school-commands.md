@@ -155,6 +155,45 @@ Re-fetch all imported skills from their sources.
   automatically. Existing skills are overwritten with the latest from the source, consistent
   with ACE's always-latest versioning philosophy (see `docs/spec/index.md`).
 
+## `ace school validate`
+
+Typo-check `{{ ... }}` placeholders in `[[backends]].cmd[]` and `[[backends]].env` values
+against the closed set `{school_dir, project_dir, home, backend_dir}` (defined by
+`docs/decisions/2026-05-09-backend-cmd-templating.md`).
+
+### Flow
+
+1. Resolve school root (school-repo cwd, else linked clone via `ace.toml`).
+2. Load `school.toml`.
+3. For each `[[backends]]` decl, parse every `cmd[i]` and every `env[key]` value as a
+   template. Any placeholder name not in the closed set is reported as an issue.
+4. Each issue is paired with a Levenshtein-≤2 did-you-mean suggestion when one of the
+   allowed names is close.
+
+### Output
+
+One line per issue, written to the data stream:
+
+```
+backends[<name>].cmd[<index>]: unknown placeholder '<name>', did you mean '<suggestion>'?
+backends[<name>].env[<key>]: unknown placeholder '<name>'
+```
+
+Suggestion is omitted when no close match exists.
+
+### Exit code
+
+- `0` — clean (no issues).
+- `1` — one or more issues reported. The error line `N validation issue(s) found`
+  follows the issue list.
+
+### Scope (v1)
+
+Only `[[backends]]` placeholders. Other shapes (`[[imports]]`, `[[mcp]]`, etc.) are not
+validated — see `docs/decisions/2026-05-09-school-validate-scope.md` for rationale.
+`ace school validate` is not auto-run by `ace school pull` or `ace setup`; users invoke
+it explicitly.
+
 ## `ace diff`
 
 Show uncommitted changes in the school clone, including untracked files.

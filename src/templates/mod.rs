@@ -65,6 +65,59 @@ impl<'a> Template<'a> {
     }
 }
 
+/// One placeholder name in a template that does not match any allowed name,
+/// optionally paired with a Levenshtein-near suggestion from the allowed set.
+pub struct UnknownPlaceholder {
+    pub name: String,
+    pub suggestion: Option<String>,
+}
+
+/// Parse `input` and report any placeholder names not in `allowed`. Each
+/// unknown carries a did-you-mean suggestion when one of the allowed names
+/// is within Levenshtein distance 2.
+pub fn check(input: &str, allowed: &[&str]) -> Vec<UnknownPlaceholder> {
+    Template::parse(input)
+        .placeholders()
+        .iter()
+        .filter(|name| !allowed.contains(name))
+        .map(|name| UnknownPlaceholder {
+            name: (*name).to_string(),
+            suggestion: nearest(name, allowed),
+        })
+        .collect()
+}
+
+fn nearest(name: &str, allowed: &[&str]) -> Option<String> {
+    allowed
+        .iter()
+        .map(|cand| (*cand, levenshtein(name, cand)))
+        .filter(|(_, d)| *d <= 2)
+        .min_by_key(|(_, d)| *d)
+        .map(|(cand, _)| cand.to_string())
+}
+
+fn levenshtein(a: &str, b: &str) -> usize {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    let (n, m) = (a.len(), b.len());
+    if n == 0 { return m; }
+    if m == 0 { return n; }
+
+    let mut prev: Vec<usize> = (0..=m).collect();
+    let mut curr = vec![0usize; m + 1];
+    for i in 1..=n {
+        curr[0] = i;
+        for j in 1..=m {
+            let cost = if a[i - 1] == b[j - 1] { 0 } else { 1 };
+            curr[j] = (curr[j - 1] + 1)
+                .min(prev[j] + 1)
+                .min(prev[j - 1] + cost);
+        }
+        std::mem::swap(&mut prev, &mut curr);
+    }
+    prev[m]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -195,6 +248,59 @@ mod tests {
             Segment::Placeholder("name"),
             Segment::Literal(", welcome"),
         ]);
+    }
+
+    // -- check (data-driven) --
+
+    #[test]
+    fn check_cases() {
+        let allowed = &["school_dir", "project_dir", "home", "backend_dir"];
+        type Case<'a> = (&'a str, &'a [(&'a str, Option<&'a str>)]);
+        let cases: &[Case] = &[
+            // clean
+            ("", &[]),
+            ("plain literal", &[]),
+            ("{{ school_dir }}/x", &[]),
+            ("{{ school_dir }} {{ project_dir }} {{ home }} {{ backend_dir }}", &[]),
+
+            // single typo with suggestion
+            ("{{ schol_dir }}/x", &[("schol_dir", Some("school_dir"))]),
+            ("{{ projectdir }}/x", &[("projectdir", Some("project_dir"))]),
+            ("{{ hom }}", &[("hom", Some("home"))]),
+
+            // multiple typos
+            (
+                "{{ schol_dir }}/{{ projct_dir }}",
+                &[
+                    ("schol_dir", Some("school_dir")),
+                    ("projct_dir", Some("project_dir")),
+                ],
+            ),
+
+            // mixed valid + typo: only typo flagged
+            ("{{ school_dir }}/{{ schol_dir }}", &[("schol_dir", Some("school_dir"))]),
+
+            // unknown with no near match
+            ("{{ totally_different }}", &[("totally_different", None)]),
+
+            // broken placeholder syntax → parser drops it → no issue
+            ("{{ }} {{ bad- }} {{ has space }}", &[]),
+            ("{{ schol_dir", &[]),
+            ("{schol_dir}", &[]),
+
+            // duplicates collapse (placeholders() returns unique names)
+            ("{{ schol_dir }} and {{ schol_dir }}", &[("schol_dir", Some("school_dir"))]),
+        ];
+
+        for (i, (input, expected)) in cases.iter().enumerate() {
+            let issues = check(input, allowed);
+            let got: Vec<(&str, Option<&str>)> = issues
+                .iter()
+                .map(|u| (u.name.as_str(), u.suggestion.as_deref()))
+                .collect();
+            let want: Vec<(&str, Option<&str>)> = expected.to_vec();
+            assert_eq!(got, want, "case {i}: input={input:?}");
+        }
     }
 
     #[test]

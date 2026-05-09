@@ -8,6 +8,7 @@ use crate::config::school_toml;
 use crate::ace::OutputMode;
 use crate::actions::school::{Init, InitError};
 use crate::actions::school::{PullImports, PullImportsResult};
+use crate::actions::school::Validate;
 
 use super::CmdError;
 
@@ -27,6 +28,8 @@ pub enum Command {
     Pull,
     /// List skills in the school
     Skills,
+    /// Validate `school.toml` (typo-check `{{ ... }}` placeholders)
+    Validate,
 }
 
 pub fn run(ace: &mut Ace, command: Command) {
@@ -43,6 +46,20 @@ pub fn run(ace: &mut Ace, command: Command) {
             let result = run_skills(ace);
             super::exit_on_err(ace, result);
         }
+        Command::Validate => {
+            let result = run_validate(ace);
+            super::exit_on_err(ace, result);
+        }
+    }
+}
+
+fn run_validate(ace: &mut Ace) -> Result<(), CmdError> {
+    let school_root = ace.require_school()?.root.clone();
+    let count = Validate { school_root: &school_root }.run(ace)?;
+    match count {
+        0 => Ok(()),
+        1 => Err(CmdError::Other("1 validation issue found".into())),
+        n => Err(CmdError::Other(format!("{n} validation issues found"))),
     }
 }
 
