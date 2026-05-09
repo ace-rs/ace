@@ -83,7 +83,7 @@ fn build_one_shot_args(req: &OneShotRequest) -> Vec<String> {
     args
 }
 
-pub(super) fn mcp_list() -> HashSet<String> {
+pub(super) fn mcp_list(_project_dir: &std::path::Path) -> HashSet<String> {
     let Some(home) = crate::paths::home_dir() else {
         return HashSet::new();
     };
@@ -97,7 +97,7 @@ pub(super) fn mcp_list() -> HashSet<String> {
     parse_mcp_names(&content)
 }
 
-pub(super) fn mcp_add(entry: &McpDecl) -> Result<(), String> {
+pub(super) fn mcp_add(entry: &McpDecl, _project_dir: &std::path::Path) -> Result<(), String> {
     let args = build_mcp_add_args(entry);
 
     let output = Command::new("claude")
@@ -113,7 +113,7 @@ pub(super) fn mcp_add(entry: &McpDecl) -> Result<(), String> {
     Ok(())
 }
 
-pub(super) fn mcp_remove(name: &str) -> Result<(), String> {
+pub(super) fn mcp_remove(name: &str, _project_dir: &std::path::Path) -> Result<(), String> {
     let args = build_mcp_remove_args(name);
 
     let output = Command::new("claude")
@@ -129,7 +129,7 @@ pub(super) fn mcp_remove(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-pub(super) fn mcp_check(names: &[String]) -> Result<Vec<McpStatus>, String> {
+pub(super) fn mcp_check(names: &[String], _project_dir: &std::path::Path) -> Result<Vec<McpStatus>, String> {
     let prompt = format!(
         "You have MCP servers registered. For each of the following, call any tool to verify \
          it responds. Reply with only a JSON object matching this shape: \

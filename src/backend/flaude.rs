@@ -91,7 +91,7 @@ fn synthesize_status(code: i32) -> Result<std::process::ExitStatus, std::io::Err
     Ok(std::process::ExitStatus::from_raw(code as u32))
 }
 
-pub(super) fn mcp_list() -> HashSet<String> {
+pub(super) fn mcp_list(_project_dir: &std::path::Path) -> HashSet<String> {
     let Some(path) = mcp_list_path() else {
         return HashSet::new();
     };
@@ -108,7 +108,7 @@ pub(super) fn mcp_list() -> HashSet<String> {
         .collect()
 }
 
-pub(super) fn mcp_add(entry: &McpDecl) -> Result<(), String> {
+pub(super) fn mcp_add(entry: &McpDecl, _project_dir: &std::path::Path) -> Result<(), String> {
     use std::io::Write;
 
     let record_path = mcp_record_path()
@@ -136,7 +136,7 @@ pub(super) fn mcp_add(entry: &McpDecl) -> Result<(), String> {
     Ok(())
 }
 
-pub(super) fn mcp_remove(name: &str) -> Result<(), String> {
+pub(super) fn mcp_remove(name: &str, _project_dir: &std::path::Path) -> Result<(), String> {
     use std::io::Write;
 
     // -- append removal record --
@@ -176,7 +176,7 @@ pub(super) fn mcp_remove(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-pub(super) fn mcp_check(names: &[String]) -> Result<Vec<McpStatus>, String> {
+pub(super) fn mcp_check(names: &[String], _project_dir: &std::path::Path) -> Result<Vec<McpStatus>, String> {
     Ok(names.iter()
         .map(|n| McpStatus { name: n.clone(), ok: true })
         .collect())

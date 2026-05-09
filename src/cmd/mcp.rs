@@ -39,7 +39,7 @@ pub fn run(ace: &mut Ace, command: Option<Command>) {
 fn run_default(ace: &mut Ace) -> Result<(), CmdError> {
     ace.require_resolved()?;
 
-    let (backend, entries) = load_school_mcp(ace)?;
+    let (backend, entries, project_dir) = load_school_mcp(ace)?;
     if entries.is_empty() {
         ace.hint("no MCP servers defined in school");
         return Ok(());
@@ -47,16 +47,16 @@ fn run_default(ace: &mut Ace) -> Result<(), CmdError> {
 
     // -- add missing --
 
-    let registered = backend.mcp_list();
+    let registered = backend.mcp_list(&project_dir);
     let has_missing = entries.iter().any(|e| !registered.contains(&e.name));
 
     if has_missing {
-        RegisterMcp{ backend: &backend, entries: &entries }.run(ace)?;
+        RegisterMcp{ backend: &backend, entries: &entries, project_dir: &project_dir }.run(ace)?;
     }
 
     // -- health check registered servers --
 
-    let registered = backend.mcp_list();
+    let registered = backend.mcp_list(&project_dir);
     let check_names: Vec<String> = entries.iter()
         .map(|e| e.name.clone())
         .filter(|n| registered.contains(n))
@@ -67,7 +67,7 @@ fn run_default(ace: &mut Ace) -> Result<(), CmdError> {
     }
 
     ace.progress("Checking MCP server health...");
-    let statuses = match backend.mcp_check(&check_names) {
+    let statuses = match backend.mcp_check(&check_names, &project_dir) {
         Ok(s) => s,
         Err(e) => {
             ace.warn(&format!("health check failed: {e}"));
@@ -97,7 +97,7 @@ fn run_default(ace: &mut Ace) -> Result<(), CmdError> {
         }
 
         // Remove and re-add
-        if let Err(e) = backend.mcp_remove(&status.name) {
+        if let Err(e) = backend.mcp_remove(&status.name, &project_dir) {
             ace.warn(&format!("remove '{}' failed: {e}", status.name));
             continue;
         }
@@ -105,7 +105,7 @@ fn run_default(ace: &mut Ace) -> Result<(), CmdError> {
         let resolved = register_mcp::resolve_headers(entry, ace)?;
         let target = resolved.as_ref().unwrap_or(entry);
 
-        match backend.mcp_add(target) {
+        match backend.mcp_add(target, &project_dir) {
             Ok(()) => ace.done(&format!("Re-registered '{}'", status.name)),
             Err(e) => ace.warn(&format!("re-register '{}' failed: {e}", status.name)),
         }
@@ -122,13 +122,13 @@ fn run_default(ace: &mut Ace) -> Result<(), CmdError> {
 fn run_check(ace: &mut Ace) -> Result<(), CmdError> {
     ace.require_resolved()?;
 
-    let (backend, entries) = load_school_mcp(ace)?;
+    let (backend, entries, project_dir) = load_school_mcp(ace)?;
     if entries.is_empty() {
         ace.hint("no MCP servers defined in school");
         return Ok(());
     }
 
-    let registered = backend.mcp_list();
+    let registered = backend.mcp_list(&project_dir);
     let school_names: HashSet<&str> = entries.iter().map(|e| e.name.as_str()).collect();
 
     // -- report missing --
@@ -148,7 +148,7 @@ fn run_check(ace: &mut Ace) -> Result<(), CmdError> {
 
     if !check_names.is_empty() {
         ace.progress("Checking MCP server health...");
-        match backend.mcp_check(&check_names) {
+        match backend.mcp_check(&check_names, &project_dir) {
             Err(e) => ace.warn(&format!("health check failed: {e}")),
             Ok(statuses) if statuses.is_empty() => {
                 for name in &check_names {
@@ -174,8 +174,8 @@ fn run_check(ace: &mut Ace) -> Result<(), CmdError> {
 fn run_reset(ace: &mut Ace, name: Option<String>) -> Result<(), CmdError> {
     ace.require_resolved()?;
 
-    let (backend, entries) = load_school_mcp(ace)?;
-    let registered = backend.mcp_list();
+    let (backend, entries, project_dir) = load_school_mcp(ace)?;
+    let registered = backend.mcp_list(&project_dir);
 
     let names: Vec<String> = match name {
         Some(n) => {
@@ -199,7 +199,7 @@ fn run_reset(ace: &mut Ace, name: Option<String>) -> Result<(), CmdError> {
         }
     };
 
-    RemoveMcp{ backend: &backend, names: &names }.run(ace)
+    RemoveMcp{ backend: &backend, names: &names, project_dir: &project_dir }.run(ace)
         .map_err(CmdError::Other)?;
 
     Ok(())
@@ -216,10 +216,11 @@ fn report_statuses(ace: &mut Ace, statuses: &[McpStatus]) {
 }
 
 /// Load school MCP entries and backend from current state.
-fn load_school_mcp(ace: &Ace) -> Result<(crate::backend::Backend, Vec<McpDecl>), CmdError> {
+fn load_school_mcp(ace: &Ace) -> Result<(crate::backend::Backend, Vec<McpDecl>, std::path::PathBuf), CmdError> {
     let backend = ace.backend()?.clone();
     let entries = ace.school()?
         .map(|s| s.mcp.clone())
         .unwrap_or_default();
-    Ok((backend, entries))
+    let project_dir = ace.project_dir().to_path_buf();
+    Ok((backend, entries, project_dir))
 }

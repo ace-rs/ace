@@ -6,6 +6,7 @@
 |------------|------------|-------------|-------------------|----------------------------------|
 | `claude`   | `claude`   | `.claude`   | `CLAUDE.md`       | [backends/claude.md](backends/claude.md)     |
 | `codex`    | `codex`    | `.agents`   | `AGENTS.md`       | [backends/codex.md](backends/codex.md)       |
+| `opencode` | `opencode` | `.opencode` | `AGENTS.md`       | [backends/opencode.md](backends/opencode.md) |
 
 ## TOML Syntax
 

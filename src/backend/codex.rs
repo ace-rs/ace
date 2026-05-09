@@ -103,7 +103,7 @@ fn trust_args(trust: Trust) -> &'static [&'static str] {
     }
 }
 
-pub(super) fn mcp_list() -> HashSet<String> {
+pub(super) fn mcp_list(_project_dir: &std::path::Path) -> HashSet<String> {
     // Best-effort: create home dir so CLI commands work.
     let _ = ensure_home_dir();
 
@@ -120,7 +120,7 @@ pub(super) fn mcp_list() -> HashSet<String> {
     }
 }
 
-pub(super) fn mcp_add(entry: &McpDecl) -> Result<(), String> {
+pub(super) fn mcp_add(entry: &McpDecl, _project_dir: &std::path::Path) -> Result<(), String> {
     ensure_home_dir()?;
 
     if let Some(args) = build_mcp_add_args(entry) {
@@ -140,7 +140,7 @@ pub(super) fn mcp_add(entry: &McpDecl) -> Result<(), String> {
     add_to_config(entry)
 }
 
-pub(super) fn mcp_remove(name: &str) -> Result<(), String> {
+pub(super) fn mcp_remove(name: &str, _project_dir: &std::path::Path) -> Result<(), String> {
     ensure_home_dir()?;
 
     let args = build_mcp_remove_args(name);
@@ -161,7 +161,7 @@ pub(super) fn mcp_remove(name: &str) -> Result<(), String> {
     Err(stderr.trim().to_string())
 }
 
-pub(super) fn mcp_check(names: &[String]) -> Result<Vec<McpStatus>, String> {
+pub(super) fn mcp_check(names: &[String], _project_dir: &std::path::Path) -> Result<Vec<McpStatus>, String> {
     ensure_home_dir()?;
 
     let prompt = build_check_prompt(names);

@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use crate::ace::Ace;
-use crate::backend::{Backend, Kind};
+use crate::backend::Backend;
 use crate::config::school_paths;
 use crate::config::ConfigError;
 
@@ -31,15 +31,7 @@ pub struct PrepareResult {
     pub school_is_dirty: bool,
 }
 
-// Backend support matrix — which folders each backend natively supports.
-//   claude:   skills ✓  rules ✓  commands ✓  agents ✓
-//   codex:    skills ✓  rules ✗  commands ✗  agents ✗
-fn is_supported(kind: Kind, folder: &str) -> bool {
-    matches!(
-        (kind, folder),
-        (_, "skills") | (Kind::Claude | Kind::Flaude, _)
-    )
-}
+// Backend support matrix lives on `Kind::is_folder_supported()`.
 
 impl Prepare<'_> {
     pub fn run(&self, ace: &mut Ace) -> Result<PrepareResult, PrepareError> {
@@ -91,7 +83,7 @@ impl Prepare<'_> {
                 ace.done(&format!("Moved previous {0} to previous-{0}/", folder.name));
             }
             if folder.linked {
-                if is_supported(self.backend.kind, folder.name) {
+                if self.backend.kind.is_folder_supported(folder.name) {
                     ace.done(&format!("Linked {}", folder.name));
                 } else {
                     ace.warn(&format!(

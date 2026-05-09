@@ -143,7 +143,7 @@ pub(super) fn prepare_school(
         return Ok(prepare_result);
     }
 
-    let registered = ace.backend()?.mcp_list();
+    let registered = ace.backend()?.mcp_list(&project_dir);
     let pending: Vec<&str> = mcp_entries.iter()
         .filter(|e| !registered.contains(&e.name))
         .map(|e| e.name.as_str())
@@ -159,7 +159,7 @@ pub(super) fn prepare_school(
     }
 
     let backend = ace.backend()?.clone();
-    if let Err(e) = (RegisterMcp { backend: &backend, entries: &mcp_entries }).run(ace) {
+    if let Err(e) = (RegisterMcp { backend: &backend, entries: &mcp_entries, project_dir: &project_dir }).run(ace) {
         ace.warn(&format!("MCP registration failed: {e}"));
     }
 

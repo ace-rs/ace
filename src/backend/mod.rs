@@ -1,6 +1,7 @@
 mod claude;
 mod codex;
 mod flaude;
+mod opencode;
 pub mod registry;
 
 use crate::config::ConfigError;
@@ -25,7 +26,7 @@ pub enum BackendError {
 }
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Output;
 
 use serde::{Deserialize, Serialize};
@@ -82,6 +83,7 @@ pub enum Kind {
     Claude,
     Codex,
     Flaude,
+    OpenCode,
 }
 
 /// Dispatch a method call to the matching backend module's free function.
@@ -91,6 +93,7 @@ macro_rules! dispatch {
             Kind::Claude => claude::$method($($arg),*),
             Kind::Codex => codex::$method($($arg),*),
             Kind::Flaude => flaude::$method($($arg),*),
+            Kind::OpenCode => opencode::$method($($arg),*),
         }
     };
 }
@@ -101,10 +104,10 @@ impl Kind {
     /// the enum so internal code paths still compile, but it is unreachable
     /// via name lookup or the registry in `cargo build --release`.
     #[cfg(debug_assertions)]
-    pub const ALL: &'static [Kind] = &[Kind::Claude, Kind::Codex, Kind::Flaude];
+    pub const ALL: &'static [Kind] = &[Kind::Claude, Kind::Codex, Kind::OpenCode, Kind::Flaude];
 
     #[cfg(not(debug_assertions))]
-    pub const ALL: &'static [Kind] = &[Kind::Claude, Kind::Codex];
+    pub const ALL: &'static [Kind] = &[Kind::Claude, Kind::Codex, Kind::OpenCode];
 
     /// Canonical name. Doubles as registry key for built-in entries and as the
     /// default `cmd[0]` (the binary name) when no override is provided.
@@ -113,6 +116,7 @@ impl Kind {
             Kind::Claude => "claude",
             Kind::Codex => "codex",
             Kind::Flaude => "flaude",
+            Kind::OpenCode => "opencode",
         }
     }
 
@@ -125,14 +129,25 @@ impl Kind {
         match self {
             Kind::Claude | Kind::Flaude => ".claude",
             Kind::Codex => ".agents",
+            Kind::OpenCode => ".opencode",
         }
     }
 
     pub fn instructions_file(&self) -> &'static str {
         match self {
             Kind::Claude | Kind::Flaude => "CLAUDE.md",
-            Kind::Codex => "AGENTS.md",
+            Kind::Codex | Kind::OpenCode => "AGENTS.md",
         }
+    }
+
+    /// Whether this backend natively supports a linked folder type.
+    pub fn is_folder_supported(&self, folder: &str) -> bool {
+        matches!(
+            (self, folder),
+            (_, "skills")
+                | (Kind::Claude | Kind::Flaude, _)
+                | (Kind::OpenCode, "commands" | "agents")
+        )
     }
 
     pub fn exec_session(&self, cmd: &[String], req: SessionRequest) -> Result<(), std::io::Error> {
@@ -148,23 +163,23 @@ impl Kind {
         dispatch!(self, is_ready)
     }
 
-    pub fn mcp_list(&self) -> HashSet<String> {
-        dispatch!(self, mcp_list)
+    pub fn mcp_list(&self, project_dir: &Path) -> HashSet<String> {
+        dispatch!(self, mcp_list, project_dir)
     }
 
-    pub fn mcp_remove(&self, name: &str) -> Result<(), String> {
-        dispatch!(self, mcp_remove, name)
+    pub fn mcp_remove(&self, name: &str, project_dir: &Path) -> Result<(), String> {
+        dispatch!(self, mcp_remove, name, project_dir)
     }
 
-    pub fn mcp_check(&self, names: &[String]) -> Result<Vec<McpStatus>, String> {
+    pub fn mcp_check(&self, names: &[String], project_dir: &Path) -> Result<Vec<McpStatus>, String> {
         if names.is_empty() {
             return Ok(Vec::new());
         }
-        dispatch!(self, mcp_check, names)
+        dispatch!(self, mcp_check, names, project_dir)
     }
 
-    pub fn mcp_add(&self, entry: &McpDecl) -> Result<(), String> {
-        dispatch!(self, mcp_add, entry)
+    pub fn mcp_add(&self, entry: &McpDecl, project_dir: &Path) -> Result<(), String> {
+        dispatch!(self, mcp_add, entry, project_dir)
     }
 }
 
@@ -233,20 +248,20 @@ impl Backend {
         self.kind.exec_one_shot(&self.cmd, req)
     }
 
-    pub fn mcp_list(&self) -> HashSet<String> {
-        self.kind.mcp_list()
+    pub fn mcp_list(&self, project_dir: &Path) -> HashSet<String> {
+        self.kind.mcp_list(project_dir)
     }
 
-    pub fn mcp_remove(&self, name: &str) -> Result<(), String> {
-        self.kind.mcp_remove(name)
+    pub fn mcp_remove(&self, name: &str, project_dir: &Path) -> Result<(), String> {
+        self.kind.mcp_remove(name, project_dir)
     }
 
-    pub fn mcp_check(&self, names: &[String]) -> Result<Vec<McpStatus>, String> {
-        self.kind.mcp_check(names)
+    pub fn mcp_check(&self, names: &[String], project_dir: &Path) -> Result<Vec<McpStatus>, String> {
+        self.kind.mcp_check(names, project_dir)
     }
 
-    pub fn mcp_add(&self, entry: &McpDecl) -> Result<(), String> {
-        self.kind.mcp_add(entry)
+    pub fn mcp_add(&self, entry: &McpDecl, project_dir: &Path) -> Result<(), String> {
+        self.kind.mcp_add(entry, project_dir)
     }
 }
 
@@ -312,6 +327,9 @@ mod tests {
 
         let codex = registry.lookup("codex").expect("codex builtin");
         assert_eq!(codex.kind, Kind::Codex);
+
+        let opencode = registry.lookup("opencode").expect("opencode builtin");
+        assert_eq!(opencode.kind, Kind::OpenCode);
 
         let flaude = registry.lookup("flaude").expect("flaude builtin");
         assert_eq!(flaude.kind, Kind::Flaude);

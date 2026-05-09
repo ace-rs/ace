@@ -16,6 +16,7 @@ pub enum RegisterMcpError {
 pub struct RegisterMcp<'a> {
     pub backend: &'a Backend,
     pub entries: &'a [McpDecl],
+    pub project_dir: &'a std::path::Path,
 }
 
 impl RegisterMcp<'_> {
@@ -27,7 +28,7 @@ impl RegisterMcp<'_> {
         // -- check which servers are already registered --
 
         ace.progress("Checking MCP servers...");
-        let registered = self.backend.mcp_list();
+        let registered = self.backend.mcp_list(self.project_dir);
 
         // -- register missing servers --
 
@@ -35,7 +36,7 @@ impl RegisterMcp<'_> {
             let resolved = resolve_headers(entry, ace)?;
             let target = resolved.as_ref().unwrap_or(entry);
 
-            self.backend.mcp_add(target)
+            self.backend.mcp_add(target, self.project_dir)
                 .map_err(|e| RegisterMcpError::Register(format!("{}: {e}", entry.name)))?;
 
             let msg = registration_message(self.backend.kind, &entry.name, entry.headers.is_empty());
