@@ -1,7 +1,7 @@
 //! `ace learn` — study the project, edit the instructions file in place,
 //! and narrow the project's `skills` filter.
 //!
-//! See `spec/learn.md` for the full design. The action one-shots the
+//! See `docs/spec/learn.md` for the full design. The action one-shots the
 //! backend with the LEARN prompt; the agent edits its own instructions
 //! file and emits skill names/globs on stdout. ACE parses forgivingly
 //! and rewrites `ace.toml`'s `skills` array.
@@ -85,10 +85,12 @@ impl LearnAction {
         for warn in &parsed.warnings {
             ace.warn(warn);
         }
+        let ignored = count_ignored(&available, &parsed.kept);
         ace.done(&format!(
-            "kept {} entries, dropped {} lines",
+            "selected {} skills, ignored {} of {} from school",
             parsed.kept.len(),
-            parsed.warnings.len(),
+            ignored,
+            available.len(),
         ));
 
         // Write parsed list into ace.toml. Distinguish io errors from other
@@ -221,6 +223,25 @@ fn is_glob_pattern(s: &str) -> bool {
     s.contains('*') || s.contains('?')
 }
 
+/// Count how many `available` school skills are NOT covered by any entry in
+/// `kept`. A literal entry covers an exact name; a glob entry covers every
+/// available name it matches. The result is the "savings" — skills the
+/// project will skip loading.
+fn count_ignored(available: &[String], kept: &[String]) -> usize {
+    available
+        .iter()
+        .filter(|name| {
+            !kept.iter().any(|entry| {
+                if is_glob_pattern(entry) {
+                    crate::glob::glob_match(entry, name)
+                } else {
+                    entry == *name
+                }
+            })
+        })
+        .count()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -346,5 +367,58 @@ mod tests {
         let mut kept = vec!["ace".to_string(), "rust-coding".to_string()];
         ensure_ace_skills(&mut kept);
         assert_eq!(kept, vec!["ace", "rust-coding", "ace-*"]);
+    }
+
+    fn s(items: &[&str]) -> Vec<String> {
+        items.iter().map(|x| x.to_string()).collect()
+    }
+
+    #[test]
+    fn count_ignored_all_kept_literally() {
+        let avail = s(&["a", "b", "c"]);
+        let kept = s(&["a", "b", "c"]);
+        assert_eq!(count_ignored(&avail, &kept), 0);
+    }
+
+    #[test]
+    fn count_ignored_nothing_kept() {
+        let avail = s(&["a", "b", "c"]);
+        let kept = s(&[]);
+        assert_eq!(count_ignored(&avail, &kept), 3);
+    }
+
+    #[test]
+    fn count_ignored_partial_literals() {
+        let avail = s(&["a", "b", "c", "d"]);
+        let kept = s(&["a", "c"]);
+        assert_eq!(count_ignored(&avail, &kept), 2);
+    }
+
+    #[test]
+    fn count_ignored_glob_covers_many() {
+        let avail = s(&["frontend-design", "frontend-react", "rust-coding"]);
+        let kept = s(&["frontend-*"]);
+        assert_eq!(count_ignored(&avail, &kept), 1);
+    }
+
+    #[test]
+    fn count_ignored_glob_with_no_matches() {
+        let avail = s(&["a", "b"]);
+        let kept = s(&["frontend-*"]);
+        assert_eq!(count_ignored(&avail, &kept), 2);
+    }
+
+    #[test]
+    fn count_ignored_literal_overlap_glob_no_double_count() {
+        let avail = s(&["frontend-design", "frontend-react"]);
+        let kept = s(&["frontend-*", "frontend-design"]);
+        assert_eq!(count_ignored(&avail, &kept), 0);
+    }
+
+    #[test]
+    fn count_ignored_kept_with_unknown_does_not_underflow() {
+        let avail = s(&["a"]);
+        let kept = s(&["a", "ghost"]);
+        assert_eq!(count_ignored(&avail, &kept), 0);
     }
 }
