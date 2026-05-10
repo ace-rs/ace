@@ -170,6 +170,7 @@ enum Command {
         command: school::Command,
     },
     /// List or curate the skills active in this repo
+    #[command(visible_alias = "ls")]
     Skills {
         #[command(subcommand)]
         command: Option<skills::Command>,

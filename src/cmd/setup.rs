@@ -1,7 +1,7 @@
 use crate::ace::Ace;
 use crate::config::index_toml;
 use crate::git;
-use crate::actions::project::{Setup, UpdateGitignore};
+use crate::actions::project::{GitignoreScope, Setup, UpdateGitignore};
 use crate::templates;
 
 use super::CmdError;
@@ -34,6 +34,7 @@ fn run_inner(ace: &mut Ace, specifier: Option<&str>) -> Result<(), CmdError> {
 
     UpdateGitignore {
         project_dir: &project_dir,
+        scope: GitignoreScope::Project,
     }
     .run(ace)
     .map_err(|e| CmdError::Other(format!("gitignore: {e}")))?;

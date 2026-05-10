@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use crate::ace::Ace;
+use crate::actions::project::{GitignoreScope, UpdateGitignore};
 use crate::actions::school::pull_imports::{PullImports, PullImportsError};
 use crate::config::school_toml::{self, ImportDecl};
 use crate::config::ConfigError;
@@ -77,12 +78,12 @@ impl Init<'_> {
             ace.done("Created README.md");
         }
 
-        let gitignore = self.project_dir.join(".gitignore");
-        if !gitignore.exists() {
-            std::fs::write(&gitignore, templates::builtins::GITIGNORE)
-                .map_err(InitError::Write)?;
-            ace.done("Created .gitignore");
+        UpdateGitignore {
+            project_dir: self.project_dir,
+            scope: GitignoreScope::School,
         }
+        .run(ace)
+        .map_err(InitError::Write)?;
 
         PullImports { school_root: self.project_dir }.run(ace)?;
 
