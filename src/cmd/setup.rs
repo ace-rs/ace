@@ -1,7 +1,7 @@
 use crate::ace::Ace;
 use crate::config::index_toml;
 use crate::git;
-use crate::actions::project::{GitignoreScope, Setup, UpdateGitignore};
+use crate::actions::project::Setup;
 use crate::templates;
 
 use super::CmdError;
@@ -29,15 +29,8 @@ fn run_inner(ace: &mut Ace, specifier: Option<&str>) -> Result<(), CmdError> {
     ace.require_resolved()?;
     super::main::prepare_school(ace, &resolved)?;
 
-    // Post-prepare setup: gitignore and instructions file.
+    // Post-prepare setup: instructions file. Gitignore refresh runs inside Prepare.
     let backend = ace.backend()?.clone();
-
-    UpdateGitignore {
-        project_dir: &project_dir,
-        scope: GitignoreScope::Project,
-    }
-    .run(ace)
-    .map_err(|e| CmdError::Other(format!("gitignore: {e}")))?;
 
     let instructions = project_dir.join(backend.instructions_file());
     if !instructions.exists() {

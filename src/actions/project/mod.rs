@@ -19,4 +19,4 @@ pub use pull::{ChangeKind, Pull, PullOutcome, SkillChange};
 pub use register_mcp::{RegisterMcp, RegisterMcpError};
 pub use remove_mcp::RemoveMcp;
 pub use setup::{Setup, SetupError};
-pub use update_gitignore::{Scope as GitignoreScope, UpdateGitignore};
+pub use update_gitignore::UpdateGitignore;

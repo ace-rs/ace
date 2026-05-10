@@ -1,57 +1,29 @@
-# Unified `.gitignore` managed block
+# Gitignore management lives in Prepare; Pull is pure fetch
 - **Date:** 2026-05-10
 - **PR:** manual
 - **Status:** accepted
 
 ## Decision
 
-One `UpdateGitignore` action serves both project and school contexts.
-Static OS/editor cruft lives **inside** the ACE-managed marker block.
-`.env*` and language-specific patterns are not seeded.
+`UpdateGitignore` runs as a step inside `Prepare` . `ace pull` no longer re-links or
+refreshes anything — it fetches the school clone and stops. School and project repos share
+one `UpdateGitignore` codepath with identical block content; no scope specialization.
 
 ## Rationale
 
-**Why not keep the two surfaces (template + dynamic block).** The
-template was a write-once seed; the dynamic block was always-managed.
-Two mechanisms for one concern means a future change touches both or
-silently drifts. The template also froze schools at first-init forever —
-a later ACE upgrade that adjusted the pattern set could never reach
-existing schools.
+**Why `ace pull` no longer re-links.** The original design assumed a successful pull
+should land skills in the repo immediately. From the user's perspective this doesn't
+matter: getting into a coding session means running `ace` , which runs Prepare, which runs
+Link — the skills land then anyway. The only case the change breaks is `ace pull` issued
+against a long-running session expecting the skill list to refresh live. The fix is one
+command: `ace link` , available standalone since v0.7.0. Before v0.7.0 there was no
+recovery path; now there is, so the old auto-link is no longer pulling its weight.
+Dropping it also leaves `Pull` as a single straightforward action — fetch and stop — and
+removes the awkward Pull→Link coupling that was the only reason the gitignore-refresh hook
+was hard to place in the first place.
 
-**Why static cruft inside the marker block, not at the top of the file.**
-The marker block is the only region ACE re-syncs. Patterns outside it
-become permanent on first write — a later version of ACE that wants to
-add or remove a pattern has no path. Putting `.DS_Store` etc. inside the
-block costs nothing on first install and gives every future ACE a path
-to update them.
-
-**Why no `.env` (against the convention every gitignore template
-follows).** Ignoring `.env` is harmful for projects that intentionally
-commit env samples, fixtures, or templates. The cost asymmetry favours
-not seeding it: a user who wants `.env` ignored adds one line; a user
-who finds an ACE-added ignore for a file they meant to commit has to
-hunt down the source and either edit the marker block (which says "do
-not edit") or work around it. Tools should not pre-judge which files in
-the user's repo are secret.
-
-**Why no language patterns (against keeping the existing Python list).**
-ACE doesn't know the project's language. The previous template hardcoded
-Python — arbitrary, since nothing about ACE is Python-specific. Picking
-any one language is wrong; picking all of them bloats every project.
-The principled rule is "no language-specific patterns ever, users own
-that surface."
-
-**Why school becomes always-managed (vs. the previous write-if-absent).**
-Same argument as the marker block above: write-once means version bumps
-can't propagate. Same semantics in both contexts also means one rule
-for users to learn.
-
-## Deferred
-
-- **Auto-refresh on version bump.** Today the block only updates on
-  `ace setup` and `ace school init`. If ACE adds a new backend or
-  folder, existing projects stay stale until the next setup. Surfaced
-  during this work; not solved here. Tied to the smell below.
-- **`ace pull` re-links after fetch** (`cmd/pull.rs`). Pull's "fetch
-  upstream" verb does double duty by re-linking, which is what made
-  placing the gitignore-update hook awkward. Separate concern.
+**Why one codepath for school and project, not specialized.** The school context has
+basically no ignore lines of its own — and ACE is the tool used to edit the school itself,
+which means the school repo IS a project context in practice. Specializing per context
+would save a handful of gitignore lines while forking the codepath, with no real
+divergence between what the two contexts need.

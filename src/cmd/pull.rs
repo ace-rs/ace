@@ -1,7 +1,6 @@
 use crate::ace::Ace;
-use crate::actions::project::link_skills;
 use crate::actions::project::pull::PullOutcome;
-use crate::actions::project::{clone, Link, Pull};
+use crate::actions::project::{clone, Pull};
 use crate::config::school_paths;
 
 use super::CmdError;
@@ -47,21 +46,6 @@ fn run_inner(ace: &mut Ace) -> Result<(), CmdError> {
             crate::school::skill_count::maybe_hint_relearn(ace, changes);
         }
     }
-
-    // Re-link in case new folders appeared.
-    let backend_dir = ace.backend()?.backend_dir();
-    let tree = ace.require_tree()?.clone();
-    let prepared = link_skills::prepare(&school_paths.root, &tree)
-        .map_err(|e| CmdError::Other(format!("scan school skills: {e}")))?;
-
-    let result = Link {
-        school_root: &school_paths.root,
-        project_dir: &project_dir,
-        backend_dir,
-        skills: &prepared.desired,
-    }
-    .run(ace)?;
-    link_skills::emit_warnings(ace, &prepared, &result);
 
     Ok(())
 }

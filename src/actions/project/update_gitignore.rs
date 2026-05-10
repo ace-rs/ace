@@ -8,45 +8,9 @@ use crate::backend::Kind;
 const MARKER_START: &str = "# ACE-managed — do not edit this block.";
 const MARKER_END: &str = "# end ACE";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Scope {
-    /// Consumer project: includes the dynamic per-folder section.
-    Project,
-    /// School repo: static prelude only.
-    School,
-}
-
-pub struct UpdateGitignore<'a> {
-    pub project_dir: &'a Path,
-    pub scope: Scope,
-}
-
-impl UpdateGitignore<'_> {
-    pub fn run(&self, ace: &mut Ace) -> Result<(), std::io::Error> {
-        let path = self.project_dir.join(".gitignore");
-        let existing = std::fs::read_to_string(&path).unwrap_or_default();
-        let block = build_block(self.scope);
-
-        let new_content = if existing.contains(MARKER_START) {
-            replace_block(&existing, &block)
-        } else {
-            append_block(&existing, &block)
-        };
-
-        if new_content == existing {
-            return Ok(());
-        }
-
-        std::fs::write(&path, &new_content)?;
-        ace.done("Updated .gitignore with ACE patterns");
-        Ok(())
-    }
-}
-
-/// Static prelude — universal OS / editor cruft, applies to every ACE-managed
-/// `.gitignore` regardless of scope. Kept inside the marker block so future
-/// updates propagate; explicitly excludes `.env*` and language-specific
-/// patterns (see `docs/decisions/2026-05-10-gitignore-managed-block.md`).
+/// One-time seed written above the managed block when no `.gitignore` exists.
+/// User owns this surface afterwards — ACE never re-syncs it. Convenience for
+/// fresh repos, not a contract.
 const STATIC_PRELUDE: &[&str] = &[
     ".DS_Store",
     "Thumbs.db",
@@ -57,30 +21,63 @@ const STATIC_PRELUDE: &[&str] = &[
     ".idea/",
 ];
 
-fn build_block(scope: Scope) -> String {
+pub struct UpdateGitignore<'a> {
+    pub project_dir: &'a Path,
+}
+
+impl UpdateGitignore<'_> {
+    pub fn run(&self, ace: &mut Ace) -> Result<(), std::io::Error> {
+        let path = self.project_dir.join(".gitignore");
+        let block = build_block();
+
+        let existing = match std::fs::read_to_string(&path) {
+            Ok(s) => Some(s),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => return Err(e),
+        };
+
+        let new_content = match &existing {
+            Some(s) if s.contains(MARKER_START) => replace_block(s, &block),
+            Some(s) => append_block(s, &block),
+            None => seed_new_file(&block),
+        };
+
+        if existing.as_deref() == Some(new_content.as_str()) {
+            return Ok(());
+        }
+
+        std::fs::write(&path, &new_content)?;
+        ace.done("Updated .gitignore with ACE patterns");
+        Ok(())
+    }
+}
+
+fn build_block() -> String {
     let mut lines = vec![
         MARKER_START.to_string(),
-        "# Managed by `ace setup` / `ace school init`. See https://github.com/ace-rs/ace".to_string(),
+        "# Managed by ACE. See https://github.com/ace-rs/ace".to_string(),
     ];
 
-    for line in STATIC_PRELUDE {
-        lines.push((*line).to_string());
-    }
-
-    if scope == Scope::Project {
-        let dirs: BTreeSet<&str> = Kind::ALL.iter().map(|b| b.backend_dir()).collect();
-        let folders: BTreeSet<&str> = SCHOOL_FOLDERS.iter().copied().collect();
-        for dir in &dirs {
-            for folder in &folders {
-                lines.push(format!("{dir}/{folder}"));
-            }
+    let dirs: BTreeSet<&str> = Kind::ALL.iter().map(|b| b.backend_dir()).collect();
+    let folders: BTreeSet<&str> = SCHOOL_FOLDERS.iter().copied().collect();
+    for dir in &dirs {
+        for folder in &folders {
+            lines.push(format!("{dir}/{folder}"));
         }
-        lines.push("ace.local.toml".to_string());
     }
+    lines.push("ace.local.toml".to_string());
 
     lines.push(MARKER_END.to_string());
-    lines.push(String::new()); // trailing newline
+    lines.push(String::new());
     lines.join("\n")
+}
+
+fn seed_new_file(block: &str) -> String {
+    let prelude: Vec<String> = STATIC_PRELUDE.iter().map(|s| s.to_string()).collect();
+    let mut result = prelude.join("\n");
+    result.push_str("\n\n");
+    result.push_str(block);
+    result
 }
 
 fn replace_block(content: &str, block: &str) -> String {
@@ -93,7 +90,6 @@ fn replace_block(content: &str, block: &str) -> String {
     };
     let end = search_from + end_marker + MARKER_END.len();
 
-    // Skip trailing newline after end marker.
     let end = if content[end..].starts_with('\n') { end + 1 } else { end };
 
     let mut result = content[..start].to_string();
@@ -118,8 +114,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn project_block_contains_all_backends_and_local_toml() {
-        let block = build_block(Scope::Project);
+    fn block_contains_backends_folders_and_local_toml() {
+        let block = build_block();
         assert!(block.contains(".claude/skills"));
         assert!(block.contains(".claude/rules"));
         assert!(block.contains(".claude/commands"));
@@ -132,62 +128,51 @@ mod tests {
     }
 
     #[test]
-    fn both_scopes_contain_static_prelude() {
-        for scope in [Scope::Project, Scope::School] {
-            let block = build_block(scope);
-            for line in STATIC_PRELUDE {
-                assert!(block.contains(line), "scope {scope:?} missing {line}");
-            }
+    fn block_omits_static_prelude_and_dropped_patterns() {
+        let block = build_block();
+        for line in STATIC_PRELUDE {
+            assert!(!block.contains(line), "block should not contain prelude line {line}");
+        }
+        assert!(!block.contains(".env"));
+        assert!(!block.contains("__pycache__"));
+        assert!(!block.contains("*.pyc"));
+    }
+
+    #[test]
+    fn seed_new_file_places_prelude_before_block() {
+        let block = build_block();
+        let result = seed_new_file(&block);
+        for line in STATIC_PRELUDE {
+            let prelude_pos = result.find(line).expect("prelude line present");
+            let block_pos = result.find(MARKER_START).expect("block present");
+            assert!(prelude_pos < block_pos, "{line} should precede managed block");
         }
     }
 
     #[test]
-    fn neither_scope_contains_dropped_patterns() {
-        for scope in [Scope::Project, Scope::School] {
-            let block = build_block(scope);
-            assert!(!block.contains(".env"), "{scope:?} should not include .env");
-            assert!(!block.contains("__pycache__"), "{scope:?} should not include Python");
-            assert!(!block.contains("*.pyc"), "{scope:?} should not include *.pyc");
-        }
-    }
-
-    #[test]
-    fn school_block_omits_dynamic_section() {
-        let block = build_block(Scope::School);
-        assert!(!block.contains(".claude/skills"));
-        assert!(!block.contains(".agents/skills"));
-        assert!(!block.contains("ace.local.toml"));
-    }
-
-    #[test]
-    fn append_to_empty() {
-        let block = build_block(Scope::Project);
-        let result = append_block("", &block);
-        assert_eq!(result, block);
-    }
-
-    #[test]
-    fn append_to_existing() {
-        let block = build_block(Scope::Project);
+    fn append_to_existing_does_not_seed_prelude() {
+        let block = build_block();
         let result = append_block("node_modules/\n", &block);
+        for line in STATIC_PRELUDE {
+            assert!(!result.contains(line), "append must not inject prelude {line}");
+        }
         assert!(result.starts_with("node_modules/"));
         assert!(result.contains(MARKER_START));
-        assert!(result.ends_with('\n'));
     }
 
     #[test]
     fn append_adds_blank_line_separator() {
-        let block = build_block(Scope::Project);
+        let block = build_block();
         let result = append_block("node_modules/\n", &block);
         assert!(result.contains("node_modules/\n\n#"));
     }
 
     #[test]
-    fn replace_existing_block() {
+    fn replace_existing_block_preserves_user_content() {
         let original = format!(
             "node_modules/\n{MARKER_START}\n.old/skills/\n{MARKER_END}\n.env\n"
         );
-        let block = build_block(Scope::Project);
+        let block = build_block();
         let result = replace_block(&original, &block);
 
         assert!(result.contains("node_modules/"));
@@ -201,7 +186,7 @@ mod tests {
         let original = format!(
             "before\n{MARKER_START}\nold stuff\n{MARKER_END}\nafter\n"
         );
-        let block = build_block(Scope::Project);
+        let block = build_block();
         let result = replace_block(&original, &block);
 
         assert!(result.contains("before\n"));
@@ -210,34 +195,21 @@ mod tests {
 
     #[test]
     fn block_dirs_alphabetically_sorted() {
-        let block = build_block(Scope::Project);
+        let block = build_block();
         let agents_pos = block.find(".agents/skills").expect(".agents/skills present");
         let claude_pos = block.find(".claude/skills").expect(".claude/skills present");
-        assert!(
-            agents_pos < claude_pos,
-            ".agents/* should appear before .claude/* in gitignore block"
-        );
+        assert!(agents_pos < claude_pos);
     }
 
     #[test]
     fn block_folders_alphabetically_sorted_within_dir() {
-        let block = build_block(Scope::Project);
+        let block = build_block();
         let agents = block.find(".claude/agents").expect(".claude/agents present");
         let commands = block.find(".claude/commands").expect(".claude/commands present");
         let rules = block.find(".claude/rules").expect(".claude/rules present");
         let skills = block.find(".claude/skills").expect(".claude/skills present");
-        assert!(agents < commands, "agents < commands");
-        assert!(commands < rules, "commands < rules");
-        assert!(rules < skills, "rules < skills");
-    }
-
-    #[test]
-    fn idempotent_when_unchanged() {
-        let block = build_block(Scope::Project);
-        let content = append_block("", &block);
-        let replaced = replace_block(&content, &block);
-
-        assert!(replaced.contains(MARKER_START));
-        assert!(replaced.contains(".claude/skills"));
+        assert!(agents < commands);
+        assert!(commands < rules);
+        assert!(rules < skills);
     }
 }
