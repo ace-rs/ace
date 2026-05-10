@@ -1,98 +1,57 @@
-# Decision: Unified ACE-managed `.gitignore` block (2026-05-10)
-
-Status: **decided** — single `UpdateGitignore` action serves both project
-and school contexts; static OS/editor cruft moves inside the marker block;
-`.env` and Python patterns dropped; static `tpl_gitignore.md` template
-deleted.
-
-## Problem
-
-Two disjoint `.gitignore` mechanisms coexisted:
-
-1. `src/templates/builtins/tpl_gitignore.md` (`templates::builtins::GITIGNORE`)
-   — static OS / Python / editor / env list. Written once by
-   `actions/school/init.rs` if `.gitignore` was absent. Never updated
-   afterwards.
-2. `src/actions/project/update_gitignore.rs` (`UpdateGitignore`) — dynamic
-   ACE-managed marker block (symlinked school folders + `ace.local.toml`)
-   maintained on every `ace setup`. No OS/editor patterns.
-
-Consequences:
-
-- A fresh project initialised by `ace setup` (no prior `.gitignore`) ended
-  up with **only** the ACE block — no `.DS_Store`, no swap files.
-- The school template seeded `.env` / `.env.local`, ignoring environment
-  files the maintainer might intend to commit (sample envs, fixtures).
-- Python-specific patterns leaked into every school regardless of language.
-- Two surfaces to maintain for one concern.
+# Unified `.gitignore` managed block
+- **Date:** 2026-05-10
+- **PR:** manual
+- **Status:** accepted
 
 ## Decision
 
-Single source of truth. `UpdateGitignore` builds the entire managed block
-and runs in both contexts; the static template file is removed.
+One `UpdateGitignore` action serves both project and school contexts.
+Static OS/editor cruft lives **inside** the ACE-managed marker block.
+`.env*` and language-specific patterns are not seeded.
 
-### Block shape
+## Rationale
 
-```
-# ACE-managed — do not edit this block.
-# (intro comment)
-.DS_Store
-Thumbs.db
-*.swp
-*.swo
-*~
-.vscode/
-.idea/
-                                 ← project scope only, below
-.agents/agents
-.agents/skills
-.claude/agents
-.claude/commands
-.claude/rules
-.claude/skills
-ace.local.toml
-# end ACE
-```
+**Why not keep the two surfaces (template + dynamic block).** The
+template was a write-once seed; the dynamic block was always-managed.
+Two mechanisms for one concern means a future change touches both or
+silently drifts. The template also froze schools at first-init forever —
+a later ACE upgrade that adjusted the pattern set could never reach
+existing schools.
 
-The static prelude (OS + editor cruft) is shared; the per-folder dynamic
-section and `ace.local.toml` are project-scope only — schools have no
-symlinked school folders to ignore.
+**Why static cruft inside the marker block, not at the top of the file.**
+The marker block is the only region ACE re-syncs. Patterns outside it
+become permanent on first write — a later version of ACE that wants to
+add or remove a pattern has no path. Putting `.DS_Store` etc. inside the
+block costs nothing on first install and gives every future ACE a path
+to update them.
 
-### Scope parameter
+**Why no `.env` (against the convention every gitignore template
+follows).** Ignoring `.env` is harmful for projects that intentionally
+commit env samples, fixtures, or templates. The cost asymmetry favours
+not seeding it: a user who wants `.env` ignored adds one line; a user
+who finds an ACE-added ignore for a file they meant to commit has to
+hunt down the source and either edit the marker block (which says "do
+not edit") or work around it. Tools should not pre-judge which files in
+the user's repo are secret.
 
-`UpdateGitignore` gains a `scope: Scope` field (`Project | School`) that
-toggles whether the dynamic section is emitted. `cmd/setup.rs` passes
-`Project`; `actions/school/init.rs` passes `School` and removes its own
-`.gitignore` write path entirely.
+**Why no language patterns (against keeping the existing Python list).**
+ACE doesn't know the project's language. The previous template hardcoded
+Python — arbitrary, since nothing about ACE is Python-specific. Picking
+any one language is wrong; picking all of them bloats every project.
+The principled rule is "no language-specific patterns ever, users own
+that surface."
 
-### School `.gitignore` becomes always-managed
+**Why school becomes always-managed (vs. the previous write-if-absent).**
+Same argument as the marker block above: write-once means version bumps
+can't propagate. Same semantics in both contexts also means one rule
+for users to learn.
 
-Previously the school template was written only when `.gitignore` did not
-exist. Under the new model, `school init` calls `UpdateGitignore` with the
-same append-or-replace marker semantics used for projects. Re-running
-`init --force` (or any future caller) refreshes the block.
+## Deferred
 
-### Dropped patterns
-
-- **`.env`, `.env.local`** — committing or ignoring env files is a
-  per-project decision; ACE should not pre-judge it.
-- **Python (`__pycache__/`, `*.pyc`, `*.pyo`)** — language-specific noise
-  in a tool that targets any language.
-
-## Out of scope
-
-- Per-language gitignore templates. If users want richer language-aware
-  ignores they bring their own; ACE manages only the ACE-relevant block
-  plus universal cruft.
-- Migration of existing `.gitignore` files that contain the old static
-  template. The next `ace setup` will append/replace the marker block;
-  any pre-existing `.env` lines stay where the user put them.
-
-## References
-
-- `src/actions/project/update_gitignore.rs` — block builder + scope.
-- `src/cmd/setup.rs` — project-scope invocation.
-- `src/actions/school/init.rs` — school-scope invocation.
-- `docs/decisions/2026-04-22-action-layout.md` — `UpdateGitignore`
-  remains under `actions/project/` despite cross-role use; the action is
-  consumer-shaped and the school caller is the secondary user.
+- **Auto-refresh on version bump.** Today the block only updates on
+  `ace setup` and `ace school init`. If ACE adds a new backend or
+  folder, existing projects stay stale until the next setup. Surfaced
+  during this work; not solved here. Tied to the smell below.
+- **`ace pull` re-links after fetch** (`cmd/pull.rs`). Pull's "fetch
+  upstream" verb does double duty by re-linking, which is what made
+  placing the gitignore-update hook awkward. Separate concern.
