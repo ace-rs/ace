@@ -56,6 +56,23 @@ Registration flow:
 
 See [backend.md](backend.md#mcp-server-registration) for per-backend CLI commands.
 
+### Skipping servers
+
+Bare `ace mcp` prompts before registering each missing server. Answering "no"
+appends the server name to `exclude_mcp` in `ace.local.toml`; subsequent runs
+silently skip those names. The exclusion list is unioned across user, project,
+and local `ace.toml` scopes (same merge as `exclude_skills`).
+
+`ace mcp register <name>` is the un-skip path: it removes `<name>` from
+`exclude_mcp` (in `ace.local.toml`) and registers that single school-defined
+entry. Use it when a server was previously declined and now needs to be added
+back. The command errors cleanly if `<name>` is not declared in the active
+school.
+
+`include_mcp` and a user/local `[[mcp]]` section are intentionally not
+implemented. Both require user-scoped MCP definitions, which is a separate
+planned feature.
+
 ## Authentication
 
 Handled entirely by the backend. When the backend connects to a remote MCP endpoint and receives

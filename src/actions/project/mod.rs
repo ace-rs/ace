@@ -1,4 +1,5 @@
 pub mod clone;
+pub mod edit_mcp_config;
 pub mod edit_skills_config;
 pub mod explain_skill;
 pub mod learn;

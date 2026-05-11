@@ -154,8 +154,25 @@ impl Ace {
         TemplateCtx { school_dir, project_dir, home }
     }
 
+    /// Union of `exclude_mcp` across user/project/local scopes. Empty when no
+    /// tree is loaded; callers needing a guarantee should `require_resolved`
+    /// or `require_tree` first.
+    pub fn excluded_mcp(&self) -> std::collections::HashSet<String> {
+        let Ok(tree) = self.require_tree() else {
+            return std::collections::HashSet::new();
+        };
+        let mut out = std::collections::HashSet::new();
+        for toml in [&tree.user, &tree.project, &tree.local].iter().copied().flatten() {
+            for name in &toml.exclude_mcp {
+                out.insert(name.clone());
+            }
+        }
+        out
+    }
+
     /// Resolve school paths. See docs/spec/school/overview.md (Context Resolution)
     /// for the full case matrix. Summary:
+    ///
     /// - school.toml in workdir → Ok (school-repo).
     /// - Else require_tree → specifier → resolve.
     /// - Resolved root exists but lacks school.toml → MissingSchool

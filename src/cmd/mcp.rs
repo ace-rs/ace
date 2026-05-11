@@ -5,7 +5,7 @@ use clap::Subcommand;
 use crate::ace::Ace;
 use crate::backend::McpStatus;
 use crate::config::school_toml::McpDecl;
-use crate::actions::project::{RegisterMcp, RemoveMcp, register_mcp};
+use crate::actions::project::{edit_mcp_config, RegisterMcp, RemoveMcp, register_mcp};
 
 use super::CmdError;
 
@@ -24,6 +24,11 @@ pub enum Command {
         /// Specific server name to remove (omit for all school-defined)
         name: Option<String>,
     },
+    /// Register a single MCP server by name (clears it from `exclude_mcp` if present)
+    Register {
+        /// Server name (must be defined in the active school)
+        name: String,
+    },
 }
 
 pub fn run(ace: &mut Ace, command: Option<Command>) {
@@ -31,6 +36,7 @@ pub fn run(ace: &mut Ace, command: Option<Command>) {
         None => run_default(ace),
         Some(Command::Check) => run_check(ace),
         Some(Command::Reset { name } | Command::Clear { name }) => run_reset(ace, name),
+        Some(Command::Register { name }) => run_register(ace, name),
     };
     super::exit_on_err(ace, result);
 }
@@ -45,13 +51,29 @@ fn run_default(ace: &mut Ace) -> Result<(), CmdError> {
         return Ok(());
     }
 
-    // -- add missing --
+    // -- add missing (prompt per missing entry; "no" appends to exclude_mcp) --
 
     let registered = backend.mcp_list(&project_dir);
-    let has_missing = entries.iter().any(|e| !registered.contains(&e.name));
+    let local_path = ace.require_paths()?.local.clone();
 
-    if has_missing {
-        RegisterMcp{ backend: &backend, entries: &entries, project_dir: &project_dir }.run(ace)?;
+    let mut to_register: Vec<McpDecl> = Vec::new();
+    for entry in &entries {
+        if registered.contains(&entry.name) {
+            // already registered — pass through so RegisterMcp's internal skip path runs
+            to_register.push(entry.clone());
+            continue;
+        }
+        let prompt = format!("Register MCP '{}'?", entry.name);
+        if ace.prompt_confirm(&prompt, true)? {
+            to_register.push(entry.clone());
+        } else {
+            edit_mcp_config::exclude(&local_path, &entry.name)?;
+            ace.hint(&format!("'{}' added to exclude_mcp in ace.local.toml", entry.name));
+        }
+    }
+
+    if to_register.iter().any(|e| !registered.contains(&e.name)) {
+        RegisterMcp{ backend: &backend, entries: &to_register, project_dir: &project_dir }.run(ace)?;
     }
 
     // -- health check registered servers --
@@ -205,6 +227,27 @@ fn run_reset(ace: &mut Ace, name: Option<String>) -> Result<(), CmdError> {
     Ok(())
 }
 
+/// `ace mcp register <name>` — un-skip and register a single school-defined MCP.
+fn run_register(ace: &mut Ace, name: String) -> Result<(), CmdError> {
+    ace.require_resolved()?;
+
+    let backend = ace.backend()?.clone();
+    let project_dir = ace.project_dir().to_path_buf();
+
+    // Look up the school entry by name (do not apply the exclude filter — we
+    // want this to work even when the entry is currently excluded).
+    let entry = ace.school()?
+        .and_then(|s| s.mcp.iter().find(|e| e.name == name).cloned())
+        .ok_or_else(|| CmdError::Other(format!("MCP '{name}' not defined in school")))?;
+
+    let local_path = ace.require_paths()?.local.clone();
+    edit_mcp_config::include(&local_path, &name)?;
+
+    let entries = vec![entry];
+    RegisterMcp{ backend: &backend, entries: &entries, project_dir: &project_dir }.run(ace)?;
+    Ok(())
+}
+
 fn report_statuses(ace: &mut Ace, statuses: &[McpStatus]) {
     for status in statuses {
         if status.ok {
@@ -215,12 +258,71 @@ fn report_statuses(ace: &mut Ace, statuses: &[McpStatus]) {
     }
 }
 
-/// Load school MCP entries and backend from current state.
+/// Load school MCP entries and backend from current state. Entries listed in
+/// `exclude_mcp` (union across user/project/local scopes) are filtered out
+/// before returning.
 fn load_school_mcp(ace: &Ace) -> Result<(crate::backend::Backend, Vec<McpDecl>, std::path::PathBuf), CmdError> {
     let backend = ace.backend()?.clone();
-    let entries = ace.school()?
+    let raw = ace.school()?
         .map(|s| s.mcp.clone())
         .unwrap_or_default();
+    let excluded = ace.excluded_mcp();
+    let entries = filter_excluded(raw, &excluded);
     let project_dir = ace.project_dir().to_path_buf();
     Ok((backend, entries, project_dir))
+}
+
+/// Drop entries whose name appears in `excluded`. Order-preserving.
+fn filter_excluded(entries: Vec<McpDecl>, excluded: &HashSet<String>) -> Vec<McpDecl> {
+    entries.into_iter().filter(|e| !excluded.contains(&e.name)).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn decl(name: &str) -> McpDecl {
+        McpDecl {
+            name: name.to_string(),
+            url: format!("https://{name}.example.com/mcp"),
+            headers: HashMap::new(),
+            instructions: String::new(),
+        }
+    }
+
+    #[test]
+    fn filter_excluded_drops_named() {
+        let entries = vec![decl("linear"), decl("github"), decl("sentry")];
+        let excluded: HashSet<String> = ["github"].iter().map(|s| s.to_string()).collect();
+        let out = filter_excluded(entries, &excluded);
+        let names: Vec<&str> = out.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, vec!["linear", "sentry"]);
+    }
+
+    #[test]
+    fn filter_excluded_empty_excludes_returns_all() {
+        let entries = vec![decl("linear"), decl("github")];
+        let excluded: HashSet<String> = HashSet::new();
+        let out = filter_excluded(entries, &excluded);
+        assert_eq!(out.len(), 2);
+    }
+
+    #[test]
+    fn filter_excluded_all_excluded_returns_empty() {
+        let entries = vec![decl("linear"), decl("github")];
+        let excluded: HashSet<String> =
+            ["linear", "github"].iter().map(|s| s.to_string()).collect();
+        let out = filter_excluded(entries, &excluded);
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn filter_excluded_preserves_order() {
+        let entries = vec![decl("a"), decl("b"), decl("c"), decl("d")];
+        let excluded: HashSet<String> = ["b"].iter().map(|s| s.to_string()).collect();
+        let out = filter_excluded(entries, &excluded);
+        let names: Vec<&str> = out.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, vec!["a", "c", "d"]);
+    }
 }

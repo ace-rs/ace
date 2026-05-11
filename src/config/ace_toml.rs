@@ -103,6 +103,10 @@ pub struct AceToml {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub exclude_skills: Vec<String>,
 
+    /// MCP server names to skip during registration. Union across user/project/local scopes.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub exclude_mcp: Vec<String>,
+
     /// Per-backend declarations: env overrides for built-ins, full custom backends later.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub backends: Vec<BackendDecl>,
@@ -225,6 +229,32 @@ AWS_REGION = "us-east-1"
         assert_eq!(b.kind.as_deref(), Some("claude"));
         assert_eq!(b.cmd, vec!["claude-bedrock", "--profile", "prod"]);
         assert_eq!(b.env.get("AWS_REGION").map(String::as_str), Some("us-east-1"));
+    }
+
+    #[test]
+    fn exclude_mcp_round_trip() {
+        let dir = tempfile::tempdir().expect("create tempdir");
+        let path = dir.path().join("ace.toml");
+        std::fs::write(&path, "exclude_mcp = [\"github\", \"linear\"]\n").expect("write");
+
+        let loaded = load_or_default(&path).expect("load");
+        assert_eq!(loaded.exclude_mcp, vec!["github".to_string(), "linear".to_string()]);
+
+        save(&path, &loaded).expect("save");
+        let text = std::fs::read_to_string(&path).expect("re-read");
+        assert!(text.contains("exclude_mcp"), "missing key: {text}");
+        assert!(text.contains("github"), "missing github: {text}");
+        assert!(text.contains("linear"), "missing linear: {text}");
+    }
+
+    #[test]
+    fn exclude_mcp_empty_omitted_on_save() {
+        let dir = tempfile::tempdir().expect("create tempdir");
+        let path = dir.path().join("ace.toml");
+        let toml = AceToml::default();
+        save(&path, &toml).expect("save");
+        let text = std::fs::read_to_string(&path).expect("re-read");
+        assert!(!text.contains("exclude_mcp"), "should be skipped: {text}");
     }
 
     #[test]
