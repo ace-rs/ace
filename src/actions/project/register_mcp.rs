@@ -33,6 +33,9 @@ impl RegisterMcp<'_> {
         // -- register missing servers --
 
         for entry in unregistered(self.entries, &registered) {
+            if let Some(hint) = instruction_hint(entry) {
+                ace.hint(hint);
+            }
             let resolved = resolve_headers(entry, ace)?;
             let target = resolved.as_ref().unwrap_or(entry);
 
@@ -80,10 +83,6 @@ pub(crate) fn resolve_headers(entry: &McpDecl, ace: &mut Ace) -> Result<Option<M
 
     // -- prompt for values --
 
-    if !entry.instructions.is_empty() {
-        ace.hint(&entry.instructions);
-    }
-
     let mut values = HashMap::new();
     for name in &all_placeholders {
         let input = ace.prompt_text(&format!("{} ({}):", name, entry.name), None)?;
@@ -105,6 +104,10 @@ pub(crate) fn resolve_headers(entry: &McpDecl, ace: &mut Ace) -> Result<Option<M
         headers: resolved_headers,
         instructions: entry.instructions.clone(),
     }))
+}
+
+fn instruction_hint(entry: &McpDecl) -> Option<&str> {
+    if entry.instructions.is_empty() { None } else { Some(&entry.instructions) }
 }
 
 fn collect_placeholders(headers: &HashMap<String, String>) -> Vec<String> {
@@ -195,6 +198,30 @@ mod tests {
         let msg = registration_message(Kind::Codex, "linear", true);
         assert!(msg.contains("/mcp"));
         assert!(msg.contains("Codex"));
+    }
+
+    // -- instruction_hint --
+
+    #[test]
+    fn instruction_hint_returns_some_when_set() {
+        let mut entry = decl("github");
+        entry.instructions = "do the thing".to_string();
+        assert_eq!(instruction_hint(&entry), Some("do the thing"));
+    }
+
+    #[test]
+    fn instruction_hint_returns_none_when_empty() {
+        let entry = decl("linear");
+        assert_eq!(instruction_hint(&entry), None);
+    }
+
+    #[test]
+    fn instruction_hint_works_for_oauth_only_entry() {
+        // OAuth-only entries have empty headers; instructions should still surface.
+        let mut entry = decl("linear");
+        entry.instructions = "authorize in browser".to_string();
+        assert!(entry.headers.is_empty());
+        assert_eq!(instruction_hint(&entry), Some("authorize in browser"));
     }
 
     // -- collect_placeholders --

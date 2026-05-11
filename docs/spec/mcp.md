@@ -46,8 +46,9 @@ Registration flow:
 
 1. **Check** — `claude mcp get <name>`. If already registered at any scope, print a warning
    (same pattern as school update warnings) and skip. Do not overwrite existing config.
-2. **Prompt** — If `headers` contain `{{ placeholder }}` values, print `instructions` (if
-   present), then prompt the user for each placeholder value.
+2. **Prompt** — Print `instructions` (if non-empty) for every newly-registered entry,
+   regardless of whether headers are present. If `headers` contain `{{ placeholder }}`
+   values, then prompt the user for each placeholder value after the instructions.
 3. **Substitute** — Replace placeholders with user-provided values.
 4. **Register** — Call the backend CLI to add the MCP server with resolved headers.
 5. **Inform** — Print auth guidance (OAuth servers: "you'll be prompted on first use";
