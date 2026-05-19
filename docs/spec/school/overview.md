@@ -107,9 +107,10 @@ agents/
 All four folders are optional. Only folders present in the school are linked into projects.
 
 Beyond on-disk folders, `school.toml` itself ships first-class declarations that ACE applies
-to subscriber projects: `[[mcp]]` server registrations, `[[backends]]` custom-backend
-entries, `[[roles]]` prompts, `[[projects]]` catalog, and `[[imports]]` skill provenance
-(including wholesale-imports of another school via `skill = "*"`). See
+to subscriber projects: top-level `session_prompt` (unconditional injection into every
+session), `[[mcp]]` server registrations, `[[backends]]` custom-backend entries,
+`[[roles]]` prompts (role-conditional), `[[projects]]` catalog, and `[[imports]]` skill
+provenance (including wholesale-imports of another school via `skill = "*"`). See
 [school-toml.md](school-toml.md) for the full reference.
 
 Every school created by `ace school init` is seeded with a `[[imports]]`

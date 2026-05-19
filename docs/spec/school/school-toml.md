@@ -7,6 +7,8 @@ configuration, MCP servers, environment, and project catalog for the school.
 
 ```toml
 name = "Acme Corp"
+session_prompt = """Always load the `acme-conventions` skill first. \
+This org uses Postgres for storage and gRPC for service-to-service calls."""
 
 [env]
 NODE_VERSION = "22"
@@ -63,6 +65,27 @@ description = "Terraform and Kubernetes configs for AWS deployment."
 
 Display name for the school. Used in logs, UI, and fuzzy search. Not an identifier —
 the school is identified by its GitHub `owner/repo` shorthand.
+
+### `session_prompt`
+
+Top-level string. Injected verbatim into every ACE session's prompt for projects that
+consume this school. Use it for school-wide instructions that always apply —
+load-this-skill nudges, org-wide conventions, coding-style reminders, etc.
+
+Unlike `[[roles]]` prompts (which are injected only when the user has selected that role),
+`session_prompt` is unconditional: it fires on every invocation regardless of role
+selection — or even when the school declares no roles at all.
+
+```toml
+session_prompt = """Always load the `acme-conventions` skill first.
+This org uses Postgres for storage and gRPC for service-to-service calls.
+Prefer `rtk`-prefixed shell commands."""
+```
+
+Layering order with the project-level `session_prompt` (in `ace.toml` / `ace.local.toml`)
+is documented in [prompt-templating.md](../prompt-templating.md#composition). The school
+layer renders before the project layer; both are injected verbatim with no template
+substitution.
 
 ### `[env]`
 

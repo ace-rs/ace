@@ -16,8 +16,11 @@ Built by concatenating layers, separated by blank lines:
 2. **Role** — resolved from the user's selected role in the school's `[[roles]]` list. Injected
    as `Role: {name}\n{prompt}`. Only present when a role is set and found in the school. See
    [roles.md](roles.md).
-3. **School** — `session_prompt` field in `school.toml`. Domain-specific instructions from the
-   school maintainer. Injected verbatim (no template substitution).
+3. **School** — top-level `session_prompt` field in `school.toml`. Domain-specific
+   instructions from the school maintainer, injected verbatim (no template substitution).
+   Unconditional: fires every session regardless of role selection. Separate from
+   `[[roles]]` prompts, which are role-conditional (layer 2 above). See
+   [school/school-toml.md](school/school-toml.md#session_prompt) for the field reference.
 4. **Project** — `session_prompt` field in `ace.toml` (or user-level `~/.config/ace/ace.toml`).
    Resolved across config layers (user < project < local, last wins).
    Injected verbatim (no template substitution).
