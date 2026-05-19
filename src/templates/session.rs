@@ -34,9 +34,7 @@ pub fn build_session_prompt(input: &SessionPromptInput) -> String {
     }
 
     if !input.excluded_skills.is_empty() {
-        let mut sorted: Vec<String> = input.excluded_skills.to_vec();
-        sorted.sort();
-        let names = sorted
+        let names = input.excluded_skills
             .iter()
             .map(|n| format!("- `{n}`"))
             .collect::<Vec<_>>()
@@ -386,16 +384,16 @@ mod tests {
     }
 
     #[test]
-    fn excluded_skills_names_sorted() {
+    fn excluded_skills_preserves_caller_order() {
         let dir = nonexistent_dir();
-        let excluded = vec!["zebra".to_string(), "apple".to_string(), "mango".to_string()];
+        let excluded = vec!["apple".to_string(), "mango".to_string(), "zebra".to_string()];
         let prompt = build_prompt(
             "Acme", "", "", &dir, &[], None, false, &excluded,
         );
         let a = prompt.find("`apple`").expect("apple");
         let m = prompt.find("`mango`").expect("mango");
         let z = prompt.find("`zebra`").expect("zebra");
-        assert!(a < m && m < z, "expected sorted order apple < mango < zebra");
+        assert!(a < m && m < z, "template should preserve caller-supplied order");
     }
 
     #[test]

@@ -206,7 +206,7 @@ fn strip_decoration(s: &str) -> String {
     // Surrounding backticks: `name`
     let t = t.trim_matches('`');
     // Trailing punctuation that could leak in from prose: , . ; :
-    let t = t.trim_end_matches(|c: char| matches!(c, ',' | '.' | ';' | ':'));
+    let t = t.trim_end_matches([',', '.', ';', ':']);
     t.trim().to_string()
 }
 
