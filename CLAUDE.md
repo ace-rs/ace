@@ -46,6 +46,11 @@ Two distinct user contexts. Confusing them is the most common reasoning error he
 `ace setup .` is project-repo with an embedded school (monorepo). It does NOT bootstrap
 `school.toml`; "local school" is a separate, undesigned feature.
 
+**Default school: `ace-rs/school`.** That's the base school for ACE consumers. The
+school used to author ACE itself is `prod9/school`, so this repo's `ace.toml` points
+at `prod9/school` by design — not a leftover from the ace-rs.dev migration. Do not
+"fix" it.
+
 Detection: `Ace::require_school()` (`src/ace/mod.rs`) checks `project_dir/school.toml`
 first; else resolves the ace.toml specifier and verifies `school.toml` at the resolved
 root. Errors split by cause: `SchoolError::NoSpecifier` ("run `ace setup`") when ace.toml
