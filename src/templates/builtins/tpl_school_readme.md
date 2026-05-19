@@ -20,11 +20,12 @@ your AI coding session. Run `ace` to start.
 school.toml       # School configuration
 skills/           # Skill directories (each has a SKILL.md)
   ace-school/     # Imported from ace-rs/school
-CLAUDE.md         # AI session instructions for this repo
+CLAUDE.md         # AI session instructions (or AGENTS.md for Codex/OpenCode)
 ```
 
 `school.toml` defines: env vars, MCP server endpoints, project catalog, and
-skill imports. See `CLAUDE.md` for section details.
+skill imports. See the instructions file (`CLAUDE.md` for Claude, `AGENTS.md`
+for Codex/OpenCode) for section details.
 
 ## Managing Skills
 

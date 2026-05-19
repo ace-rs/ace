@@ -30,6 +30,10 @@ pub struct Init<'a> {
     pub name: &'a str,
     pub project_dir: &'a Path,
     pub force: bool,
+    /// Filename for the backend-specific instructions file (e.g. `CLAUDE.md`
+    /// for Claude, `AGENTS.md` for Codex/OpenCode). Resolved from the active
+    /// `Backend::instructions_file()` by the caller.
+    pub instructions_file: &'a str,
 }
 
 impl Init<'_> {
@@ -71,12 +75,12 @@ impl Init<'_> {
             ("school_name".to_string(), self.name.to_string()),
         ]);
 
-        let instructions = self.project_dir.join("CLAUDE.md");
+        let instructions = self.project_dir.join(self.instructions_file);
         if !instructions.exists() {
-            let tpl = templates::Template::parse(templates::builtins::SCHOOL_CLAUDE_MD);
+            let tpl = templates::Template::parse(templates::builtins::SCHOOL_INSTRUCTIONS_MD);
             std::fs::write(&instructions, tpl.substitute(&vals))
                 .map_err(InitError::Write)?;
-            ace.done("Created CLAUDE.md");
+            ace.done(&format!("Created {}", self.instructions_file));
         }
 
         let readme = self.project_dir.join("README.md");

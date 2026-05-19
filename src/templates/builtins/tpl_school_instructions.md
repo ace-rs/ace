@@ -1,9 +1,11 @@
 # {{ school_name }} — School Repository
 
-This is an ACE school repository. It provides skills, conventions, and session prompts to
-projects that subscribe to it via `ace setup`.
+This is an ACE school repository. It provides skills, conventions, and session
+prompts to projects that subscribe to it via `ace setup`.
 
-Run `ace` to start a coding session for developing this school.
+Run `ace` to start a coding session for developing this school. ACE writes this
+instructions file under the name your backend expects (`CLAUDE.md` for Claude,
+`AGENTS.md` for Codex/OpenCode) — same content either way.
 
 ## Structure
 
@@ -17,6 +19,16 @@ Run `ace` to start a coding session for developing this school.
 - **`[[mcp]]`** — remote MCP server endpoints (name, url). The backend handles OAuth.
 - **`[[projects]]`** — project catalog (name, repo, description, optional per-project env)
 - **`[[imports]]`** — provenance tracking for skills imported via `ace import`
+
+## Session Prompt
+
+`session_prompt = "..."` at the top of `school.toml` injects custom instructions
+into every ACE session unconditionally — separate from per-role prompts, fired
+on every invocation regardless of role.
+
+Use it for school-wide directives that should always apply: "always load skill
+X first", "all output in English", repo-specific reminders. Keep it short;
+anything long belongs in a skill instead.
 
 ## Adding MCP Servers
 

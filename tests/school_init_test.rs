@@ -20,6 +20,40 @@ fn school_init_creates_files() {
 }
 
 #[test]
+fn school_init_claude_writes_claude_md() {
+    let env = TestEnv::new();
+    env.git_init();
+
+    env.ace()
+        .args(["--claude", "school", "init", "--name", "test-school"])
+        .assert()
+        .success();
+
+    env.assert_exists("CLAUDE.md");
+    assert!(
+        !env.root().join("AGENTS.md").exists(),
+        "AGENTS.md should not be written for Claude backend"
+    );
+}
+
+#[test]
+fn school_init_codex_writes_agents_md() {
+    let env = TestEnv::new();
+    env.git_init();
+
+    env.ace()
+        .args(["--codex", "school", "init", "--name", "test-school"])
+        .assert()
+        .success();
+
+    env.assert_exists("AGENTS.md");
+    assert!(
+        !env.root().join("CLAUDE.md").exists(),
+        "CLAUDE.md should not be written for Codex backend"
+    );
+}
+
+#[test]
 fn school_init_not_in_git_repo() {
     let env = TestEnv::new();
     // No git init.

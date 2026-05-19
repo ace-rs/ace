@@ -89,8 +89,31 @@ fn run_init(ace: &mut Ace, name: Option<String>, force: bool) -> Result<(), CmdE
         }
     };
 
-    Init{ name: &name, project_dir: &project_dir, force }.run(ace)?;
+    let instructions_file = resolve_init_instructions_file(ace);
+    Init {
+        name: &name,
+        project_dir: &project_dir,
+        force,
+        instructions_file,
+    }
+    .run(ace)?;
     Ok(())
+}
+
+/// `ace school init` bootstraps a school repo, so there is usually no
+/// `ace.toml`/`school.toml` yet — `ace.backend()` would fail with `NoConfig`.
+/// Resolve the backend selector best-effort: prefer the full registry binding
+/// when config is present, otherwise fall back to the CLI override on the
+/// `overrides` layer, otherwise the default `Kind` (Claude).
+fn resolve_init_instructions_file(ace: &Ace) -> &'static str {
+    if let Ok(backend) = ace.backend() {
+        return backend.instructions_file();
+    }
+    let name = ace.overrides().backend.as_deref();
+    let kind = name
+        .and_then(crate::backend::Kind::from_name)
+        .unwrap_or_default();
+    kind.instructions_file()
 }
 
 fn run_skills(ace: &mut Ace) -> Result<(), CmdError> {
