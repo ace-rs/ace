@@ -1,8 +1,7 @@
 use crate::ace::{Ace, OutputMode};
 use crate::backend::{Kind, OneShotRequest, PromptInput, SessionRequest};
 use crate::config::ace_toml::Trust;
-use crate::actions::project::RegisterMcp;
-use crate::actions::project::{Prepare, PrepareResult};
+use crate::actions::project::{register_missing_mcp, Prepare, PrepareResult};
 use crate::templates::session::{build_session_prompt, SessionPromptInput};
 
 use super::CmdError;
@@ -137,31 +136,13 @@ pub(super) fn prepare_school(
     ace.reload_tree()?;
 
     // Register MCP servers from school.toml.
-    let mcp_entries: Vec<_> = ace.school()?
-        .map(|s| s.mcp.clone())
-        .unwrap_or_default();
-
-    if mcp_entries.is_empty() {
+    let (backend, entries, _) = super::mcp::load_school_mcp(ace)?;
+    if entries.is_empty() {
         return Ok(prepare_result);
     }
 
-    let registered = ace.backend()?.mcp_list(&project_dir);
-    let pending: Vec<&str> = mcp_entries.iter()
-        .filter(|e| !registered.contains(&e.name))
-        .map(|e| e.name.as_str())
-        .collect();
-
-    if pending.is_empty() {
-        return Ok(prepare_result);
-    }
-
-    let prompt = format!("Register MCP server(s): {}?", pending.join(", "));
-    if !ace.prompt_confirm(&prompt, true)? {
-        return Ok(prepare_result);
-    }
-
-    let backend = ace.backend()?.clone();
-    if let Err(e) = (RegisterMcp { backend: &backend, entries: &mcp_entries, project_dir: &project_dir }).run(ace) {
+    let local_path = ace.require_paths()?.local.clone();
+    if let Err(e) = register_missing_mcp(ace, &backend, &entries, &project_dir, &local_path) {
         ace.warn(&format!("MCP registration failed: {e}"));
     }
 

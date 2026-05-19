@@ -5,7 +5,7 @@ use clap::Subcommand;
 use crate::ace::Ace;
 use crate::backend::McpStatus;
 use crate::config::school_toml::McpDecl;
-use crate::actions::project::{edit_mcp_config, RegisterMcp, RemoveMcp, register_mcp};
+use crate::actions::project::{edit_mcp_config, register_missing_mcp, RegisterMcp, RemoveMcp, register_mcp};
 
 use super::CmdError;
 
@@ -53,28 +53,8 @@ fn run_default(ace: &mut Ace) -> Result<(), CmdError> {
 
     // -- add missing (prompt per missing entry; "no" appends to exclude_mcp) --
 
-    let registered = backend.mcp_list(&project_dir);
     let local_path = ace.require_paths()?.local.clone();
-
-    let mut to_register: Vec<McpDecl> = Vec::new();
-    for entry in &entries {
-        if registered.contains(&entry.name) {
-            // already registered — pass through so RegisterMcp's internal skip path runs
-            to_register.push(entry.clone());
-            continue;
-        }
-        let prompt = format!("Register MCP '{}'?", entry.name);
-        if ace.prompt_confirm(&prompt, true)? {
-            to_register.push(entry.clone());
-        } else {
-            edit_mcp_config::exclude(&local_path, &entry.name)?;
-            ace.hint(&format!("'{}' added to exclude_mcp in ace.local.toml", entry.name));
-        }
-    }
-
-    if to_register.iter().any(|e| !registered.contains(&e.name)) {
-        RegisterMcp{ backend: &backend, entries: &to_register, project_dir: &project_dir }.run(ace)?;
-    }
+    register_missing_mcp(ace, &backend, &entries, &project_dir, &local_path)?;
 
     // -- health check registered servers --
 
@@ -261,7 +241,7 @@ fn report_statuses(ace: &mut Ace, statuses: &[McpStatus]) {
 /// Load school MCP entries and backend from current state. Entries listed in
 /// `exclude_mcp` (union across user/project/local scopes) are filtered out
 /// before returning.
-fn load_school_mcp(ace: &Ace) -> Result<(crate::backend::Backend, Vec<McpDecl>, std::path::PathBuf), CmdError> {
+pub(super) fn load_school_mcp(ace: &Ace) -> Result<(crate::backend::Backend, Vec<McpDecl>, std::path::PathBuf), CmdError> {
     let backend = ace.backend()?.clone();
     let raw = ace.school()?
         .map(|s| s.mcp.clone())

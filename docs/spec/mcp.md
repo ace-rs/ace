@@ -58,10 +58,11 @@ See [backend.md](backend.md#mcp-server-registration) for per-backend CLI command
 
 ### Skipping servers
 
-Bare `ace mcp` prompts before registering each missing server. Answering "no"
-appends the server name to `exclude_mcp` in `ace.local.toml`; subsequent runs
-silently skip those names. The exclusion list is unioned across user, project,
-and local `ace.toml` scopes (same merge as `exclude_skills`).
+Both bare `ace` (default startup) and `ace mcp` prompt before registering each
+missing server. Answering "no" appends the server name to `exclude_mcp` in
+`ace.local.toml`; subsequent runs silently skip those names. The exclusion list
+is unioned across user, project, and local `ace.toml` scopes (same merge as
+`exclude_skills`).
 
 `ace mcp register <name>` is the un-skip path: it removes `<name>` from
 `exclude_mcp` (in `ace.local.toml`) and registers that single school-defined

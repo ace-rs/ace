@@ -217,6 +217,19 @@ fn mcp_default_skips_excluded_servers() {
 }
 
 #[test]
+fn bare_ace_skips_excluded_servers() {
+    let env = TestEnv::new();
+    env.setup_flaude_school(SCHOOL_TOML_TWO_SERVERS);
+    env.write_file("ace.local.toml", "exclude_mcp = [\"github\"]\n");
+
+    env.ace().assert().success();
+
+    let records = env.read_flaude_mcp_records();
+    assert_eq!(records.len(), 1, "expected only linear, got: {records:?}");
+    assert_eq!(records[0].name, "linear");
+}
+
+#[test]
 fn mcp_skips_already_registered_servers() {
     let env = TestEnv::new();
     env.setup_flaude_school(SCHOOL_TOML_TWO_SERVERS);

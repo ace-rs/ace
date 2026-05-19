@@ -17,7 +17,7 @@ pub use learn::{LearnAction, LearnError};
 pub use link::{Link, SCHOOL_FOLDERS};
 pub use prepare::{Prepare, PrepareError, PrepareResult};
 pub use pull::{ChangeKind, Pull, PullOutcome, SkillChange};
-pub use register_mcp::{RegisterMcp, RegisterMcpError};
+pub use register_mcp::{register_missing as register_missing_mcp, RegisterMcp, RegisterMcpError};
 pub use remove_mcp::RemoveMcp;
 pub use setup::{Setup, SetupError};
 pub use update_gitignore::UpdateGitignore;

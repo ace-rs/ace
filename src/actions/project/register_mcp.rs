@@ -1,7 +1,10 @@
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 
 use crate::ace::{Ace, IoError};
+use crate::actions::project::edit_mcp_config;
 use crate::backend::{Backend, Kind};
+use crate::config::ConfigError;
 use crate::config::school_toml::McpDecl;
 use crate::templates::Template;
 
@@ -11,6 +14,45 @@ pub enum RegisterMcpError {
     Register(String),
     #[error("{0}")]
     Io(#[from] IoError),
+    #[error("{0}")]
+    Config(#[from] ConfigError),
+}
+
+/// For each entry: if already registered, pass through. Otherwise prompt
+/// `Register MCP '<name>'?` — "yes" batches for registration; "no" appends
+/// the name to `exclude_mcp` in `ace.local.toml` so future runs skip it.
+pub fn register_missing(
+    ace: &mut Ace,
+    backend: &Backend,
+    entries: &[McpDecl],
+    project_dir: &Path,
+    local_path: &Path,
+) -> Result<(), RegisterMcpError> {
+    if entries.is_empty() {
+        return Ok(());
+    }
+
+    let registered = backend.mcp_list(project_dir);
+
+    let mut to_register: Vec<McpDecl> = Vec::new();
+    for entry in entries {
+        if registered.contains(&entry.name) {
+            to_register.push(entry.clone());
+            continue;
+        }
+        let prompt = format!("Register MCP '{}'?", entry.name);
+        if ace.prompt_confirm(&prompt, true)? {
+            to_register.push(entry.clone());
+        } else {
+            edit_mcp_config::exclude(local_path, &entry.name)?;
+            ace.hint(&format!("'{}' added to exclude_mcp in ace.local.toml", entry.name));
+        }
+    }
+
+    if to_register.iter().any(|e| !registered.contains(&e.name)) {
+        RegisterMcp { backend, entries: &to_register, project_dir }.run(ace)?;
+    }
+    Ok(())
 }
 
 pub struct RegisterMcp<'a> {
