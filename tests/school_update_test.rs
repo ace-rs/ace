@@ -6,7 +6,7 @@ use common::TestEnv;
 fn school_update_no_imports() {
     let env = TestEnv::new();
     env.git_init();
-    env.write_file("school.toml", "name = \"test-school\"\n");
+    env.write_dogfood_school("name = \"test-school\"\n");
 
     // No [[imports]] entries — should warn "no imports to pull".
     env.ace()
@@ -33,8 +33,7 @@ fn school_update_no_school_context() {
 fn school_update_clone_failure() {
     let env = TestEnv::new();
     env.git_init();
-    env.write_file(
-        "school.toml",
+    env.write_dogfood_school(
         r#"name = "test-school"
 
 [[imports]]
@@ -57,7 +56,7 @@ source = "nonexistent-owner-xxxxx/nonexistent-repo-xxxxx"
 fn school_update_empty_imports_array() {
     let env = TestEnv::new();
     env.git_init();
-    env.write_file("school.toml", "name = \"test-school\"\nimports = []\n");
+    env.write_dogfood_school("name = \"test-school\"\nimports = []\n");
 
     // Explicit empty imports array — same as no imports.
     env.ace()
@@ -71,8 +70,7 @@ fn school_update_empty_imports_array() {
 fn school_update_multiple_imports_same_source_clone_failure() {
     let env = TestEnv::new();
     env.git_init();
-    env.write_file(
-        "school.toml",
+    env.write_dogfood_school(
         r#"name = "test-school"
 
 [[imports]]
@@ -101,11 +99,11 @@ source = "nonexistent-owner-xxxxx/nonexistent-repo-xxxxx"
 #[test]
 fn school_update_without_git_repo() {
     let env = TestEnv::new();
-    // No git init, but school.toml exists.
-    env.write_file("school.toml", "name = \"test-school\"\n");
+    // No git init, but the dogfood pair (school.toml + ace.toml) exists.
+    env.write_dogfood_school("name = \"test-school\"\n");
 
-    // School context is found via school.toml (no git required for require_school).
-    // No imports → warns and succeeds.
+    // School context is resolved via ace.toml's `school = "."` specifier (no
+    // git required for require_school). No imports → warns and succeeds.
     env.ace()
         .args(["school", "update"])
         .assert()
@@ -117,8 +115,7 @@ fn school_update_without_git_repo() {
 fn school_update_preserves_non_imported_skills() {
     let env = TestEnv::new();
     env.git_init();
-    env.write_file(
-        "school.toml",
+    env.write_dogfood_school(
         r#"name = "test-school"
 
 [[imports]]

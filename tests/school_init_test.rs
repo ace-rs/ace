@@ -60,6 +60,35 @@ fn school_init_force_updates_name() {
 }
 
 #[test]
+fn school_init_writes_dogfood_ace_toml() {
+    let env = TestEnv::new();
+    env.git_init();
+
+    env.ace()
+        .args(["school", "init", "--name", "test-school"])
+        .assert()
+        .success();
+
+    env.assert_exists("ace.toml");
+    env.assert_contains("ace.toml", "school = \".\"");
+}
+
+#[test]
+fn school_init_preserves_existing_ace_toml() {
+    let env = TestEnv::new();
+    env.git_init();
+    env.write_file("ace.toml", "school = \"jedi/temple\"\n");
+
+    env.ace()
+        .args(["school", "init", "--name", "test-school"])
+        .assert()
+        .success();
+
+    // Existing ace.toml is not overwritten.
+    env.assert_contains("ace.toml", "jedi/temple");
+}
+
+#[test]
 fn school_init_preserves_existing_files() {
     let env = TestEnv::new();
     env.git_init();

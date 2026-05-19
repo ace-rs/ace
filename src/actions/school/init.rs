@@ -4,7 +4,7 @@ use crate::ace::Ace;
 use crate::actions::project::UpdateGitignore;
 use crate::actions::school::pull_imports::{PullImports, PullImportsError};
 use crate::config::school_toml::{self, ImportDecl};
-use crate::config::ConfigError;
+use crate::config::{ace_toml, ConfigError};
 use crate::templates;
 
 /// Default school imported by every fresh school. Provides `ace-school` and
@@ -57,6 +57,15 @@ impl Init<'_> {
             school_toml::save(&toml_path, &toml)?;
         }
         ace.done("Created school.toml");
+
+        // Seed an ace.toml with `school = "."` so the school repo can dogfood
+        // itself: bare `ace` from this workdir resolves the embedded school via
+        // the specifier. Existing ace.toml is left alone.
+        let ace_toml_path = self.project_dir.join("ace.toml");
+        if !ace_toml_path.exists() {
+            ace_toml::set_school(&ace_toml_path, ".")?;
+            ace.done("Created ace.toml");
+        }
 
         let vals = std::collections::HashMap::from([
             ("school_name".to_string(), self.name.to_string()),

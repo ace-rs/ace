@@ -19,7 +19,7 @@ fn import_no_school_context() {
 fn import_clone_failure_invalid_source() {
     let env = TestEnv::new();
     env.git_init();
-    env.write_file("school.toml", "name = \"test-school\"\n");
+    env.write_dogfood_school("name = \"test-school\"\n");
     env.mkdir("skills");
 
     // Source that cannot be cloned — nonexistent GitHub repo.
@@ -48,12 +48,12 @@ fn import_from_local_school_context() {
     let env = TestEnv::new();
     env.git_init();
 
-    // School repo context (school.toml present) but invalid remote source.
-    env.write_file("school.toml", "name = \"my-school\"\n");
+    // School repo context (dogfood pair present) but invalid remote source.
+    env.write_dogfood_school("name = \"my-school\"\n");
     env.mkdir("skills");
 
     // The source is invalid, so clone fails — but this verifies that import
-    // correctly detects the school context via school.toml.
+    // correctly resolves the school context via ace.toml's specifier.
     env.ace()
         .args(["import", "nonexistent-owner-xxxxx/nonexistent-repo-xxxxx"])
         .assert()
@@ -65,7 +65,7 @@ fn import_from_local_school_context() {
 fn import_without_skill_flag_clone_failure() {
     let env = TestEnv::new();
     env.git_init();
-    env.write_file("school.toml", "name = \"test-school\"\n");
+    env.write_dogfood_school("name = \"test-school\"\n");
     env.mkdir("skills");
 
     // No --skill flag — auto-select or prompt would happen after clone.
@@ -81,7 +81,7 @@ fn import_without_skill_flag_clone_failure() {
 fn import_no_git_repo_with_school_toml() {
     let env = TestEnv::new();
     // No git init — but school.toml exists.
-    env.write_file("school.toml", "name = \"test-school\"\n");
+    env.write_dogfood_school("name = \"test-school\"\n");
     env.mkdir("skills");
 
     // Import should still work to find school context (school.toml check
@@ -110,8 +110,7 @@ fn import_skill_flag_requires_value() {
 fn import_with_existing_imports_clone_failure() {
     let env = TestEnv::new();
     env.git_init();
-    env.write_file(
-        "school.toml",
+    env.write_dogfood_school(
         r#"name = "test-school"
 
 [[imports]]
@@ -135,7 +134,7 @@ source = "some-owner/some-repo"
 fn import_all_adds_wildcard_entry() {
     let env = TestEnv::new();
     env.git_init();
-    env.write_file("school.toml", "name = \"test-school\"\n");
+    env.write_dogfood_school("name = \"test-school\"\n");
     env.mkdir("skills");
 
     // --all writes a wildcard import entry without cloning (no network needed).
@@ -154,7 +153,7 @@ fn import_all_adds_wildcard_entry() {
 fn import_glob_pattern_adds_entry() {
     let env = TestEnv::new();
     env.git_init();
-    env.write_file("school.toml", "name = \"test-school\"\n");
+    env.write_dogfood_school("name = \"test-school\"\n");
     env.mkdir("skills");
 
     env.ace()
@@ -171,8 +170,7 @@ fn import_glob_pattern_adds_entry() {
 fn import_all_duplicate_warns() {
     let env = TestEnv::new();
     env.git_init();
-    env.write_file(
-        "school.toml",
+    env.write_dogfood_school(
         r#"name = "test-school"
 
 [[imports]]
@@ -195,7 +193,7 @@ source = "company/school"
 fn import_include_experimental_without_all_errors() {
     let env = TestEnv::new();
     env.git_init();
-    env.write_file("school.toml", "name = \"test-school\"\n");
+    env.write_dogfood_school("name = \"test-school\"\n");
     env.mkdir("skills");
 
     env.ace()
@@ -209,7 +207,7 @@ fn import_include_experimental_without_all_errors() {
 fn import_include_system_without_all_errors() {
     let env = TestEnv::new();
     env.git_init();
-    env.write_file("school.toml", "name = \"test-school\"\n");
+    env.write_dogfood_school("name = \"test-school\"\n");
     env.mkdir("skills");
 
     env.ace()
@@ -223,7 +221,7 @@ fn import_include_system_without_all_errors() {
 fn import_include_with_explicit_skill_errors() {
     let env = TestEnv::new();
     env.git_init();
-    env.write_file("school.toml", "name = \"test-school\"\n");
+    env.write_dogfood_school("name = \"test-school\"\n");
     env.mkdir("skills");
 
     env.ace()
@@ -237,7 +235,7 @@ fn import_include_with_explicit_skill_errors() {
 fn import_all_include_experimental_persists_flag() {
     let env = TestEnv::new();
     env.git_init();
-    env.write_file("school.toml", "name = \"test-school\"\n");
+    env.write_dogfood_school("name = \"test-school\"\n");
     env.mkdir("skills");
 
     env.ace()
@@ -254,7 +252,7 @@ fn import_all_include_experimental_persists_flag() {
 fn import_all_include_both_flags_persists_both() {
     let env = TestEnv::new();
     env.git_init();
-    env.write_file("school.toml", "name = \"test-school\"\n");
+    env.write_dogfood_school("name = \"test-school\"\n");
     env.mkdir("skills");
 
     env.ace()
@@ -275,7 +273,7 @@ fn import_explicit_skill_resolves_from_experimental_tier() {
     // Before PROD9-75, ACE skipped all hidden dirs and reported "no skills found".
     let env = TestEnv::new();
     env.git_init();
-    env.write_file("school.toml", "name = \"test-school\"\n");
+    env.write_dogfood_school("name = \"test-school\"\n");
     env.mkdir("skills");
 
     env.setup_tiered_origin("dot/skills", &[
@@ -297,7 +295,7 @@ fn import_explicit_skill_resolves_from_experimental_tier() {
 fn import_all_defaults_to_curated_tier_only() {
     let env = TestEnv::new();
     env.git_init();
-    env.write_file("school.toml", "name = \"test-school\"\n");
+    env.write_dogfood_school("name = \"test-school\"\n");
     env.mkdir("skills");
 
     env.setup_tiered_origin("dot/skills", &[
@@ -327,7 +325,7 @@ fn import_all_defaults_to_curated_tier_only() {
 fn import_all_with_include_experimental_pulls_that_tier() {
     let env = TestEnv::new();
     env.git_init();
-    env.write_file("school.toml", "name = \"test-school\"\n");
+    env.write_dogfood_school("name = \"test-school\"\n");
     env.mkdir("skills");
 
     env.setup_tiered_origin("dot/skills", &[
@@ -357,7 +355,7 @@ fn import_all_with_include_experimental_pulls_that_tier() {
 fn import_populates_persistent_source_cache() {
     let env = TestEnv::new();
     env.git_init();
-    env.write_file("school.toml", "name = \"test-school\"\n");
+    env.write_dogfood_school("name = \"test-school\"\n");
     env.mkdir("skills");
 
     env.setup_tiered_origin("cached/source", &[
@@ -399,8 +397,7 @@ fn pull_imports_overlapping_sources_last_wins_silently() {
 
     // Both sources expose skill-creator. Last-wins: ace-rs/school's version
     // silently replaces anthropics/skills'. No shadow warning.
-    env.write_file(
-        "school.toml",
+    env.write_dogfood_school(
         r#"name = "test-school"
 
 [[imports]]
@@ -445,7 +442,7 @@ include_system = true
 fn import_reuses_source_cache_on_second_call() {
     let env = TestEnv::new();
     env.git_init();
-    env.write_file("school.toml", "name = \"test-school\"\n");
+    env.write_dogfood_school("name = \"test-school\"\n");
     env.mkdir("skills");
 
     env.setup_tiered_origin("cached/source", &[

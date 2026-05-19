@@ -116,6 +116,17 @@ impl TestEnv {
         self.root.join(rel)
     }
 
+    /// Set up the workdir as a school-repo that dogfoods itself. Writes both
+    /// `school.toml` (with the given contents) and an `ace.toml` with
+    /// `school = "."` so `Ace::require_school` resolves to the workdir via
+    /// the specifier (the post-PROD9 ace.toml-only resolution rule).
+    pub fn write_dogfood_school(&self, school_toml: &str) {
+        self.write_file("school.toml", school_toml);
+        if !self.path("ace.toml").exists() {
+            self.write_file("ace.toml", "school = \".\"\n");
+        }
+    }
+
     pub fn write_file(&self, rel: &str, contents: &str) {
         let path = self.path(rel);
         if let Some(parent) = path.parent() {

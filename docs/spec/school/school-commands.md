@@ -1,15 +1,13 @@
 # School Commands
 
-The `ace school` subcommand manages school repositories. It operates in two contexts
-depending on where it is invoked:
+The `ace school` subcommand manages school repositories. Every `ace school <subcmd>`
+invocation operates on the **current working directory as the school root** — there
+is no context detection, no fallback to the linked school. The precondition is that
+`cwd/school.toml` exists; commands fail with a clear error otherwise.
 
-- **School repo context** — `school.toml` exists at cwd root. Commands operate on the
-  school directly.
-- **App repo context** — no `school.toml` at cwd root, but `ace.toml` links to a school.
-  Commands operate against the linked school's local clone.
-
-Detection: if `school.toml` exists in the current working directory root, treat as school
-repo context. Otherwise, resolve the linked school from `ace.toml`.
+This is school-authoring mode (see [overview.md](overview.md)). The complementary
+mode — consuming a school from a project — is reached through bare `ace` and `ace
+setup` / `ace pull` (see [setup.md](../setup.md)).
 
 ## `ace school init`
 
@@ -30,10 +28,14 @@ Steps:
    The `ace-rs/school` import is the canonical source of `ace-school` and
    any other base skills. See `docs/spec/school/standard-imports.md`. Users
    may remove the entry for a fully standalone school.
-4. Create `CLAUDE.md` and `README.md` if missing.
-5. Create `.gitignore` if missing.
-6. Run `PullImports` to fetch the standard skills into `skills/`.
-7. Done. User commits and pushes to their school repo.
+4. If `ace.toml` does not already exist in cwd, create one containing
+   `school = "."` so the school can dogfood itself (bare `ace` from this workdir
+   resolves the embedded school via the specifier). Existing `ace.toml` is
+   preserved.
+5. Create `CLAUDE.md` and `README.md` if missing.
+6. Create `.gitignore` if missing.
+7. Run `PullImports` to fetch the standard skills into `skills/`.
+8. Done. User commits and pushes to their school repo.
 
 Prerequisites: create and clone a git repo first (e.g. `gh repo create org/school --private`).
 
@@ -93,8 +95,10 @@ for `--skill` values — no glob, no `?`, no character classes. ACE matches this
 
 ### Flow
 
-1. Resolve school context: if `school.toml` in cwd → school dir. Otherwise resolve linked
-   school from `ace.toml` → school clone path.
+1. Resolve the school root via `ace.toml`'s specifier (the standard
+   `Ace::require_school` path). For an in-school invocation, the school's own
+   `ace.toml` carries `school = "."` and resolves to cwd; for a project invocation,
+   it resolves to the linked clone.
 2. Clone source repo to temp dir (`git clone --depth 1`).
 3. Discover `SKILL.md` files under `skills/` (priority: `skills/.curated/` > `skills/` >
    `skills/.experimental/` > `skills/.system/`, first hit per name wins). Each skill is
@@ -163,7 +167,7 @@ against the closed set `{school_dir, project_dir, home, backend_dir}` (defined b
 
 ### Flow
 
-1. Resolve school root (school-repo cwd, else linked clone via `ace.toml`).
+1. Resolve school root via `ace.toml`'s specifier (`Ace::require_school`).
 2. Load `school.toml`.
 3. For each `[[backends]]` decl, parse every `cmd[i]` and every `env[key]` value as a
    template. Any placeholder name not in the closed set is reported as an issue.

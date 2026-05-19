@@ -1,11 +1,15 @@
 # Setup Flow
 
-This spec covers **project-repo** setup — bootstrapping a user's codebase to consume a
-school. The other context — authoring a school itself — is covered in
-[school/overview.md](school/overview.md) and uses `ace school init` instead. The two
-contexts are distinguished by which marker file exists at the workdir root: `ace.toml`
-(project) vs `school.toml` (school). A workdir can be both, in which case school-context
-detection takes precedence (see `Ace::require_school` in `src/ace/mod.rs` ).
+This spec covers **project mode** setup — bootstrapping a user's codebase to consume a
+school. The other mode — authoring a school itself — is covered in
+[school/overview.md](school/overview.md) and uses `ace school init` instead.
+
+The two modes are distinguished by the *command*, not by any marker file: bare `ace`
+and `ace setup` / `ace pull` operate in project mode (reading `ace.toml`, resolving the
+specifier, syncing into the project); `ace school <subcmd>` operates in
+school-authoring mode (the cwd's `school.toml` is the file being edited). A workdir
+can carry both files — for example a school that dogfoods itself via `school = "."` —
+without ambiguity, because resolution is always specifier-driven.
 
 `ace setup <owner/repo>` is a required first step before using ACE in a project. It must
 be run explicitly — ACE does not auto-detect or auto-initialize.

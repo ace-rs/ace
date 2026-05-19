@@ -134,7 +134,8 @@ Set role directly without prompting. Errors if the name doesn't match a defined 
 
 ### `ace roles --add <name>`
 
-Add a new role to `school.toml`. Requires school context (school.toml present).
+Add a new role to `school.toml`. Must be run in school-authoring mode (`ace school`
+subcommand invoked from a school repo, i.e. `school.toml` present in cwd).
 
 - `ace roles --add task-master` — prompts interactively for the prompt text.
 - `ace roles --add task-master --prompt "You are a project manager..."` — sets both directly.

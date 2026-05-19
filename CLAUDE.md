@@ -37,11 +37,14 @@ the ACE tool.
 
 Two distinct user contexts. Confusing them is the most common reasoning error here.
 
-- **Project-repo** — workdir is the user's codebase consuming a school. Marker:
-  `ace.toml` with `school = "<specifier>"`. Actions in `src/actions/project/`.
-  See `docs/spec/setup.md`.
-- **School-repo** — workdir IS the school being authored. Marker: `school.toml` at root.
-  Actions in `src/actions/school/`. See `docs/spec/school/`.
+The two modes are distinguished by which *command* runs, not by any marker file:
+
+- **Project mode** — bare `ace` / `ace setup` / `ace pull`. Workdir is the user's
+  codebase consuming a school via `ace.toml`'s `school = "<specifier>"`. Actions in
+  `src/actions/project/`. See `docs/spec/setup.md`.
+- **School-authoring mode** — `ace school <subcmd>`. Workdir IS the school being
+  authored; `school.toml` is the file being edited. Actions in `src/actions/school/`.
+  See `docs/spec/school/`.
 
 `ace setup .` is project-repo with an embedded school (monorepo). It does NOT bootstrap
 `school.toml`; "local school" is a separate, undesigned feature.
@@ -51,12 +54,14 @@ school used to author ACE itself is `prod9/school`, so this repo's `ace.toml` po
 at `prod9/school` by design — not a leftover from the ace-rs.dev migration. Do not
 "fix" it.
 
-Detection: `Ace::require_school()` (`src/ace/mod.rs`) checks `project_dir/school.toml`
-first; else resolves the ace.toml specifier and verifies `school.toml` at the resolved
-root. Errors split by cause: `SchoolError::NoSpecifier` ("run `ace setup`") when ace.toml
-lacks `school = ...`; `SchoolError::NotInitialized` ("run `ace school init`") when the
-resolved root exists but has no `school.toml`. Full case matrix in
-`docs/spec/school/overview.md` (Context Resolution).
+Detection: `Ace::require_school()` (`src/ace/mod.rs`) resolves the school exclusively
+via the `ace.toml` specifier; `school.toml` is read as content from the resolved root,
+never used to detect location. A school repo that dogfoods itself uses `school = "."`
+in its own `ace.toml` (written by `ace school init`). Errors split by cause:
+`SchoolError::NoSpecifier` ("run `ace setup`") when ace.toml lacks `school = ...`;
+`SchoolError::NotInitialized` ("run `ace school init`") when the resolved root exists
+but has no `school.toml`. Full case matrix in `docs/spec/school/overview.md` (Context
+Resolution).
 
 ## Conventions
 

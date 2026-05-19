@@ -4,12 +4,26 @@ A school is a git-cloneable source repository containing skills, conventions, ag
 other shared resources for an organization. ACE maintains a local clone in
 `~/.local/share/ace/{owner/repo}/` (XDG_DATA_HOME).
 
-This spec covers the **school-repo** context — the maintainer authoring a school. The
-other context — a project consuming a school — is covered in [setup.md](../setup.md).
-The two contexts are distinguished by which marker file exists at the workdir root:
-`school.toml` (school) vs `ace.toml` (project). Maintainer-side commands are under
-`ace school <subcmd>` and `src/actions/school/`; consumer-side under bare `ace` /
-`ace setup` / `ace pull` and `src/actions/project/`.
+This spec covers the **school-authoring** mode — the maintainer curating a school's
+content. The other mode — a project consuming a school — is covered in
+[setup.md](../setup.md).
+
+The two modes are distinguished by **which command was invoked**, not by any marker file:
+
+- **Project mode** — bare `ace` and `ace setup` / `ace pull` / etc. Reads `ace.toml`,
+  resolves the specifier, syncs school content into the project. Actions live in
+  `src/actions/project/`.
+- **School-authoring mode** — `ace school <subcmd>`. Operates on the cwd as the school
+  root. The cwd's `school.toml` is the file being edited. Actions live in
+  `src/actions/school/`.
+
+`school.toml` is school-side metadata. Its presence in a directory means "this directory
+is a school"; it does *not* mean "this is the school in use." Which school is in use is
+determined exclusively by `ace.toml`'s specifier.
+
+A school repo that wants to dogfood itself gets an `ace.toml` with `school = "."` from
+`ace school init`; bare `ace` from that workdir then resolves the embedded school via
+the specifier like any other consumer.
 
 ## Specifier
 
@@ -38,35 +52,36 @@ reads obviously.
 
 ## Context Resolution
 
-`Ace::require_school()` (`src/ace/mod.rs`) maps workdir state to a `SchoolPaths`
-result. Inputs:
+`Ace::require_school()` (`src/ace/mod.rs`) resolves the school's on-disk location
+exclusively from `ace.toml`'s specifier. The workdir's `school.toml` (if any) is *not*
+consulted as a location signal — a school repo that wants to dogfood itself uses
+`school = "."` in its own `ace.toml`. Inputs:
 
-- **W** — `school.toml` present in workdir
 - **A** — `ace.toml` present in workdir
 - **S** — `ace.toml` declares `school = ...`
 - **K** — specifier kind: local (`.` / `.:path`) vs remote (`owner/repo[:path]`)
 - **R** — `school.toml` present at the resolved school root
 
-| # | W   | A   | S   | K      | R   | Outcome                             | Meaning                                          |
-|---|-----|-----|-----|--------|-----|-------------------------------------|--------------------------------------------------|
-| 1 | yes | any | any | n/a    | yes | `Ok` workdir paths                  | school-repo (authoring); short-circuits          |
-| 2 | no  | no  | n/a | n/a    | n/a | `Err(TreeLoad(NoConfig))`           | empty dir or pre-init author — intent unknowable |
-| 3 | no  | yes | no  | n/a    | n/a | `Err(NoSpecifier)` — "run `ace setup`"  | project-repo, specifier missing              |
-| 4 | no  | yes | yes | local  | yes | `Ok` resolved paths                     | sibling/embedded school usage                |
-| 5 | no  | yes | yes | local  | no  | `Err(NotInitialized)` — "run `ace school init`" | local specifier points at uninitialized dir |
-| 6 | no  | yes | yes | remote | yes | `Ok` clone paths                        | project consumer, clone present and initialized |
-| 7 | no  | yes | yes | remote | no  | `Err(NotInitialized)` — "run `ace school init`" | clone exists but lacks `school.toml`     |
-| 8 | no  | yes | yes | remote | —   | `Ok` (clone dir absent)                 | first-run; `cmd/pull.rs` self-heals via clone |
+| # | A   | S   | K      | R   | Outcome                                         | Meaning                                          |
+|---|-----|-----|--------|-----|-------------------------------------------------|--------------------------------------------------|
+| 1 | no  | n/a | n/a    | n/a | `Err(TreeLoad(NoConfig))`                       | empty dir — intent unknowable                    |
+| 2 | yes | no  | n/a    | n/a | `Err(NoSpecifier)` — "run `ace setup`"          | project-repo, specifier missing                  |
+| 3 | yes | yes | local  | yes | `Ok` resolved paths                             | embedded / dogfood / sibling school              |
+| 4 | yes | yes | local  | no  | `Err(NotInitialized)` — "run `ace school init`" | local specifier points at uninitialized dir      |
+| 5 | yes | yes | remote | yes | `Ok` clone paths                                | project consumer, clone present and initialized  |
+| 6 | yes | yes | remote | no  | `Err(NotInitialized)` — "run `ace school init`" | clone exists but lacks `school.toml`             |
+| 7 | yes | yes | remote | —   | `Ok` (clone dir absent)                         | first-run; `cmd/pull.rs` self-heals via clone    |
 
-**Detection rule for cases 5 and 7.** After `school_paths::resolve`, if the resolved
+**Detection rule for cases 4 and 6.** After `school_paths::resolve`, if the resolved
 root *exists as a directory* but does not contain `school.toml`, return
-`SchoolError::NotInitialized`. The `is_dir()` guard preserves case 8 — when the
+`SchoolError::NotInitialized`. The `is_dir()` guard preserves case 7 — when the
 clone dir is absent entirely, return `Ok` so `cmd/pull.rs` can self-heal by cloning.
 
-**Why case 2 is left as `NoConfig`.** Without either marker file, ACE has no signal
-of intent (project setup vs. school authoring). The generic "no config found" message
+**Why case 1 is left as `NoConfig`.** Without an `ace.toml`, ACE has no signal of
+intent (project setup vs. school authoring). The generic "no config found" message
 stands; either `ace setup` or `ace school init` is the right next step depending on
-what the user means to do.
+what the user means to do. `ace school <subcmd>` itself is a separate path that
+requires a `school.toml` in the cwd; see [school-commands.md](school-commands.md).
 
 ## Purpose
 
