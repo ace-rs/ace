@@ -62,9 +62,8 @@ impl Init<'_> {
         }
         ace.done("Created school.toml");
 
-        // Seed an ace.toml with `school = "."` so the school repo can dogfood
-        // itself: bare `ace` from this workdir resolves the embedded school via
-        // the specifier. Existing ace.toml is left alone.
+        // Dogfood: `school = "."` lets bare `ace` from this workdir resolve
+        // the embedded school via the specifier.
         let ace_toml_path = self.project_dir.join("ace.toml");
         if !ace_toml_path.exists() {
             ace_toml::set_school(&ace_toml_path, ".")?;

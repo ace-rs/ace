@@ -5,34 +5,36 @@ use crate::templates::builtins;
 use crate::templates::Template;
 use crate::actions::project::{ChangeKind, SkillChange};
 
+pub struct SessionPromptInput<'a> {
+    pub school_name: &'a str,
+    pub school_session_prompt: &'a str,
+    pub project_session_prompt: &'a str,
+    pub backend_dir: &'a Path,
+    pub changes: &'a [SkillChange],
+    pub school_clone: Option<&'a Path>,
+    pub school_is_dirty: bool,
+    pub excluded_skills: &'a [String],
+}
+
 /// Build the session prompt from built-in + school + project layers.
-pub fn build_session_prompt(
-    school_name: &str,
-    school_session_prompt: &str,
-    project_session_prompt: &str,
-    backend_dir: &Path,
-    changes: &[SkillChange],
-    school_clone: Option<&Path>,
-    school_is_dirty: bool,
-    excluded_skills: &[String],
-) -> String {
+pub fn build_session_prompt(input: &SessionPromptInput) -> String {
     let mut parts = Vec::new();
 
     let vals = HashMap::from([
-        ("school_name".to_string(), school_name.to_string()),
+        ("school_name".to_string(), input.school_name.to_string()),
     ]);
     parts.push(Template::parse(builtins::SESSION).substitute(&vals));
 
-    if !school_session_prompt.is_empty() {
-        parts.push(school_session_prompt.to_string());
+    if !input.school_session_prompt.is_empty() {
+        parts.push(input.school_session_prompt.to_string());
     }
 
-    if !project_session_prompt.is_empty() {
-        parts.push(project_session_prompt.to_string());
+    if !input.project_session_prompt.is_empty() {
+        parts.push(input.project_session_prompt.to_string());
     }
 
-    if !excluded_skills.is_empty() {
-        let mut sorted: Vec<String> = excluded_skills.to_vec();
+    if !input.excluded_skills.is_empty() {
+        let mut sorted: Vec<String> = input.excluded_skills.to_vec();
         sorted.sort();
         let names = sorted
             .iter()
@@ -43,24 +45,24 @@ pub fn build_session_prompt(
         parts.push(Template::parse(builtins::EXCLUDED_SKILLS).substitute(&vals));
     }
 
-    if !changes.is_empty() {
-        parts.push(format_change_summary(changes));
+    if !input.changes.is_empty() {
+        parts.push(format_change_summary(input.changes));
     }
 
-    if let Some(clone_path) = school_clone {
+    if let Some(clone_path) = input.school_clone {
         let vals = HashMap::from([
             ("school_clone".to_string(), clone_path.display().to_string()),
         ]);
         parts.push(Template::parse(builtins::SCHOOL_CHANGES).substitute(&vals));
 
-        if school_is_dirty {
+        if input.school_is_dirty {
             parts.push(builtins::DIRTY_SCHOOL.to_string());
         }
     }
 
-    let previous_skills = backend_dir.join("previous-skills");
+    let previous_skills = input.backend_dir.join("previous-skills");
     if previous_skills.exists() {
-        let backend_dir_name = backend_dir
+        let backend_dir_name = input.backend_dir
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or(".claude");
@@ -124,10 +126,33 @@ mod tests {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn build_prompt(
+        school_name: &str,
+        school_session_prompt: &str,
+        project_session_prompt: &str,
+        backend_dir: &Path,
+        changes: &[SkillChange],
+        school_clone: Option<&Path>,
+        school_is_dirty: bool,
+        excluded_skills: &[String],
+    ) -> String {
+        build_session_prompt(&SessionPromptInput {
+            school_name,
+            school_session_prompt,
+            project_session_prompt,
+            backend_dir,
+            changes,
+            school_clone,
+            school_is_dirty,
+            excluded_skills,
+        })
+    }
+
     #[test]
     fn builtin_includes_session_base() {
         let dir = nonexistent_dir();
-        let prompt = build_session_prompt("Acme", "", "", &dir, &[], None, false, &[]);
+        let prompt = build_prompt("Acme", "", "", &dir, &[], None, false, &[]);
         assert!(prompt.contains("School: Acme"));
         assert!(prompt.contains("ACE (Accelerated Coding Environment)"));
     }
@@ -135,7 +160,7 @@ mod tests {
     #[test]
     fn no_cache_omits_proposal_steps() {
         let dir = nonexistent_dir();
-        let prompt = build_session_prompt("Acme", "", "", &dir, &[], None, false, &[]);
+        let prompt = build_prompt("Acme", "", "", &dir, &[], None, false, &[]);
         assert!(!prompt.contains("School clone:"));
         assert!(!prompt.contains("propose school changes"));
     }
@@ -143,7 +168,7 @@ mod tests {
     #[test]
     fn school_and_project_prompts() {
         let dir = nonexistent_dir();
-        let prompt = build_session_prompt("Acme", "Use Rust.", "PostgreSQL project.", &dir, &[], None, false, &[]);
+        let prompt = build_prompt("Acme", "Use Rust.", "PostgreSQL project.", &dir, &[], None, false, &[]);
         assert!(prompt.contains("Use Rust."));
         assert!(prompt.contains("PostgreSQL project."));
         assert_layer_order(&prompt, "Use Rust.", "PostgreSQL project.");
@@ -152,7 +177,7 @@ mod tests {
     #[test]
     fn skips_empty_layers() {
         let dir = nonexistent_dir();
-        let prompt = build_session_prompt("Acme", "", "Only project.", &dir, &[], None, false, &[]);
+        let prompt = build_prompt("Acme", "", "Only project.", &dir, &[], None, false, &[]);
         assert!(prompt.contains("Only project."));
     }
 
@@ -162,7 +187,7 @@ mod tests {
         let prev = fix.path().join("previous-skills");
         std::fs::create_dir_all(&prev).expect("create previous-skills dir");
 
-        let prompt = build_session_prompt("Acme", "", "", fix.path(), &[], None, false, &[]);
+        let prompt = build_prompt("Acme", "", "", fix.path(), &[], None, false, &[]);
         assert!(prompt.contains("unconsolidated skills"));
         assert!(prompt.contains("previous-skills"));
     }
@@ -174,7 +199,7 @@ mod tests {
         std::fs::create_dir_all(&skills).expect("create previous-skills dir");
 
         let backend_dir = fix.path().join(".agents");
-        let prompt = build_session_prompt("Acme", "", "", &backend_dir, &[], None, false, &[]);
+        let prompt = build_prompt("Acme", "", "", &backend_dir, &[], None, false, &[]);
         assert!(prompt.contains(".agents/previous-skills/"), "should use .agents dir name");
         assert!(!prompt.contains(".claude/previous-skills/"), "should not contain .claude");
     }
@@ -184,7 +209,7 @@ mod tests {
         let fix = TempDir::new("ace-test-prompt-no-previous");
         std::fs::create_dir_all(fix.path().join("skills")).expect("create skills dir");
 
-        let prompt = build_session_prompt("Acme", "", "", fix.path(), &[], None, false, &[]);
+        let prompt = build_prompt("Acme", "", "", fix.path(), &[], None, false, &[]);
         assert!(!prompt.contains("unconsolidated"));
     }
 
@@ -197,7 +222,7 @@ mod tests {
             SkillChange { name: "old-skill".into(), kind: ChangeKind::Removed },
         ];
 
-        let prompt = build_session_prompt("Acme", "", "", &dir, &changes, None, false, &[]);
+        let prompt = build_prompt("Acme", "", "", &dir, &changes, None, false, &[]);
         assert!(prompt.contains("School skills were updated"));
         assert!(prompt.contains("- Added: `new-skill`"));
         assert!(prompt.contains("- Updated: `existing`"));
@@ -207,7 +232,7 @@ mod tests {
     #[test]
     fn no_changes_no_summary() {
         let dir = nonexistent_dir();
-        let prompt = build_session_prompt("Acme", "", "", &dir, &[], None, false, &[]);
+        let prompt = build_prompt("Acme", "", "", &dir, &[], None, false, &[]);
         assert!(!prompt.contains("updated since your last session"));
     }
 
@@ -215,7 +240,7 @@ mod tests {
     fn injects_school_clone_and_proposal_steps() {
         let dir = nonexistent_dir();
         let clone_path = Path::new("/home/user/.local/share/ace/org/school");
-        let prompt = build_session_prompt("Acme", "", "", &dir, &[], Some(clone_path), false, &[]);
+        let prompt = build_prompt("Acme", "", "", &dir, &[], Some(clone_path), false, &[]);
         assert!(prompt.contains("School clone: /home/user/.local/share/ace/org/school"));
         assert!(prompt.contains("guide the user through"));
         assert!(prompt.contains("git -C /home/user/.local/share/ace/org/school"));
@@ -238,7 +263,7 @@ mod tests {
     fn changes_and_cache() {
         let dir = nonexistent_dir();
         let clone_path = Path::new("/tmp/school");
-        let prompt = build_session_prompt("Acme", "", "", &dir, &sample_changes(), Some(clone_path), false, &[]);
+        let prompt = build_prompt("Acme", "", "", &dir, &sample_changes(), Some(clone_path), false, &[]);
         assert!(prompt.contains("School skills were updated"));
         assert!(prompt.contains("School clone:"));
         assert_layer_order(&prompt, "School skills were updated", "School clone:");
@@ -249,7 +274,7 @@ mod tests {
         let fix = TempDir::new("ace-test-changes-prev");
         std::fs::create_dir_all(fix.path().join("previous-skills")).expect("mkdir");
 
-        let prompt = build_session_prompt("Acme", "", "", fix.path(), &sample_changes(), None, false, &[]);
+        let prompt = build_prompt("Acme", "", "", fix.path(), &sample_changes(), None, false, &[]);
         assert!(prompt.contains("School skills were updated"));
         assert!(prompt.contains("unconsolidated skills"));
         assert_layer_order(&prompt, "School skills were updated", "unconsolidated skills");
@@ -261,7 +286,7 @@ mod tests {
         std::fs::create_dir_all(fix.path().join("previous-skills")).expect("mkdir");
         let clone_path = Path::new("/tmp/school");
 
-        let prompt = build_session_prompt("Acme", "", "", fix.path(), &[], Some(clone_path), false, &[]);
+        let prompt = build_prompt("Acme", "", "", fix.path(), &[], Some(clone_path), false, &[]);
         assert!(prompt.contains("School clone:"));
         assert!(prompt.contains("unconsolidated skills"));
         assert_layer_order(&prompt, "School clone:", "unconsolidated skills");
@@ -273,7 +298,7 @@ mod tests {
         std::fs::create_dir_all(fix.path().join("previous-skills")).expect("mkdir");
         let clone_path = Path::new("/tmp/school");
 
-        let prompt = build_session_prompt("Acme", "", "", fix.path(), &sample_changes(), Some(clone_path), false, &[]);
+        let prompt = build_prompt("Acme", "", "", fix.path(), &sample_changes(), Some(clone_path), false, &[]);
         assert!(prompt.contains("School skills were updated"));
         assert!(prompt.contains("School clone:"));
         assert!(prompt.contains("unconsolidated skills"));
@@ -287,7 +312,7 @@ mod tests {
         std::fs::create_dir_all(fix.path().join("previous-skills")).expect("mkdir");
         let clone_path = Path::new("/tmp/school");
 
-        let prompt = build_session_prompt(
+        let prompt = build_prompt(
             "Acme", "School rules.", "Project rules.",
             fix.path(), &sample_changes(), Some(clone_path), false, &[],
         );
@@ -309,7 +334,7 @@ mod tests {
     #[test]
     fn no_optional_layers() {
         let dir = nonexistent_dir();
-        let prompt = build_session_prompt("Acme", "", "", &dir, &[], None, false, &[]);
+        let prompt = build_prompt("Acme", "", "", &dir, &[], None, false, &[]);
         assert!(prompt.contains("School: Acme"));
         assert!(!prompt.contains("School skills were updated"));
         assert!(!prompt.contains("School clone:"));
@@ -320,7 +345,7 @@ mod tests {
     fn dirty_school_includes_gitignore_guidance() {
         let dir = nonexistent_dir();
         let clone_path = Path::new("/tmp/school");
-        let prompt = build_session_prompt("Acme", "", "", &dir, &[], Some(clone_path), true, &[]);
+        let prompt = build_prompt("Acme", "", "", &dir, &[], Some(clone_path), true, &[]);
         assert!(prompt.contains("uncommitted local changes"));
         assert!(prompt.contains(".gitignore"));
     }
@@ -329,7 +354,7 @@ mod tests {
     fn clean_school_omits_dirty_notice() {
         let dir = nonexistent_dir();
         let clone_path = Path::new("/tmp/school");
-        let prompt = build_session_prompt("Acme", "", "", &dir, &[], Some(clone_path), false, &[]);
+        let prompt = build_prompt("Acme", "", "", &dir, &[], Some(clone_path), false, &[]);
         assert!(!prompt.contains("uncommitted local changes"));
     }
 
@@ -337,7 +362,7 @@ mod tests {
     fn dirty_school_layer_order() {
         let dir = nonexistent_dir();
         let clone_path = Path::new("/tmp/school");
-        let prompt = build_session_prompt("Acme", "", "", &dir, &[], Some(clone_path), true, &[]);
+        let prompt = build_prompt("Acme", "", "", &dir, &[], Some(clone_path), true, &[]);
         assert_layer_order(&prompt, "School clone:", "uncommitted local changes");
     }
 
@@ -345,7 +370,7 @@ mod tests {
     fn excluded_skills_section_appears_with_names() {
         let dir = nonexistent_dir();
         let excluded = vec!["foo".to_string(), "bar".to_string()];
-        let prompt = build_session_prompt(
+        let prompt = build_prompt(
             "Acme", "", "", &dir, &[], None, false, &excluded,
         );
         assert!(prompt.contains("Excluded skills"));
@@ -356,7 +381,7 @@ mod tests {
     #[test]
     fn excluded_skills_empty_omits_section() {
         let dir = nonexistent_dir();
-        let prompt = build_session_prompt("Acme", "", "", &dir, &[], None, false, &[]);
+        let prompt = build_prompt("Acme", "", "", &dir, &[], None, false, &[]);
         assert!(!prompt.contains("Excluded skills"));
     }
 
@@ -364,7 +389,7 @@ mod tests {
     fn excluded_skills_names_sorted() {
         let dir = nonexistent_dir();
         let excluded = vec!["zebra".to_string(), "apple".to_string(), "mango".to_string()];
-        let prompt = build_session_prompt(
+        let prompt = build_prompt(
             "Acme", "", "", &dir, &[], None, false, &excluded,
         );
         let a = prompt.find("`apple`").expect("apple");
@@ -379,7 +404,7 @@ mod tests {
         std::fs::create_dir_all(fix.path().join("previous-skills")).expect("mkdir");
         let clone_path = Path::new("/tmp/school");
         let excluded = vec!["foo".to_string()];
-        let prompt = build_session_prompt(
+        let prompt = build_prompt(
             "Acme", "School rules.", "Project rules.",
             fix.path(), &sample_changes(), Some(clone_path), false, &excluded,
         );

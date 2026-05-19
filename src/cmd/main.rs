@@ -3,7 +3,7 @@ use crate::backend::{Kind, OneShotRequest, PromptInput, SessionRequest};
 use crate::config::ace_toml::Trust;
 use crate::actions::project::RegisterMcp;
 use crate::actions::project::{Prepare, PrepareResult};
-use crate::templates::session::build_session_prompt;
+use crate::templates::session::{build_session_prompt, SessionPromptInput};
 
 use super::CmdError;
 
@@ -58,16 +58,16 @@ fn run_inner(
     };
 
     let excluded_skills = ace.excluded_skills();
-    let session_prompt = build_session_prompt(
-        &school_name,
-        &school_session_prompt,
-        &resolved_session_prompt,
-        &backend_dir,
-        &prepare_result.changes,
-        school_clone.as_deref(),
-        prepare_result.school_is_dirty,
-        &excluded_skills,
-    );
+    let session_prompt = build_session_prompt(&SessionPromptInput {
+        school_name: &school_name,
+        school_session_prompt: &school_session_prompt,
+        project_session_prompt: &resolved_session_prompt,
+        backend_dir: &backend_dir,
+        changes: &prepare_result.changes,
+        school_clone: school_clone.as_deref(),
+        school_is_dirty: prepare_result.school_is_dirty,
+        excluded_skills: &excluded_skills,
+    });
 
     match trust {
         Trust::Auto => ace.hint("auto mode — AI decides approvals"),

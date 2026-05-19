@@ -273,7 +273,6 @@ impl Skills<Decided> {
 
     /// Skills that exist in the school but were filtered out by the resolved
     /// `include_skills` / `exclude_skills` rules.
-    #[allow(dead_code)]
     pub fn excluded(&self) -> impl Iterator<Item = &Skill<Decided>> {
         self.items
             .iter()
