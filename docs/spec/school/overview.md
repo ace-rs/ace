@@ -24,13 +24,17 @@ The `school` field in `ace.toml` uses a multi-mode specifier:
 
 If `:<path>` is omitted, the repo root is assumed.
 
-| Specifier | Meaning |
-|---|---|
-| `ace-rs/school` | Remote repo, root |
-| `prod9/mono:school` | Remote repo, `school/` subfolder |
-| `.:/school` | Embedded in current repo at `school/` |
+| Specifier             | Meaning                              |
+|-----------------------|--------------------------------------|
+| `ace-rs/school`       | Remote repo, root                    |
+| `sith/temple:school`  | Remote repo, `school/` subfolder     |
+| `.:/school`           | Embedded in current repo at `school/`|
 
 Embedded schools (`.`) skip clone/fetch — they read directly from the working tree.
+
+Examples in this spec and elsewhere use `jedi/` and `sith/` as placeholder
+owners; pick the convention `<owner>/school` for real repos so the specifier
+reads obviously.
 
 ## Context Resolution
 

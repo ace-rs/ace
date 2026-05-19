@@ -183,8 +183,8 @@ repo = "ace-rs/school"
 path = ""
 
 [[school]]
-specifier = "prod9/mono:school"
-repo = "prod9/mono"
+specifier = "jedi/academy:school"
+repo = "jedi/academy"
 path = "school"
 ```
 

@@ -15,8 +15,8 @@ use super::paths::{ace_cache_dir, ace_data_dir};
 /// path = ""
 ///
 /// [[school]]
-/// specifier = "prod9/mono:school"
-/// repo = "prod9/mono"
+/// specifier = "sith/holocron:school"
+/// repo = "sith/holocron"
 /// path = "school"
 /// ```
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -189,15 +189,15 @@ mod tests {
 
         let mut index = IndexToml::default();
         upsert(&mut index, "ace-rs/school");
-        upsert(&mut index, "prod9/mono:school");
+        upsert(&mut index, "jedi/temple:school");
 
         save(&path, &index).expect("save should succeed");
         let loaded = load(&path).expect("load should succeed");
 
         assert_eq!(loaded.school.len(), 2);
         assert_eq!(loaded.school[0].specifier, "ace-rs/school");
-        assert_eq!(loaded.school[1].specifier, "prod9/mono:school");
-        assert_eq!(loaded.school[1].repo, "prod9/mono");
+        assert_eq!(loaded.school[1].specifier, "jedi/temple:school");
+        assert_eq!(loaded.school[1].repo, "jedi/temple");
         assert_eq!(loaded.school[1].path, "school");
     }
 }

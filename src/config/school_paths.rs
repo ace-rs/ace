@@ -64,11 +64,11 @@ mod tests {
     fn parse_specifier_valid() {
         let cases: &[(&str, &str, Option<&str>)] = &[
             ("ace-rs/school", "ace-rs/school", None),
-            ("prod9/mono:school", "prod9/mono", Some("school")),
+            ("jedi/temple:school", "jedi/temple", Some("school")),
             (".", ".", None),
             (".:/school", ".", Some("school")),
             (".:school", ".", Some("school")),
-            ("prod9/mono:/deep/path", "prod9/mono", Some("deep/path")),
+            ("sith/order:/deep/path", "sith/order", Some("deep/path")),
             ("owner/repo:", "owner/repo", None),
         ];
 
@@ -127,7 +127,7 @@ mod tests {
             .expect("ace_data_dir should resolve in tests");
         let cases: &[(&str, &str, &str)] = &[
             ("ace-rs/school", "ace/ace-rs/school", "ace/ace-rs/school"),
-            ("prod9/mono:school", "ace/prod9/mono", "ace/prod9/mono/school"),
+            ("sith/holocron:school", "ace/sith/holocron", "ace/sith/holocron/school"),
         ];
 
         for (spec, clone_suffix, root_suffix) in cases {
