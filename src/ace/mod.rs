@@ -170,23 +170,32 @@ impl Ace {
         out
     }
 
+    /// Names of school skills filtered out by the resolved
+    /// `include_skills` / `exclude_skills` rules. Sorted, deduped. Empty when
+    /// skills can't be resolved (no school, discovery I/O failure) — surfacing
+    /// the empty set is preferable to bubbling errors into the session prompt.
+    pub fn excluded_skills(&self) -> Vec<String> {
+        let Ok(skills) = self.skills() else {
+            return Vec::new();
+        };
+        let mut names: Vec<String> = skills.excluded().map(|s| s.name.clone()).collect();
+        names.sort();
+        names.dedup();
+        names
+    }
+
     /// Resolve school paths. See docs/spec/school/overview.md (Context Resolution)
     /// for the full case matrix. Summary:
     ///
-    /// - school.toml in workdir → Ok (school-repo).
-    /// - Else require_tree → specifier → resolve.
-    /// - Resolved root exists but lacks school.toml → MissingSchool
+    /// - Always resolves via `ace.toml`'s specifier. The presence of `school.toml`
+    ///   in the workdir is *content*, not a location signal — a school repo that
+    ///   wants to dogfood itself uses `school = "."` in its own `ace.toml`.
+    /// - `require_tree` → specifier → resolve via `school_paths::resolve`.
+    /// - Resolved root exists as a dir but lacks `school.toml` → `NotInitialized`
     ///   (covers cases 5 and 7: local pre-init / clone uninitialized upstream).
     /// - Resolved root absent → Ok; cmd/pull.rs self-heals via clone (case 8).
     pub fn require_school(&self) -> Result<&SchoolPaths, SchoolError> {
         self.school_paths.get_or_try_init(|| {
-            if self.project_dir.join("school.toml").exists() {
-                return Ok(SchoolPaths {
-                    source: ".".to_string(),
-                    clone_path: None,
-                    root: self.project_dir.clone(),
-                });
-            }
             let tree = self.require_tree()?;
             let Some(spec) = tree.specifier() else {
                 return Err(SchoolError::NoSpecifier);
@@ -313,15 +322,35 @@ mod tests {
         assert!(err.to_string().contains("ace school init"), "msg: {err}");
     }
 
-    /// docs/spec/school/overview.md case 1: school.toml in workdir short-circuits to Ok.
+    /// School-repo dogfood: ace.toml with `school = "."` plus a workdir school.toml
+    /// resolves to the workdir via the specifier — *not* via marker-file detection.
+    /// Removing the ace.toml would (correctly) yield NoSpecifier even though
+    /// school.toml is present.
     #[test]
-    fn require_school_workdir_school_toml_returns_ok() {
+    fn require_school_embedded_specifier_resolves_to_workdir() {
         let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::write(
+            tmp.path().join("ace.toml"),
+            "school = \".\"\nbackend = \"flaude\"\n",
+        )
+        .unwrap();
         std::fs::write(tmp.path().join("school.toml"), "name = \"x\"\n").unwrap();
         let ace = Ace::new(tmp.path().to_path_buf(), OutputMode::Silent);
         let paths = ace.require_school().expect("Ok");
         assert_eq!(paths.root, tmp.path());
-        assert!(paths.clone_path.is_none());
+    }
+
+    /// Without an ace.toml specifier, a bare school.toml in the workdir no longer
+    /// short-circuits — resolution always goes through the tree → specifier path.
+    /// With no ace.toml present at all, tree load fails first (case 2 in the
+    /// matrix: intent unknowable).
+    #[test]
+    fn require_school_workdir_school_toml_without_ace_toml_errors() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::write(tmp.path().join("school.toml"), "name = \"x\"\n").unwrap();
+        let ace = Ace::new(tmp.path().to_path_buf(), OutputMode::Silent);
+        let err = ace.require_school().expect_err("expected error");
+        assert!(matches!(err, SchoolError::TreeLoad(_)), "got: {err:?}");
     }
 
     /// docs/spec/school/overview.md case 3: ace.toml without specifier → Missing.

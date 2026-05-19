@@ -57,6 +57,7 @@ fn run_inner(
         (r.session_prompt.value.clone(), r.trust.value, r.resume.value, env)
     };
 
+    let excluded_skills = ace.excluded_skills();
     let session_prompt = build_session_prompt(
         &school_name,
         &school_session_prompt,
@@ -65,6 +66,7 @@ fn run_inner(
         &prepare_result.changes,
         school_clone.as_deref(),
         prepare_result.school_is_dirty,
+        &excluded_skills,
     );
 
     match trust {

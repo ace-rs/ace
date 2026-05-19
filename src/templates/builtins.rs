@@ -4,6 +4,7 @@ pub const SCHOOL_CHANGES: &str = include_str!("builtins/prompt_school_changes.md
 pub const DIRTY_SCHOOL: &str = include_str!("builtins/prompt_dirty_school.md");
 pub const PREVIOUS_SKILLS: &str = include_str!("builtins/prompt_previous_skills.md");
 pub const CHANGES: &str = include_str!("builtins/prompt_changes.md");
+pub const EXCLUDED_SKILLS: &str = include_str!("builtins/prompt_excluded_skills.md");
 pub const PROJECT_CLAUDE_MD: &str = include_str!("builtins/tpl_project_claude_md.md");
 pub const SCHOOL_CLAUDE_MD: &str = include_str!("builtins/tpl_school_claude_md.md");
 pub const SCHOOL_README: &str = include_str!("builtins/tpl_school_readme.md");

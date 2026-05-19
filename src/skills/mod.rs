@@ -271,6 +271,15 @@ impl Skills<Decided> {
             .filter(|s| s.state.decision == Decision::Included)
     }
 
+    /// Skills that exist in the school but were filtered out by the resolved
+    /// `include_skills` / `exclude_skills` rules.
+    #[allow(dead_code)]
+    pub fn excluded(&self) -> impl Iterator<Item = &Skill<Decided>> {
+        self.items
+            .iter()
+            .filter(|s| s.state.decision == Decision::Excluded)
+    }
+
     pub fn diagnostics(&self) -> &Diagnostics {
         &self.diagnostics
     }
@@ -343,6 +352,55 @@ mod tests {
 
         let b = resolved.find("b").expect("b");
         assert_eq!(b.tier, Tier::Experimental);
+    }
+
+    fn excluded_names(resolved: &Skills<Decided>) -> Vec<String> {
+        let mut names: Vec<String> = resolved.excluded().map(|s| s.name.clone()).collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn excluded_empty_when_no_filters() {
+        let s = Skills::<Discovered>::from_discovered(&[
+            discovered("a", Tier::Curated),
+            discovered("b", Tier::Curated),
+        ]);
+        let resolved = s.resolve(&tree(AceToml::default()));
+        assert!(excluded_names(&resolved).is_empty());
+    }
+
+    #[test]
+    fn excluded_returns_filtered_names_include_only() {
+        let s = Skills::<Discovered>::from_discovered(&[
+            discovered("a", Tier::Curated),
+            discovered("b", Tier::Curated),
+            discovered("c", Tier::Curated),
+        ]);
+        let resolved = s.resolve(&tree(ace(&["a"], &[], &[])));
+        // include_skills via `skills = ["a"]` narrows the active set.
+        assert_eq!(excluded_names(&resolved), vec!["b", "c"]);
+    }
+
+    #[test]
+    fn excluded_returns_filtered_names_exclude_only() {
+        let s = Skills::<Discovered>::from_discovered(&[
+            discovered("a", Tier::Curated),
+            discovered("b", Tier::Curated),
+        ]);
+        let resolved = s.resolve(&tree(ace(&[], &[], &["a"])));
+        assert_eq!(excluded_names(&resolved), vec!["a"]);
+    }
+
+    #[test]
+    fn excluded_returns_filtered_names_include_and_exclude() {
+        let s = Skills::<Discovered>::from_discovered(&[
+            discovered("a", Tier::Curated),
+            discovered("b", Tier::Curated),
+            discovered("c", Tier::Curated),
+        ]);
+        let resolved = s.resolve(&tree(ace(&["a", "b"], &[], &["b"])));
+        assert_eq!(excluded_names(&resolved), vec!["b", "c"]);
     }
 
     #[test]
