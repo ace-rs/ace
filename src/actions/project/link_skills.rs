@@ -239,6 +239,12 @@ fn scan_current(
     project_skills_dir: &Path,
     school_skills_root: &Path,
 ) -> io::Result<Vec<CurrentEntry>> {
+    // Canonicalize both sides so the prefix check in `classify` isn't fooled
+    // by symlinked path components (e.g. macOS `/var` → `/private/var`, or a
+    // school root reached through a parent symlink). Broken links fall back
+    // to the raw read_link target — they won't match the canonical root and
+    // classify as foreign, which is the safe default for a stale link.
+    let canonical_root = fs::canonicalize(school_skills_root)?;
     let mut out = Vec::new();
     for entry in fs::read_dir(project_skills_dir)? {
         let entry = entry?;
@@ -248,11 +254,12 @@ fn scan_current(
         };
         let path = entry.path();
         let kind_input = if is_symlink(&path) {
-            ClassifyInput::Symlink(fs::read_link(&path)?)
+            let resolved = fs::canonicalize(&path).or_else(|_| fs::read_link(&path))?;
+            ClassifyInput::Symlink(resolved)
         } else {
             ClassifyInput::Other
         };
-        out.push(classify(&name, kind_input, school_skills_root));
+        out.push(classify(&name, kind_input, &canonical_root));
     }
     Ok(out)
 }
@@ -414,6 +421,40 @@ mod tests {
     fn classify_other_is_foreign_entry() {
         let entry = classify("a", ClassifyInput::Other, Path::new("/sch/skills"));
         assert_eq!(entry.kind, EntryKind::ForeignEntry);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn scan_current_classifies_managed_link_through_symlinked_school_root() {
+        // Regression: textual `PathBuf::starts_with` misclassifies a managed
+        // link as foreign when the school root path goes through a parent
+        // symlink (or any non-canonical form).
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path();
+
+        let real_school = root.join("real_school");
+        let real_skills = real_school.join("skills");
+        let real_skill = real_skills.join("foo");
+        std::fs::create_dir_all(&real_skill).expect("real skill dir");
+
+        let linked_school = root.join("linked_school");
+        std::os::unix::fs::symlink(&real_school, &linked_school).expect("symlink school");
+        let linked_skills = linked_school.join("skills");
+
+        let project_skills = root.join("proj").join("skills");
+        std::fs::create_dir_all(&project_skills).expect("proj skills");
+        std::os::unix::fs::symlink(&real_skill, project_skills.join("foo"))
+            .expect("managed symlink");
+
+        let entries = scan_current(&project_skills, &linked_skills).expect("scan");
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "foo");
+        assert!(
+            matches!(entries[0].kind, EntryKind::ManagedSymlink { .. }),
+            "expected ManagedSymlink through symlinked school root, got {:?}",
+            entries[0].kind,
+        );
     }
 
     #[test]
