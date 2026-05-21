@@ -13,6 +13,4 @@ If it's a ruling on a question that came up, that's a decision — use
 ## Format
 
 One file per spec: `<slug>.md` (no date prefix — specs are about the
-thing, not the moment it was written). Add a status header (`draft`,
-`accepted`, `superseded`, `implemented`) so readers can tell at a glance
-whether the spec still describes current intent.
+thing, not the moment it was written).
