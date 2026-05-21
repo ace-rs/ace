@@ -15,16 +15,6 @@ NODE_VERSION = "22"
 PYTHON_VERSION = "3.12"
 LITELLM_BASE_URL = "https://llm.acme.corp/v1"
 
-[[roles]]
-name = "task-master"
-prompt = """You are a project manager. Break down requirements into actionable tasks, \
-write specs, manage issue trackers, and coordinate work across repos."""
-
-[[roles]]
-name = "backend-engineer"
-prompt = """You are a backend engineer. Focus on API design, database queries, \
-business logic, and service architecture."""
-
 [[mcp]]
 name = "github"
 url = "https://api.githubcopilot.com/mcp/"
@@ -63,18 +53,25 @@ description = "Terraform and Kubernetes configs for AWS deployment."
 
 ### `name`
 
-Display name for the school. Used in logs, UI, and fuzzy search. Not an identifier —
-the school is identified by its GitHub `owner/repo` shorthand.
+Display name for the school. Used in logs, UI, and fuzzy search. Not an identifier — the
+school is identified by its GitHub `owner/repo` shorthand.
+
+### `backend`
+
+Optional top-level string. Default backend name for projects that consume this school,
+used when no `ace.toml` / `ace.local.toml` / user config / CLI override sets one. Value is
+a built-in name (`claude`, `codex`, `opencode`, `droid`) or a custom name declared in
+`[[backends]]` below. See [backend.md → Resolution Order](../backend.md#resolution-order).
+
+```toml
+backend = "claude"
+```
 
 ### `session_prompt`
 
 Top-level string. Injected verbatim into every ACE session's prompt for projects that
 consume this school. Use it for school-wide instructions that always apply —
 load-this-skill nudges, org-wide conventions, coding-style reminders, etc.
-
-Unlike `[[roles]]` prompts (which are injected only when the user has selected that role),
-`session_prompt` is unconditional: it fires on every invocation regardless of role
-selection — or even when the school declares no roles at all.
 
 ```toml
 session_prompt = """Always load the `acme-conventions` skill first.
@@ -92,8 +89,8 @@ substitution.
 Key-value pairs of environment variables. Set in the shell before exec-ing the backend.
 Use for shared endpoints, API base URLs, feature flags, etc.
 
-These are not secrets — secrets are managed by the backend's own OAuth flow when connecting
-to remote MCP servers.
+These are not secrets — secrets are managed by the backend's own OAuth flow when
+connecting to remote MCP servers.
 
 ### `[[mcp]]`
 
@@ -106,40 +103,15 @@ these with the active backend (see [backend.md](../backend.md#mcp-server-registr
 
 ### `[[projects]]`
 
-Catalog of projects in the organization. Gives the AI context about available repositories and
-what they do, enabling better cross-project reasoning and navigation.
+Catalog of projects in the organization. Gives the AI context about available repositories
+and what they do, enabling better cross-project reasoning and navigation.
 
 - `name` — Short project identifier.
 - `repo` — Git-cloneable URL for the project.
-- `description` — What the project is and does. Written for AI/LLM consumption — be specific
-  about tech stack, domain, and responsibilities.
+- `description` — What the project is and does. Written for AI/LLM consumption — be
+  specific about tech stack, domain, and responsibilities.
 - `env` — Optional. Project-specific environment variables. Merged with top-level `[env]`
   (project values override).
-
-### `[[roles]]`
-
-Array of role definitions. Each entry describes a team role that affects how the AI behaves
-during sessions. Users pick a role on first run; the selected role's prompt is injected
-into the session prompt. See [roles.md](../roles.md) for the full workflow.
-
-- `name` — Short identifier (e.g. `"task-master"`, `"backend-engineer"`). Used as the stored
-  value in `ace.local.toml`.
-- `prompt` — Injected into the session prompt verbatim. The school operator uses this to
-  control how the backend behaves for this role.
-
-Schools with no `[[roles]]` entries skip role selection entirely.
-
-```toml
-[[roles]]
-name = "task-master"
-prompt = """You are a project manager. Break down requirements into actionable tasks, \
-write specs, manage issue trackers, and coordinate work across repos."""
-
-[[roles]]
-name = "backend-engineer"
-prompt = """You are a backend engineer. Focus on API design, database queries, \
-business logic, and service architecture."""
-```
 
 ### `[[backends]]`
 
@@ -190,7 +162,8 @@ their sources.
   Defaults to `false`. Same tier-filter semantics as `include_experimental`.
 
 Skills are copied into the school as real files (the school owns and commits them). The
-`[[imports]]` entries record provenance so `ace school update` knows where to re-fetch from.
+`[[imports]]` entries record provenance so `ace school update` knows where to re-fetch
+from.
 
 #### Exact imports
 
@@ -206,8 +179,8 @@ source = "anthropics/skills"
 
 #### Wildcard imports
 
-Glob patterns re-discover matching skills on every `ace school update`. New skills added to
-the source that match the pattern are picked up automatically.
+Glob patterns re-discover matching skills on every `ace school update`. New skills added
+to the source that match the pattern are picked up automatically.
 
 ```toml
 # All skills from a parent school
