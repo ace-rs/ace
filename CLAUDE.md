@@ -94,6 +94,13 @@ ACE has real users. CLI verbs, subcommand names, config keys (`ace.toml`, `schoo
 See [RELEASE.md](RELEASE.md). It is the only place release steps live — do not
 duplicate them here or in any other doc.
 
+**Distribution.** Primary channel is Homebrew via the
+[`ace-rs/homebrew-tap`](https://github.com/ace-rs/homebrew-tap) tap: end users
+install with `brew install ace-rs/tap/ace`. The formula source lives at
+`homebrew-tap/Formula/ace.rb` in this repo as a git subtree; `release.sh` patches
+it and pushes the subtree to the tap repo. A sha mismatch between the published
+binary and the formula sha means the release is broken — verify after publishing.
+
 ## Linear
 
 Project ACE (team PRODIGY9, key PROD9). Always scope queries to `project:"ACE"`.

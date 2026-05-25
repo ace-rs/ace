@@ -1,14 +1,15 @@
 # Releasing ACE
 
-End-to-end runbook for cutting an ACE release. Two scripts do the work
-(`bump.sh`, `release.sh`); this doc explains the order, the prereqs, and the
-moving pieces around them.
+End-to-end runbook for cutting an ACE release. One script does the work
+(`release.sh`, with `build-all.sh` as its cross-build primitive); this doc
+explains the prereqs, the moving pieces, and what each step is doing.
 
 ## 1. Prerequisites
 
 One-time host setup:
 
-- `cargo install cargo-edit` — provides `cargo set-version` (used by `bump.sh`).
+- `cargo install cargo-edit` — provides `cargo set-version` (used by
+  `release.sh`).
 - `cargo install cargo-zigbuild` — cross-compiles the Linux/Windows targets.
 - **Zig 0.14.x or 0.15.2** — Zig 0.16 has a known `ar` regression that breaks
   `ring` (rust-cross/cargo-zigbuild#433). `brew install zig` currently pulls
@@ -32,37 +33,39 @@ Optional: `cargo install sccache` to speed up repeat cross-builds.
 From a clean working tree on `main`:
 
 ```sh
-./bump.sh 0.7.0     # bump, build, patch formula, commit, tag (all in one)
-./release.sh        # rebuild (cached), push, gh release, subtree push
+./release.sh 0.7.2     # bump, build, patch formula, commit, tag, push, publish
 ```
 
-Then notify the website agent (see §7).
+Then notify the website agent (see §7) and post the Discord announcement
+(§8).
 
 ## 3. What each script does
 
-**`bump.sh <version>`** — refuses to run with a dirty tree. Calls
-`cargo set-version` to update `Cargo.toml` + `Cargo.lock`, writes `v<version>`
-to `./latest`, runs `./build-all.sh`, computes the sha256 of
+**`release.sh <version>`** — refuses to run with a dirty tree. In one linear
+flow: calls `cargo set-version` to update `Cargo.toml` + `Cargo.lock`, writes
+`v<version>` to `./latest`, runs `./build-all.sh`, computes the sha256 of
 `target/dist/ace-aarch64-apple-darwin`, sed-patches
-`homebrew-tap/Formula/ace.rb` (version, download URL, sha), then makes a
-single commit `v<version>` containing all of the above and tags it. The
-formula update lands in the same commit as the version bump — no follow-up
-formula commit, so the source tarball at `v<version>` carries the correct
-formula.
+`homebrew-tap/Formula/ace.rb` (version, download URL, sha), commits and tags
+as `v<version>`, pushes `main` and the tag to `gh`, runs `gh release create
+v<ver> --generate-notes <binaries>`, re-downloads the published macOS arm64
+artifact and verifies its sha matches the formula (aborts if not), then
+pushes the formula via `git subtree push --prefix=homebrew-tap gh-tap main`.
 
-**`build-all.sh`** — invoked by both `bump.sh` and `release.sh`. Cross-builds
-all seven targets into `target/dist/ace-<triple>` (`ace-<triple>.exe` for
-Windows). Builds `*-apple-darwin` with plain `cargo build` + `SDKROOT` (Zig
-0.14 can't resolve Apple frameworks); builds the rest with `cargo zigbuild`.
-Builds each target group in a single multi-target invocation; on group
-failure, retries per-target to isolate which one broke. The `release.sh`
-re-run is a cache hit when nothing changed since `bump.sh`.
+The build happens **before** the version-bump commit on purpose: `build.rs`
+embeds `ACE_GIT_HASH` from `git rev-parse --short HEAD` and uses
+`cargo:rerun-if-changed=.git/HEAD`, so any HEAD movement between the build
+and the upload would invalidate the formula sha. Building first means the
+shipped binary embeds the pre-bump commit's hash (one behind the tag), but
+the formula sha and the uploaded artifact agree — which is what users hit
+when `brew install` validates the download.
 
-**`release.sh`** — verifies the current `Cargo.toml` version has a matching
-tag on HEAD and the tree is clean, re-runs `build-all.sh` (cached no-op if
-`bump.sh` already built), pushes `main` and the tag, runs
-`gh release create v<ver> --generate-notes <binaries>`, and pushes the
-formula via `git subtree push --prefix=homebrew-tap gh-tap main`.
+**`build-all.sh`** — invoked by `release.sh`. Cross-builds all seven targets
+into `target/dist/ace-<triple>` (`ace-<triple>.exe` for Windows). Builds
+`*-apple-darwin` with plain `cargo build` + `SDKROOT` (Zig 0.14 can't
+resolve Apple frameworks); builds the rest with `cargo zigbuild`. Builds
+each target group in a single multi-target invocation; on group failure,
+retries per-target to isolate which one broke. Also usable standalone for
+local cross-build smoke tests.
 
 **`install.sh`** — end-user installer for macOS/Linux. Resolves the latest
 tag from `https://ace-rs.dev/latest`, downloads the matching binary from the
@@ -96,8 +99,8 @@ All seven are built and uploaded to every GitHub release.
 ## 5. The `latest` marker
 
 `./latest` at the repo root is the canonical version pointer (plain text,
-e.g. `v0.6.0`). `bump.sh` writes it; the commit on `main` is the source of
-truth.
+e.g. `v0.6.0`). `release.sh` writes it; the commit on `main` is the source
+of truth.
 
 `https://ace-rs.dev/latest` redirects to the raw `./latest` file on `main`,
 which is what both installers fetch.
@@ -108,15 +111,17 @@ which is what both installers fetch.
 ## 6. Homebrew
 
 Formula lives at `homebrew-tap/Formula/ace.rb`, kept in this repo as a git
-subtree. `release.sh` sed-patches three lines after the GitHub release is
-live:
+subtree. `release.sh` sed-patches three lines after the macOS aarch64
+binary is built (and before the version-bump commit is created):
 
 - `version "<x.y.z>"`
 - `url "https://github.com/ace-rs/ace/releases/download/v<x.y.z>/ace-aarch64-apple-darwin"`
 - `sha256 "<sha of the macOS aarch64 binary>"`
 
-It then commits and pushes the subtree to `gh-tap` (which maps to
-`ace-rs/homebrew-tap`). End users install with:
+After publishing the GitHub release, `release.sh` re-downloads the macOS
+arm64 artifact and re-hashes it as a safety net — if the published sha
+doesn't match the formula, the script aborts before pushing the subtree to
+`gh-tap`. End users install with:
 
 ```sh
 brew install ace-rs/tap/ace
