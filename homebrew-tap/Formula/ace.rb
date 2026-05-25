@@ -5,7 +5,7 @@ class Ace < Formula
   version "0.7.1"
 
   url "https://github.com/ace-rs/ace/releases/download/v0.7.1/ace-aarch64-apple-darwin"
-  sha256 "9927419b88bc92b1983a6cb7e2345835880a247aa13cd7f5361abb39c5e46fd5"
+  sha256 "15f03027c82f95b2fd8945df009f7907287a391efc429edee693ba4126470a68"
 
   depends_on arch: :arm64
   depends_on :macos
