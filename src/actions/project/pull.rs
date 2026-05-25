@@ -32,7 +32,8 @@ pub enum PullOutcome {
 impl PullOutcome {
     pub fn emit(&self, ace: &mut Ace) {
         match self {
-            PullOutcome::Embedded | PullOutcome::Fresh => {}
+            PullOutcome::Embedded => ace.info("Embedded school — nothing to pull."),
+            PullOutcome::Fresh => ace.info("School is up to date."),
             PullOutcome::SwitchedBranch { from } => {
                 ace.hint(&format!(
                     "Switched school clone from branch {from} back to main"

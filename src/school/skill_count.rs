@@ -10,6 +10,7 @@ use std::path::Path;
 use crate::ace::Ace;
 use crate::actions::project::learn::LearnAction;
 use crate::cmd::CmdError;
+use crate::config::ace_toml;
 use crate::skills::{ChangeKind, SkillChange};
 
 /// Skill count above which the auto-trigger fires.
@@ -45,6 +46,14 @@ pub fn has_explicit_skills_key(project_ace_toml: &Path) -> bool {
     value.get("skills").is_some()
 }
 
+/// True if the user has set `skills` in either `ace.toml` (project-shared)
+/// or `ace.local.toml` (user-prefs). The learn offer and the soft-relearn
+/// hint both gate on this — a decision in either layer counts.
+fn has_explicit_skills_decision(project_dir: &Path) -> bool {
+    has_explicit_skills_key(&project_dir.join("ace.toml"))
+        || has_explicit_skills_key(&project_dir.join("ace.local.toml"))
+}
+
 /// Inline y/N prompt — common shape used by setup, pull-imports, and ace
 /// startup. Skips silently in non-Human (porcelain) mode and when the
 /// user already pinned `skills` in ace.toml.
@@ -63,8 +72,8 @@ pub fn maybe_offer_learn(ace: &mut Ace) -> Result<(), CmdError> {
         return Ok(());
     }
 
-    let project_ace_toml = ace.project_dir().join("ace.toml");
-    if has_explicit_skills_key(&project_ace_toml) {
+    let project_dir = ace.project_dir().to_path_buf();
+    if has_explicit_skills_decision(&project_dir) {
         return Ok(());
     }
 
@@ -72,10 +81,24 @@ pub fn maybe_offer_learn(ace: &mut Ace) -> Result<(), CmdError> {
         "school has {count} skills — run `ace learn` now to narrow to what this project needs?"
     );
     if !ace.prompt_confirm(&prompt, false)? {
+        record_decline(&project_dir.join("ace.local.toml"))?;
         return Ok(());
     }
 
     LearnAction.run(ace).map_err(CmdError::from)
+}
+
+/// Persist a "no, keep all skills" decision to `ace.local.toml` so the offer
+/// does not re-fire next invocation. `skills = ["*"]` is the explicit
+/// all-skills marker — distinct from missing (never decided) and from
+/// `skills = []` (explicit opt-out of every skill).
+fn record_decline(local_path: &Path) -> Result<(), CmdError> {
+    let mut toml = ace_toml::load_or_default(local_path)?;
+    if toml.skills.is_empty() {
+        toml.skills = vec!["*".to_string()];
+        ace_toml::save(local_path, &toml)?;
+    }
+    Ok(())
 }
 
 /// Soft hint when the school's skill set just changed and the user already
@@ -93,7 +116,7 @@ pub fn maybe_hint_relearn(ace: &mut Ace, changes: &[SkillChange]) {
     if count(ace) <= LEARN_THRESHOLD {
         return;
     }
-    if !has_explicit_skills_key(&ace.project_dir().join("ace.toml")) {
+    if !has_explicit_skills_decision(ace.project_dir()) {
         return;
     }
 
@@ -177,5 +200,41 @@ mod tests {
         let path = dir.path().join("ace.toml");
         std::fs::write(&path, "not valid {{{ toml").unwrap();
         assert!(!has_explicit_skills_key(&path));
+    }
+
+    /// Declining the learn offer must persist as `skills = ["*"]` — the
+    /// explicit all-skills marker. `skills = []` would mean opt-out-of-all,
+    /// which is the opposite intent.
+    #[test]
+    fn record_decline_writes_star_to_fresh_local_toml() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ace.local.toml");
+
+        record_decline(&path).expect("record_decline");
+
+        let content = std::fs::read_to_string(&path).expect("file written");
+        let parsed: toml::Value = toml::from_str(&content).expect("valid toml");
+        let skills = parsed.get("skills").expect("skills key present");
+        let arr = skills.as_array().expect("skills is an array");
+        assert_eq!(arr.len(), 1);
+        assert_eq!(arr[0].as_str(), Some("*"));
+    }
+
+    /// If the user already has an explicit `skills` choice in ace.local.toml,
+    /// the decline must not clobber it — the prior decision wins.
+    #[test]
+    fn record_decline_preserves_existing_skills_choice() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ace.local.toml");
+        std::fs::write(&path, "skills = [\"rust-coding\", \"general-coding\"]\n").unwrap();
+
+        record_decline(&path).expect("record_decline");
+
+        let content = std::fs::read_to_string(&path).expect("file readable");
+        let parsed: toml::Value = toml::from_str(&content).expect("valid toml");
+        let arr = parsed.get("skills").unwrap().as_array().unwrap();
+        assert_eq!(arr.len(), 2);
+        assert_eq!(arr[0].as_str(), Some("rust-coding"));
+        assert_eq!(arr[1].as_str(), Some("general-coding"));
     }
 }

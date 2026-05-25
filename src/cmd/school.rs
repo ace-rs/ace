@@ -121,7 +121,7 @@ fn run_skills(ace: &mut Ace) -> Result<(), CmdError> {
     let skills_dir = school_root.join("skills");
 
     if !skills_dir.is_dir() {
-        ace.warn("no skills directory");
+        ace.info("no skills directory");
         return Ok(());
     }
 
@@ -144,7 +144,7 @@ fn run_skills(ace: &mut Ace) -> Result<(), CmdError> {
     }
 
     if skills.is_empty() {
-        ace.warn("no skills found");
+        ace.info("no skills found");
         return Ok(());
     }
 
@@ -197,7 +197,7 @@ fn run_pull(ace: &mut Ace) -> Result<(), CmdError> {
 
     let result = PullImports{ school_root: &school_root }.run(ace)?;
     match result {
-        PullImportsResult::NoImports => ace.warn("no imports to pull"),
+        PullImportsResult::NoImports => ace.info("no imports to pull"),
         PullImportsResult::Updated { .. } => {}
     }
 

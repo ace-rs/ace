@@ -264,6 +264,10 @@ impl Ace {
         self.io.done(msg);
     }
 
+    pub fn info(&mut self, msg: &str) {
+        self.io.info(msg);
+    }
+
     pub fn warn(&mut self, msg: &str) {
         self.io.warn(msg);
     }
@@ -319,7 +323,7 @@ mod tests {
             matches!(err, SchoolError::NotInitialized),
             "got: {err:?}"
         );
-        assert!(err.to_string().contains("ace school init"), "msg: {err}");
+        assert_eq!(err.hint(), Some("run `ace school init` to bootstrap this repo as a school"));
     }
 
     /// School-repo dogfood: ace.toml with `school = "."` plus a workdir school.toml
@@ -361,6 +365,6 @@ mod tests {
         let ace = Ace::new(tmp.path().to_path_buf(), OutputMode::Silent);
         let err = ace.require_school().expect_err("expected NoSpecifier");
         assert!(matches!(err, SchoolError::NoSpecifier), "got: {err:?}");
-        assert!(err.to_string().contains("ace setup"), "msg: {err}");
+        assert_eq!(err.hint(), Some("run `ace setup` to choose a school"));
     }
 }

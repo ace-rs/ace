@@ -69,7 +69,7 @@ fn run_inner(
     });
 
     match trust {
-        Trust::Auto => ace.hint("auto mode — AI decides approvals"),
+        Trust::Auto => ace.info("auto mode — AI decides approvals"),
         Trust::Yolo => ace.warn("yolo mode — permission prompts disabled"),
         Trust::Default => {}
     }

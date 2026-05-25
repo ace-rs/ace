@@ -47,7 +47,7 @@ fn run_default(ace: &mut Ace) -> Result<(), CmdError> {
 
     let (backend, entries, project_dir) = load_school_mcp(ace)?;
     if entries.is_empty() {
-        ace.hint("no MCP servers defined in school");
+        ace.info("no MCP servers defined in school");
         return Ok(());
     }
 
@@ -126,7 +126,7 @@ fn run_check(ace: &mut Ace) -> Result<(), CmdError> {
 
     let (backend, entries, project_dir) = load_school_mcp(ace)?;
     if entries.is_empty() {
-        ace.hint("no MCP servers defined in school");
+        ace.info("no MCP servers defined in school");
         return Ok(());
     }
 
@@ -138,6 +138,7 @@ fn run_check(ace: &mut Ace) -> Result<(), CmdError> {
     for entry in &entries {
         if !registered.contains(&entry.name) {
             ace.warn(&format!("{} (not registered)", entry.name));
+            ace.hint(&format!("run `ace mcp register {}` to register it", entry.name));
         }
     }
 
@@ -165,7 +166,7 @@ fn run_check(ace: &mut Ace) -> Result<(), CmdError> {
 
     for name in &registered {
         if !school_names.contains(name.as_str()) {
-            ace.hint(&format!("{name} (not in school, ignored)"));
+            ace.info(&format!("{name} (not in school, ignored)"));
         }
     }
 
@@ -182,7 +183,7 @@ fn run_reset(ace: &mut Ace, name: Option<String>) -> Result<(), CmdError> {
     let names: Vec<String> = match name {
         Some(n) => {
             if !registered.contains(&n) {
-                ace.warn(&format!("'{n}' is not registered, nothing to remove"));
+                ace.info(&format!("'{n}' is not registered, nothing to remove"));
                 return Ok(());
             }
             vec![n]
@@ -194,7 +195,7 @@ fn run_reset(ace: &mut Ace, name: Option<String>) -> Result<(), CmdError> {
                 .collect();
 
             if school_registered.is_empty() {
-                ace.hint("no school-defined MCP servers are registered");
+                ace.info("no school-defined MCP servers are registered");
                 return Ok(());
             }
             school_registered
@@ -218,7 +219,10 @@ fn run_register(ace: &mut Ace, name: String) -> Result<(), CmdError> {
     // want this to work even when the entry is currently excluded).
     let entry = ace.school()?
         .and_then(|s| s.mcp.iter().find(|e| e.name == name).cloned())
-        .ok_or_else(|| CmdError::Other(format!("MCP '{name}' not defined in school")))?;
+        .ok_or_else(|| CmdError::with_hint(
+            format!("MCP '{name}' not defined in school"),
+            "run `ace mcp`",
+        ))?;
 
     let local_path = ace.require_paths()?.local.clone();
     edit_mcp_config::include(&local_path, &name)?;
@@ -234,6 +238,7 @@ fn report_statuses(ace: &mut Ace, statuses: &[McpStatus]) {
             ace.done(&status.name);
         } else {
             ace.error(&format!("{} (unhealthy)", status.name));
+            ace.hint("try /mcp");
         }
     }
 }

@@ -177,6 +177,15 @@ impl Io {
         }
     }
 
+    pub fn info(&mut self, msg: &str) {
+        self.clear_spinner();
+        match self.mode {
+            OutputMode::Human => eprintln!("  {msg}"),
+            OutputMode::Porcelain => eprintln!("{msg}"),
+            OutputMode::Silent => {}
+        }
+    }
+
     pub fn warn(&mut self, msg: &str) {
         self.clear_spinner();
         match self.mode {

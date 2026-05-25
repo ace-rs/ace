@@ -96,7 +96,7 @@ Four output primitives, each with a defined semantic role:
 
 | Primitive | Meaning                                              |
 | --------- | ---------------------------------------------------- |
-| `say`     | Status, progress milestones, neutral information.    |
+| `info`    | Status, progress milestones, neutral information.    |
 | `warn`    | Something is off but the operation continued.        |
 | `error`   | Something failed; the operation did not complete.    |
 | `hint`    | How to fix or proceed. Pairs with `warn` or `error`. |

@@ -12,10 +12,20 @@ use crate::config::ConfigError;
 pub enum SchoolError {
     #[error(transparent)]
     TreeLoad(#[from] ConfigError),
-    #[error("no school configured, run `ace setup`")]
+    #[error("no school configured")]
     NoSpecifier,
-    #[error("school not initialized, run `ace school init`")]
+    #[error("school not initialized")]
     NotInitialized,
+}
+
+impl SchoolError {
+    pub fn hint(&self) -> Option<&'static str> {
+        match self {
+            Self::NoSpecifier => Some("run `ace setup` to choose a school"),
+            Self::NotInitialized => Some("run `ace school init` to bootstrap this repo as a school"),
+            Self::TreeLoad(_) => None,
+        }
+    }
 }
 
 #[derive(Debug, Default, Serialize)]

@@ -33,10 +33,15 @@ fn run_inner(ace: &mut Ace) -> Result<(), CmdError> {
     }
     .run(ace)?;
 
+    let mut any_linked = false;
     for folder in &result.folders {
         if folder.linked {
             ace.done(&format!("Linked {}", folder.name));
+            any_linked = true;
         }
+    }
+    if !any_linked && !result.folders.is_empty() {
+        ace.info("All school folders already linked.");
     }
     link_skills::emit_warnings(ace, &prepared, &result);
 

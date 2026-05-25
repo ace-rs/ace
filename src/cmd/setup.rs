@@ -79,7 +79,14 @@ fn resolve_from_cache(ace: &mut Ace) -> Result<String, CmdError> {
 
     let specs = index_toml::list_specifiers(&index);
     match specs.len() {
-        0 => Err(CmdError::Other("no cached schools, ace setup <owner/repo>?".to_string())),
+        0 => Err(CmdError::with_hints(
+            "no cached schools",
+            vec![
+                "run `ace school init` to create a new school".to_string(),
+                "run `ace setup <owner/repo>` to install a specific school".to_string(),
+                "run `ace setup ace-rs/school` to install the default school".to_string(),
+            ],
+        )),
         1 => Ok(specs.into_iter().next().expect("checked len=1")),
         _ => {
             let choice = ace.prompt_select("Select school:", specs)?;

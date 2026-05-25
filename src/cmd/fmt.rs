@@ -27,7 +27,7 @@ fn run_inner(ace: &mut Ace) -> Result<(), CmdError> {
     }
 
     if formatted == 0 {
-        ace.warn("no ace.toml or school.toml in current directory");
+        ace.info("no ace.toml or school.toml in current directory — nothing to format");
     }
 
     Ok(())

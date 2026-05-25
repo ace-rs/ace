@@ -252,6 +252,30 @@ pub(crate) enum CmdError {
     Prompt(#[from] IoError),
     #[error("{0}")]
     Other(String),
+    #[error("{message}")]
+    OtherHinted { message: String, hints: Vec<String> },
+}
+
+impl CmdError {
+    /// Construct an ad-hoc error with a single paired recovery hint.
+    pub fn with_hint(message: impl Into<String>, hint: impl Into<String>) -> Self {
+        Self::OtherHinted { message: message.into(), hints: vec![hint.into()] }
+    }
+
+    /// Construct an ad-hoc error with multiple recovery hints, rendered in order.
+    pub fn with_hints(message: impl Into<String>, hints: Vec<String>) -> Self {
+        Self::OtherHinted { message: message.into(), hints }
+    }
+
+    /// Recovery hints paired with the error. Empty means no known recovery
+    /// action for this variant; callers should not synthesize one.
+    pub fn hints(&self) -> Vec<String> {
+        match self {
+            Self::School(e) => e.hint().map(str::to_string).into_iter().collect(),
+            Self::OtherHinted { hints, .. } => hints.clone(),
+            _ => Vec::new(),
+        }
+    }
 }
 
 pub fn run(ace: &mut Ace, cli: Cli) {
@@ -419,7 +443,11 @@ fn parse_env_overrides(entries: &[String]) -> Result<HashMap<String, String>, Cm
 
 fn exit_on_err(ace: &mut Ace, result: Result<(), CmdError>) {
     if let Err(e) = result {
+        let hints = e.hints();
         ace.error(&e.to_string());
+        for h in hints {
+            ace.hint(&h);
+        }
         std::process::exit(1);
     }
 }
@@ -439,6 +467,44 @@ mod tests {
         let cli = Cli::try_parse_from(["ace", "--opencode"]).expect("parse");
         let resolved = resolve_backend_override(&cli).expect("resolve");
         assert_eq!(resolved.as_deref(), Some("opencode"));
+    }
+
+    #[test]
+    fn cmd_error_hints_school_delegates_to_leaf() {
+        let err = CmdError::School(crate::school::SchoolError::NoSpecifier);
+        assert_eq!(err.hints(), vec!["run `ace setup` to choose a school".to_string()]);
+    }
+
+    #[test]
+    fn cmd_error_hints_school_no_hint_when_leaf_returns_none() {
+        let inner = crate::school::SchoolError::TreeLoad(ConfigError::NoConfigDir);
+        let err = CmdError::School(inner);
+        assert!(err.hints().is_empty());
+    }
+
+    #[test]
+    fn cmd_error_with_hint_carries_single_hint() {
+        let err = CmdError::with_hint("boom", "do the thing");
+        assert_eq!(err.to_string(), "boom");
+        assert_eq!(err.hints(), vec!["do the thing".to_string()]);
+    }
+
+    #[test]
+    fn cmd_error_with_hints_preserves_order() {
+        let err = CmdError::with_hints(
+            "boom",
+            vec!["first".to_string(), "second".to_string(), "third".to_string()],
+        );
+        assert_eq!(
+            err.hints(),
+            vec!["first".to_string(), "second".to_string(), "third".to_string()]
+        );
+    }
+
+    #[test]
+    fn cmd_error_other_has_no_hint() {
+        let err = CmdError::Other("plain failure".to_string());
+        assert!(err.hints().is_empty());
     }
 
     #[test]
