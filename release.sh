@@ -17,7 +17,10 @@ fi
 
 VERSION="${1#v}"
 TAG="v$VERSION"
+ARTIFACT="ace-aarch64-apple-darwin"
 FORMULA="homebrew-tap/Formula/ace.rb"
+BINARY="target/dist/$ARTIFACT"
+URL="https://github.com/ace-rs/ace/releases/download/$TAG/$ARTIFACT"
 
 if ! git diff --quiet || ! git diff --cached --quiet; then
   echo "Error: working tree is dirty. Commit or stash changes first." >&2
@@ -47,19 +50,17 @@ echo "$TAG" > latest
 echo "==> Building all targets"
 ./build-all.sh
 
-BINARY="target/dist/ace-aarch64-apple-darwin"
 if [ ! -f "$BINARY" ]; then
   echo "Error: $BINARY missing after build." >&2
   exit 1
 fi
 
-SHA=$(shasum -a 256 "$BINARY" | cut -d' ' -f1)
-echo "==> Patching formula (sha256: $SHA)"
+EXPECTED_SHA=$(shasum -a 256 "$BINARY" | cut -d' ' -f1)
+echo "==> Patching formula (sha256: $EXPECTED_SHA)"
 
-URL="https://github.com/ace-rs/ace/releases/download/$TAG/ace-aarch64-apple-darwin"
 sed -i '' "s|^  version .*|  version \"$VERSION\"|" "$FORMULA"
 sed -i '' "s|^  url .*|  url \"$URL\"|" "$FORMULA"
-sed -i '' "s|^  sha256 .*|  sha256 \"$SHA\"|" "$FORMULA"
+sed -i '' "s|^  sha256 .*|  sha256 \"$EXPECTED_SHA\"|" "$FORMULA"
 
 git add Cargo.toml Cargo.lock latest "$FORMULA"
 git commit -m "$TAG"
@@ -77,12 +78,12 @@ gh release create "$TAG" \
 
 echo "==> Verifying published artifact matches formula sha"
 PUBLISHED_SHA=$(curl -fsSL "$URL" | shasum -a 256 | cut -d' ' -f1)
-if [ "$PUBLISHED_SHA" != "$SHA" ]; then
-  echo "Error: published sha ($PUBLISHED_SHA) does not match formula sha ($SHA)" >&2
+if [ "$PUBLISHED_SHA" != "$EXPECTED_SHA" ]; then
+  echo "Error: published sha ($PUBLISHED_SHA) != expected ($EXPECTED_SHA)" >&2
   echo "  Release is broken — investigate before pushing the formula to gh-tap." >&2
   exit 1
 fi
-echo "==> sha verified: $SHA"
+echo "==> sha verified: $EXPECTED_SHA"
 
 if git remote get-url gh-tap >/dev/null 2>&1; then
   echo "==> Pushing formula to gh-tap"
