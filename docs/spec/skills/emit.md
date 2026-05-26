@@ -111,11 +111,9 @@ read the skill, adapt, and resolve compatibility gaps themselves"):
   translation, no per-backend variant logic.
 - Other backends ignore unknown fields by spec convention; Claude Code reads its
   extensions. ACE does not intervene.
-- **`compatibility` is not a gate.** Skills with
-  `compatibility: Designed for Claude Code only` still emit to OpenCode and elsewhere.
-- **Launch-time heuristic warning** at bare `ace` (or `ace new`) backend launch: scan
-  loaded skills, best-effort case-insensitive substring match between `compatibility`
-  prose and the launching backend's name, warn on mismatches. Never blocks.
+- **ACE does not read the `compatibility` field.** It passes through like any other
+  frontmatter; no gating, no warnings, no inspection. LLMs read it and adapt; ACE
+  stays out.
 
 ## Sanitization at write boundaries
 

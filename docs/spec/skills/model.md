@@ -127,7 +127,8 @@ skills.sh predicate (a string `name` plus a string `description`) is sufficient.
 
 ACE preserves but does not interpret the rest of the frontmatter:
 
-- `compatibility`     — declarative; never gates emit. See
+- `compatibility`     — declarative metadata. ACE does not read or interpret it; it
+                        passes through verbatim to backends like any other field. See
                         [emit.md § Frontmatter passthrough](emit.md#frontmatter-passthrough).
 - `internal`          — discovery-time filter. See [Discovery Cascade](#discovery-cascade).
 - Claude-Code-extended fields: `when_to_use`, `argument-hint`,

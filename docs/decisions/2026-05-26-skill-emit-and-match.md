@@ -66,11 +66,10 @@ and resolve compatibility gaps themselves"):
   translation, no per-backend variant logic.
 - Other backends ignore unknown fields by spec convention; Claude Code reads its
   extensions. ACE does not intervene.
-- **`compatibility` field is not a gate.** Skills with
-  `compatibility: Designed for Claude Code only` still emit to OpenCode etc.
-- **Launch-time warning** at bare `ace` (or `ace new`) backend launch: scan loaded skills,
-  best-effort case-insensitive substring match between `compatibility` prose and the
-  launching backend's name, warn on mismatches. Heuristic, never blocks.
+- **ACE does not read the `compatibility` field.** It passes through verbatim like any
+  other frontmatter. No gate at emit, no launch-time warning, no inspection anywhere.
+  LLMs read it and adapt; ACE stays out. (Amended 2026-05-26 from an earlier draft that
+  spec'd a launch-time heuristic warning.)
 
 ### Sanitization (Q9)
 
