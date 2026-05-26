@@ -6,7 +6,11 @@
 //! remove ACE-managed links to match the desired set; warn on foreign entries.
 //!
 //! ACE-managed predicate: a symlink whose target resolves textually inside
-//! the school clone's `skills/` subtree. No marker files.
+//! either the current school root OR the ACE data root
+//! (`~/.local/share/ace/`, parent of all school clones). The data-root check
+//! catches stragglers from a previous `school = "..."` value pointing into a
+//! sibling clone; the school-root check covers embedded schools
+//! (`school = "."`) whose root sits outside the data root. No marker files.
 
 use std::collections::HashSet;
 use std::fs;
@@ -33,9 +37,9 @@ pub struct CurrentEntry {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EntryKind {
-    /// Symlink whose target resolves inside `school_skills_root` — safe to manage.
+    /// Symlink whose target resolves inside a managed root — safe to manage.
     ManagedSymlink { target: PathBuf },
-    /// Symlink with a target outside the school skills root — leave alone.
+    /// Symlink with a target outside every managed root — leave alone.
     ForeignSymlink { target: PathBuf },
     /// Real file or directory placed by the user — leave alone.
     ForeignEntry,
@@ -98,7 +102,7 @@ fn decide_action(want: &DesiredLink, existing: Option<&CurrentEntry>) -> Option<
         }),
         EntryKind::ForeignSymlink { target } => Some(LinkAction::SkipForeign {
             name: want.name.clone(),
-            reason: format!("symlink points outside school clone: {}", target.display()),
+            reason: format!("symlink points outside ace-managed roots: {}", target.display()),
         }),
         EntryKind::ForeignEntry => Some(LinkAction::SkipForeign {
             name: want.name.clone(),
@@ -109,10 +113,18 @@ fn decide_action(want: &DesiredLink, existing: Option<&CurrentEntry>) -> Option<
 
 /// Classify a directory entry. Reads the symlink target if applicable;
 /// pure given the input string slices (no further I/O).
-pub fn classify(name: &str, kind_input: ClassifyInput, school_skills_root: &Path) -> CurrentEntry {
+///
+/// A symlink is managed if its target sits under any of `managed_roots`.
+/// Production callers pass the current school root plus the ACE data root;
+/// tests may pass a single root.
+pub fn classify(
+    name: &str,
+    kind_input: ClassifyInput,
+    managed_roots: &[&Path],
+) -> CurrentEntry {
     let kind = match kind_input {
         ClassifyInput::Symlink(target) => {
-            if target.starts_with(school_skills_root) {
+            if managed_roots.iter().any(|r| target.starts_with(r)) {
                 EntryKind::ManagedSymlink { target }
             } else {
                 EntryKind::ForeignSymlink { target }
@@ -270,10 +282,19 @@ pub struct PreparedSkills {
 ///
 /// - Migrates the legacy whole-dir symlink (if `project_skills_dir` is itself
 ///   a symlink, unlink it) and ensures `project_skills_dir` is a real dir.
-/// - Reads current entries, classifies vs `school_skills_root`, plans, executes.
+/// - Reads current entries, classifies against `school_root` + `ace_data_root`,
+///   plans, executes.
 /// - Returns reconciliation summary including warnings for foreign entries.
+///
+/// `school_root` covers the current school clone (and the project itself for
+/// embedded `school = "."`). `ace_data_root` (`~/.local/share/ace/`) covers
+/// leftover per-skill links pointing at a sibling clone — so switching schools
+/// via `ace.toml` prunes those on the next link/setup. If `ace_data_root`
+/// doesn't exist on disk (e.g. no schools have ever been cloned), it's
+/// silently dropped from the predicate.
 pub fn reconcile(
-    school_skills_root: &Path,
+    school_root: &Path,
+    ace_data_root: &Path,
     project_skills_dir: &Path,
     desired: &[DesiredLink],
 ) -> io::Result<ReconcileResult> {
@@ -282,7 +303,7 @@ pub fn reconcile(
     }
     std::fs::create_dir_all(project_skills_dir)?;
 
-    let current = scan_current(project_skills_dir, school_skills_root)?;
+    let current = scan_current(project_skills_dir, school_root, ace_data_root)?;
     let plan = plan(desired, &current);
 
     let mut result = ReconcileResult::default();
@@ -386,14 +407,24 @@ impl ReconcileResult {
 
 fn scan_current(
     project_skills_dir: &Path,
-    school_skills_root: &Path,
+    school_root: &Path,
+    ace_data_root: &Path,
 ) -> io::Result<Vec<CurrentEntry>> {
-    // Canonicalize both sides so the prefix check in `classify` isn't fooled
-    // by symlinked path components (e.g. macOS `/var` → `/private/var`, or a
-    // school root reached through a parent symlink). Broken links fall back
-    // to the raw read_link target — they won't match the canonical root and
-    // classify as foreign, which is the safe default for a stale link.
-    let canonical_root = fs::canonicalize(school_skills_root)?;
+    // Canonicalize each managed root so the prefix check in `classify` isn't
+    // fooled by symlinked path components (e.g. macOS `/var` → `/private/var`,
+    // or a school root reached through a parent symlink). `school_root` is
+    // the active source of skills, so a missing path here is a hard error.
+    // `ace_data_root` is optional: embedded schools may run before any school
+    // has been cloned, leaving the data dir non-existent — in that case it
+    // drops from the predicate. Broken project-side links fall back to the
+    // raw read_link target; they won't match any canonical root and classify
+    // as foreign, which is the safe default for a stale link.
+    let canonical_school = fs::canonicalize(school_root)?;
+    let canonical_data = fs::canonicalize(ace_data_root).ok();
+    let mut roots: Vec<&Path> = vec![&canonical_school];
+    if let Some(data) = &canonical_data {
+        roots.push(data);
+    }
     let mut out = Vec::new();
     for entry in fs::read_dir(project_skills_dir)? {
         let entry = entry?;
@@ -404,7 +435,7 @@ fn scan_current(
         let path = entry.path();
         if is_symlink(&path) {
             let resolved = fs::canonicalize(&path).or_else(|_| fs::read_link(&path))?;
-            out.push(classify(&name, ClassifyInput::Symlink(resolved), &canonical_root));
+            out.push(classify(&name, ClassifyInput::Symlink(resolved), &roots));
         } else if path.is_dir() {
             // Tentatively descend: a real dir that contains only managed
             // symlinks (or other such dirs) is an ACE-managed nested
@@ -413,14 +444,14 @@ fn scan_current(
             // treated as a ForeignEntry instead — preserving the
             // existing left-alone behavior for user-placed dirs.
             let mut nested = Vec::new();
-            let foreign = collect_nested(&path, project_skills_dir, &canonical_root, &mut nested)?;
+            let foreign = collect_nested(&path, project_skills_dir, &roots, &mut nested)?;
             if foreign || nested.is_empty() {
-                out.push(classify(&name, ClassifyInput::Other, &canonical_root));
+                out.push(classify(&name, ClassifyInput::Other, &roots));
             } else {
                 out.extend(nested);
             }
         } else {
-            out.push(classify(&name, ClassifyInput::Other, &canonical_root));
+            out.push(classify(&name, ClassifyInput::Other, &roots));
         }
     }
     Ok(out)
@@ -433,7 +464,7 @@ fn scan_current(
 fn collect_nested(
     dir: &Path,
     project_skills_dir: &Path,
-    canonical_root: &Path,
+    roots: &[&Path],
     out: &mut Vec<CurrentEntry>,
 ) -> io::Result<bool> {
     let mut foreign = false;
@@ -450,14 +481,14 @@ fn collect_nested(
         };
         if is_symlink(&path) {
             let resolved = fs::canonicalize(&path).or_else(|_| fs::read_link(&path))?;
-            let entry = classify(&name, ClassifyInput::Symlink(resolved), canonical_root);
+            let entry = classify(&name, ClassifyInput::Symlink(resolved), roots);
             if matches!(entry.kind, EntryKind::ManagedSymlink { .. }) {
                 out.push(entry);
             } else {
                 foreign = true;
             }
         } else if path.is_dir() {
-            if collect_nested(&path, project_skills_dir, canonical_root, out)? {
+            if collect_nested(&path, project_skills_dir, roots, out)? {
                 foreign = true;
             }
         } else {
@@ -602,7 +633,7 @@ mod tests {
         let entry = classify(
             "a",
             ClassifyInput::Symlink(PathBuf::from("/sch/skills/a")),
-            Path::new("/sch/skills"),
+            &[Path::new("/sch/skills")],
         );
         assert_eq!(
             entry.kind,
@@ -615,15 +646,37 @@ mod tests {
         let entry = classify(
             "a",
             ClassifyInput::Symlink(PathBuf::from("/elsewhere/a")),
-            Path::new("/sch/skills"),
+            &[Path::new("/sch/skills")],
         );
         assert!(matches!(entry.kind, EntryKind::ForeignSymlink { .. }));
     }
 
     #[test]
     fn classify_other_is_foreign_entry() {
-        let entry = classify("a", ClassifyInput::Other, Path::new("/sch/skills"));
+        let entry = classify("a", ClassifyInput::Other, &[Path::new("/sch/skills")]);
         assert_eq!(entry.kind, EntryKind::ForeignEntry);
+    }
+
+    #[test]
+    fn classify_managed_when_target_inside_sibling_school_clone() {
+        // The fix: a symlink pointing into a sibling school clone (left over
+        // from a previous `school = "..."` value) classifies as managed when
+        // the ACE data root is among the managed roots.
+        let entry = classify(
+            "ghost",
+            ClassifyInput::Symlink(PathBuf::from(
+                "/data/ace/old-owner/old-repo/skills/ghost",
+            )),
+            &[
+                Path::new("/data/ace/new-owner/new-repo"),
+                Path::new("/data/ace"),
+            ],
+        );
+        assert!(
+            matches!(entry.kind, EntryKind::ManagedSymlink { .. }),
+            "expected ManagedSymlink for sibling clone, got {:?}",
+            entry.kind,
+        );
     }
 
     #[test]
@@ -649,7 +702,8 @@ mod tests {
         std::os::unix::fs::symlink(&real_skill, project_skills.join("foo"))
             .expect("managed symlink");
 
-        let entries = scan_current(&project_skills, &linked_skills).expect("scan");
+        let entries = scan_current(&project_skills, &linked_skills, &linked_skills)
+            .expect("scan");
 
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].name, "foo");
@@ -875,7 +929,8 @@ mod tests {
             name: "typescript/coding".to_string(),
             target: nested_target.clone(),
         }];
-        reconcile(&school_skills, &project_skills, &desired).expect("reconcile");
+        reconcile(&school_skills, &school_skills, &project_skills, &desired)
+            .expect("reconcile");
 
         let link = project_skills.join("typescript").join("coding");
         assert!(is_symlink(&link), "expected nested symlink at {link:?}");
@@ -899,7 +954,8 @@ mod tests {
 
         // Desired set is empty: the existing managed nested link should go,
         // and the now-empty `typescript/` parent should be pruned.
-        reconcile(&school_skills, &project_skills, &[]).expect("reconcile");
+        reconcile(&school_skills, &school_skills, &project_skills, &[])
+            .expect("reconcile");
 
         assert!(!project_skills.join("typescript").join("coding").exists());
         assert!(

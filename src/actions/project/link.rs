@@ -20,6 +20,10 @@ pub struct Link<'a> {
     /// the caller from discovery + resolver. Empty = no skills linked
     /// (skills dir exists but is empty).
     pub skills: &'a [DesiredLink],
+    /// Parent of all school clones (`~/.local/share/ace/`). Used as the
+    /// managed-symlink predicate root so a school switch via `ace.toml`
+    /// prunes leftover per-skill links pointing at the previous clone.
+    pub ace_data_root: &'a Path,
 }
 
 impl Link<'_> {
@@ -36,8 +40,13 @@ impl Link<'_> {
             let project_dir = self.project_dir.join(self.backend_dir).join(name);
 
             if name == "skills" {
-                let result = link_skills::reconcile(&school_dir, &project_dir, self.skills)
-                    .map_err(PrepareError::Write)?;
+                let result = link_skills::reconcile(
+                    self.school_root,
+                    self.ace_data_root,
+                    &project_dir,
+                    self.skills,
+                )
+                .map_err(PrepareError::Write)?;
                 folders.push(FolderResult {
                     name,
                     linked: result.changed(),
@@ -448,8 +457,16 @@ mod tests {
             let proj_dir = project_dir.join(".claude").join(name);
 
             if name == "skills" {
-                let result = link_skills::reconcile(&school_dir, &proj_dir, skills)
-                    .map_err(PrepareError::Write)?;
+                // Test helper uses `school_root` for both managed-root args;
+                // all skill targets live under it, so the prefix check still
+                // classifies managed links correctly without a real data dir.
+                let result = link_skills::reconcile(
+                    school_root,
+                    school_root,
+                    &proj_dir,
+                    skills,
+                )
+                .map_err(PrepareError::Write)?;
                 folders.push(FolderResult {
                     name,
                     linked: result.changed(),

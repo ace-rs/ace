@@ -127,11 +127,14 @@ resolved Included set:
   with a loud warning. Applies only on the flatten branch; nested-capable backends emit
   verbatim per [emit.md § Backend emit rule](emit.md#backend-emit-rule).
 
-**ACE-managed predicate:** a symlink whose target path resolves textually inside the
-school clone's `skills/` subtree. No marker files. Anything else (real files, real
-subdirs, symlinks pointing outside the school) is treated as user content and left alone —
-except when its name collides with a desired skill, in which case the link is skipped with
-a warning so the user can resolve the conflict.
+**ACE-managed predicate:** a symlink whose target path resolves textually inside either
+the current school clone OR the ACE data root (`~/.local/share/ace/`, parent of all
+school clones). No marker files. The data-root branch catches symlinks left over from a
+previous `school = "..."` value pointing into a sibling clone, so switching schools via
+`ace.toml` prunes those leftovers on the next link/setup. Anything else (real files, real
+subdirs, symlinks pointing outside every managed root) is treated as user content and
+left alone — except when its name collides with a desired skill, in which case the link
+is skipped with a warning so the user can resolve the conflict.
 
 ### First-time adoption (rules / commands / agents only)
 

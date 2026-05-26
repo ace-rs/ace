@@ -46,6 +46,45 @@ fn link_fails_without_school() {
 }
 
 #[test]
+#[cfg(unix)]
+fn link_prunes_stale_symlink_to_sibling_school_clone() {
+    // Repro: user edits `ace.toml` to switch schools. The previous school's
+    // per-skill symlinks under `<backend>/skills/` still point into the old
+    // clone under `~/.local/share/ace/`. `ace link` against the new school
+    // should treat those as managed (target inside ACE data root) and prune
+    // them, not leave them as foreign forever.
+    let env = TestEnv::new();
+    let school = env.setup_remote_school("test/school");
+    env.ace().assert().success();
+
+    let skills_dir = env.path(".claude/skills");
+
+    // Simulate the leftover: a sibling school clone with a skill, and a
+    // managed symlink in the project pointing at it.
+    let stale_skill = env.path("data/ace/old-owner/old-school/skills/ghost");
+    std::fs::create_dir_all(&stale_skill).expect("mkdir stale skill dir");
+    let stale_link = skills_dir.join("ghost");
+    std::os::unix::fs::symlink(&stale_skill, &stale_link).expect("create stale link");
+    assert!(
+        std::fs::symlink_metadata(&stale_link).is_ok(),
+        "stale link should exist before re-link",
+    );
+
+    env.ace().args(["link"]).assert().success();
+
+    assert!(
+        std::fs::symlink_metadata(&stale_link).is_err(),
+        "stale link pointing into sibling school clone should be pruned",
+    );
+    assert!(
+        skills_dir.join("maverick").exists(),
+        "current school's skill link should still be present",
+    );
+
+    let _ = school;
+}
+
+#[test]
 fn link_repairs_stale_whole_dir_symlink() {
     let env = TestEnv::new();
     let school = env.setup_remote_school("test/school");

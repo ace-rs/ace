@@ -2,6 +2,7 @@ use std::path::Path;
 
 use crate::ace::Ace;
 use crate::backend::Backend;
+use crate::config::paths::ace_data_dir;
 use crate::config::school_paths;
 use crate::config::ConfigError;
 
@@ -70,12 +71,14 @@ impl Prepare<'_> {
         let tree = ace.require_tree()?.clone();
         let prepared = link_skills::prepare(&school_paths.root, &tree, self.backend.features())
             .map_err(PrepareError::Write)?;
+        let ace_data_root = ace_data_dir()?;
 
         let result = Link {
             school_root: &school_paths.root,
             project_dir: self.project_dir,
             backend_dir: self.backend.backend_dir(),
             skills: &prepared.desired,
+            ace_data_root: &ace_data_root,
         }
         .run(ace)?;
         for folder in &result.folders {
