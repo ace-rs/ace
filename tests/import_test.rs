@@ -145,7 +145,8 @@ fn import_all_adds_wildcard_entry() {
         .stderr(predicates::str::contains("Added import: * from company/school"));
 
     let toml = env.read_file("school.toml");
-    assert!(toml.contains("skill = \"*\""), "should have wildcard skill entry");
+    // Canonical form per docs/spec/skills/selection.md is the plural `skills` array.
+    assert!(toml.contains("skills = [\"*\"]"), "should have wildcard skills entry: {toml}");
     assert!(toml.contains("source = \"company/school\""), "should have source");
 }
 
@@ -163,7 +164,7 @@ fn import_glob_pattern_adds_entry() {
         .stderr(predicates::str::contains("Added import: *-coding from company/school"));
 
     let toml = env.read_file("school.toml");
-    assert!(toml.contains("skill = \"*-coding\""), "should have glob pattern");
+    assert!(toml.contains("skills = [\"*-coding\"]"), "should have glob pattern: {toml}");
 }
 
 #[test]
@@ -287,7 +288,7 @@ fn import_explicit_skill_resolves_from_experimental_tier() {
         .success();
 
     env.assert_exists("skills/shell/SKILL.md");
-    env.assert_contains("school.toml", "skill = \"shell\"");
+    env.assert_contains("school.toml", "skills = [\"shell\"]");
     env.assert_contains("school.toml", "source = \"dot/skills\"");
 }
 

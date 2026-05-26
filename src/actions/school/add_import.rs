@@ -88,10 +88,9 @@ impl AddImport<'_> {
         match entry {
             Some(existing) => existing.source = self.source.to_string(),
             None => school.imports.push(ImportDecl {
-                skill: skill.id.to_string(),
                 source: self.source.to_string(),
-                include_experimental: false,
-                include_system: false,
+                skills: vec![skill.id.to_string()],
+                ..ImportDecl::default()
             }),
         }
 

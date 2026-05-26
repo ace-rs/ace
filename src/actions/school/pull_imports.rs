@@ -66,14 +66,23 @@ impl PullImports<'_> {
 
             let mut names: Vec<String> = Vec::new();
             for decl in decls {
-                let resolved = resolve_import_names(&full, decl);
-                if resolved.is_empty() {
-                    ace.warn(&format!("no skills matching {} in {source}", decl.skill));
+                let patterns = decl.patterns();
+                if patterns.is_empty() {
+                    ace.warn(&format!(
+                        "import decl for {source} has no `skills` or `skill` field"
+                    ));
                     continue;
                 }
-                for n in resolved {
-                    if !names.contains(&n) {
-                        names.push(n);
+                for pattern in &patterns {
+                    let resolved = resolve_import_pattern(&full, decl, pattern);
+                    if resolved.is_empty() {
+                        ace.warn(&format!("no skills matching {pattern} in {source}"));
+                        continue;
+                    }
+                    for n in resolved {
+                        if !names.contains(&n) {
+                            names.push(n);
+                        }
                     }
                 }
             }
@@ -104,14 +113,21 @@ impl PullImports<'_> {
 }
 
 
-/// Resolve the list of skill names to copy for an import entry given a
-/// discovered set from the source repo. Explicit names are looked up
-/// across all tiers; glob patterns are tier-gated.
-fn resolve_import_names(
+/// Resolve a single pattern within an import decl against a discovered
+/// set. Explicit names are looked up across all tiers; glob patterns are
+/// tier-gated by the decl's `include_experimental` / `include_system`
+/// flags.
+///
+/// Multi-pattern decls call this per pattern and union the results in
+/// the caller; the full imports resolver (slice 5 — first-wins +
+/// collision warnings + exclude_skills suppression) supersedes this
+/// minimal expansion.
+fn resolve_import_pattern(
     set: &Skills<Discovered>,
     decl: &config::school_toml::ImportDecl,
+    pattern: &str,
 ) -> Vec<String> {
-    if glob::is_glob(&decl.skill) {
+    if glob::is_glob(pattern) {
         let mut allowed = vec![Tier::Curated];
         if decl.include_experimental {
             allowed.push(Tier::Experimental);
@@ -120,12 +136,12 @@ fn resolve_import_names(
             allowed.push(Tier::System);
         }
         let filtered = set.filter_tiers(&allowed);
-        filtered.matching(&decl.skill)
+        filtered.matching(pattern)
             .into_iter()
             .map(String::from)
             .collect()
-    } else if set.names().any(|n| n == decl.skill) {
-        vec![decl.skill.clone()]
+    } else if set.names().any(|n| n == pattern) {
+        vec![pattern.to_string()]
     } else {
         Vec::new()
     }
@@ -170,10 +186,11 @@ mod tests {
 
     fn import(skill: &str, experimental: bool, system: bool) -> ImportDecl {
         ImportDecl {
-            skill: skill.to_string(),
             source: "owner/repo".to_string(),
+            skills: vec![skill.to_string()],
             include_experimental: experimental,
             include_system: system,
+            ..ImportDecl::default()
         }
     }
 
@@ -184,7 +201,7 @@ mod tests {
             discovered("beta",  Tier::Experimental),
             discovered("gamma", Tier::System),
         ]);
-        let names = resolve_import_names(&set, &import("*", false, false));
+        let names = resolve_import_pattern(&set, &import("*", false, false), "*");
         assert_eq!(names, vec!["alpha".to_string()]);
     }
 
@@ -195,7 +212,7 @@ mod tests {
             discovered("beta",  Tier::Experimental),
             discovered("gamma", Tier::System),
         ]);
-        let mut names = resolve_import_names(&set, &import("*", true, false));
+        let mut names = resolve_import_pattern(&set, &import("*", true, false), "*");
         names.sort();
         assert_eq!(names, vec!["alpha".to_string(), "beta".to_string()]);
     }
@@ -207,7 +224,7 @@ mod tests {
             discovered("beta",  Tier::Experimental),
             discovered("gamma", Tier::System),
         ]);
-        let mut names = resolve_import_names(&set, &import("*", true, true));
+        let mut names = resolve_import_pattern(&set, &import("*", true, true), "*");
         names.sort();
         assert_eq!(names, vec!["alpha".to_string(), "beta".to_string(), "gamma".to_string()]);
     }
@@ -217,7 +234,7 @@ mod tests {
         let set = Skills::<Discovered>::from_discovered(&[
             discovered("shell", Tier::Experimental),
         ]);
-        let names = resolve_import_names(&set, &import("shell", false, false));
+        let names = resolve_import_pattern(&set, &import("shell", false, false), "shell");
         assert_eq!(names, vec!["shell".to_string()]);
     }
 
@@ -226,7 +243,7 @@ mod tests {
         let set = Skills::<Discovered>::from_discovered(&[
             discovered("skill-creator", Tier::System),
         ]);
-        let names = resolve_import_names(&set, &import("skill-creator", false, false));
+        let names = resolve_import_pattern(&set, &import("skill-creator", false, false), "skill-creator");
         assert_eq!(names, vec!["skill-creator".to_string()]);
     }
 
@@ -235,7 +252,7 @@ mod tests {
         let set = Skills::<Discovered>::from_discovered(&[
             discovered("alpha", Tier::Curated),
         ]);
-        let names = resolve_import_names(&set, &import("missing", false, false));
+        let names = resolve_import_pattern(&set, &import("missing", false, false), "missing");
         assert!(names.is_empty());
     }
 
@@ -244,7 +261,7 @@ mod tests {
         let set = Skills::<Discovered>::from_discovered(&[
             discovered("alpha", Tier::Experimental),
         ]);
-        let names = resolve_import_names(&set, &import("*", false, false));
+        let names = resolve_import_pattern(&set, &import("*", false, false), "*");
         assert!(names.is_empty(), "curated-only default should not match experimental");
     }
 }

@@ -89,7 +89,7 @@ fn add_glob_import(
     let mut school = school_toml::load(&toml_path)?;
 
     let entry = school.imports.iter_mut()
-        .find(|i| i.skill == pattern && i.source == source);
+        .find(|i| i.patterns() == vec![pattern] && i.source == source);
 
     if entry.is_some() {
         ace.warn(&format!("import already exists: {pattern} from {source}"));
@@ -97,10 +97,11 @@ fn add_glob_import(
     }
 
     school.imports.push(ImportDecl {
-        skill: pattern.to_string(),
         source: source.to_string(),
+        skills: vec![pattern.to_string()],
         include_experimental,
         include_system,
+        ..ImportDecl::default()
     });
 
     school_toml::save(&toml_path, &school)?;

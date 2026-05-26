@@ -102,14 +102,13 @@ impl Init<'_> {
 
 fn ensure_standard_import(toml: &mut school_toml::SchoolToml) {
     let already = toml.imports.iter().any(|i|
-        i.source == STANDARD_SCHOOL_SOURCE && i.skill == "*"
+        i.source == STANDARD_SCHOOL_SOURCE && i.patterns() == vec!["*"]
     );
     if !already {
         toml.imports.push(ImportDecl {
-            skill: "*".to_string(),
             source: STANDARD_SCHOOL_SOURCE.to_string(),
-            include_experimental: false,
-            include_system: false,
+            skills: vec!["*".to_string()],
+            ..ImportDecl::default()
         });
     }
 }
