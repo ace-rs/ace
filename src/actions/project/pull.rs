@@ -234,21 +234,49 @@ fn parse_diff_output(output: &str) -> Vec<SkillChange> {
     changes
 }
 
-/// Extract the skill name from a `skills/[.tier/]<name>/...` path. Returns
-/// `None` for paths outside `skills/` or where only a tier dir is present.
+/// Extract the skill identity from a diff path under the school's
+/// `skills/` tree.
+///
+/// School storage lands a skill at `<school>/skills/<identity>/SKILL.md`
+/// where `<identity>` is the post-strip path from
+/// `docs/spec/skills/model.md` — flat (`foo`) or nested
+/// (`typescript/coding`). Tier subdirs (`.curated/`, `.experimental/`,
+/// `.system/`) are recognized as discovery prefixes too, since older
+/// schools may still hold imports laid out under them.
+///
+/// Returns the identity as the portion between `skills/` (after an
+/// optional tier prefix) and the path component immediately preceding
+/// `SKILL.md` (or the file's parent for non-`SKILL.md` entries inside
+/// a skill dir). `None` for paths outside `skills/` or paths that don't
+/// resolve to a skill body.
 fn skill_name_from_path(path: &str) -> Option<&str> {
     let rest = path.strip_prefix("skills/")?;
-    let mut parts = rest.split('/');
-    let first = parts.next()?;
-    let name = if crate::skills::discover::TIER_DIRS.contains(&first) {
-        parts.next()?
+    let first_slash = rest.find('/')?;
+    let first = &rest[..first_slash];
+    let body = if crate::skills::discover::TIER_DIRS.contains(&first) {
+        &rest[first_slash + 1..]
     } else {
-        first
+        rest
     };
-    if name.is_empty() {
+
+    // Walk path components until the one just above `SKILL.md`. For other
+    // files inside the skill dir we still pull out the same parent —
+    // the imports resolver / discovery layer already keyed the identity
+    // by parent dir.
+    if let Some(pos) = body.rfind("/SKILL.md") {
+        let identity = &body[..pos];
+        if identity.is_empty() {
+            return None;
+        }
+        return Some(identity);
+    }
+    // Non-SKILL.md path under a skill — strip the trailing file component.
+    let last_slash = body.rfind('/')?;
+    let identity = &body[..last_slash];
+    if identity.is_empty() {
         return None;
     }
-    Some(name)
+    Some(identity)
 }
 
 #[cfg(test)]
@@ -348,5 +376,47 @@ mod tests {
         let changes = parse_diff_output(output);
         // R lines have the tab-separated old path first; parse picks up old-name as Modified
         assert!(!changes.is_empty());
+    }
+
+    // -- nested identity (spec: skills/model.md) --
+
+    #[test]
+    fn nested_identity_skill_md_extracted() {
+        let output = "A\tskills/typescript/coding/SKILL.md\n";
+        let changes = parse_diff_output(output);
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].name, "typescript/coding");
+        assert_eq!(changes[0].kind, ChangeKind::Added);
+    }
+
+    #[test]
+    fn nested_identity_inner_file_extracted() {
+        // Modification to a non-SKILL.md file inside the skill dir still
+        // bubbles up to the skill identity for dedup.
+        let output = "M\tskills/typescript/coding/notes.md\n";
+        let changes = parse_diff_output(output);
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].name, "typescript/coding");
+    }
+
+    #[test]
+    fn nested_dedup_across_inner_files() {
+        let output = "M\tskills/typescript/coding/SKILL.md\n\
+                       M\tskills/typescript/coding/notes.md\n\
+                       A\tskills/python/coding/SKILL.md\n";
+        let changes = parse_diff_output(output);
+        assert_eq!(changes.len(), 2);
+        let mut names: Vec<&str> = changes.iter().map(|c| c.name.as_str()).collect();
+        names.sort();
+        assert_eq!(names, vec!["python/coding", "typescript/coding"]);
+    }
+
+    #[test]
+    fn nested_under_tier_dir() {
+        // Legacy support: school with `skills/.curated/group/leaf/SKILL.md`.
+        let output = "M\tskills/.curated/group/leaf/SKILL.md\n";
+        let changes = parse_diff_output(output);
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].name, "group/leaf");
     }
 }

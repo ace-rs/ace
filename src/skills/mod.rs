@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 
 pub mod discover;
 pub mod identity;
+pub mod sanitize;
 
 #[allow(unused_imports)]
 pub use identity::{MatchHandle, SkillId};
@@ -103,6 +104,10 @@ pub struct Skill<S> {
     /// resolver to gate skills behind explicit-name matches or the
     /// `include_internal` flag (mirrors skills.sh).
     pub internal: bool,
+    /// Frontmatter `name:` value, when present. Used at the backend emit
+    /// boundary: link name = `frontmatter_name || basename(identity)`,
+    /// sanitized. See `docs/spec/skills/emit.md` § Backend emit rule.
+    pub frontmatter_name: Option<String>,
     /// Origin label (`owner/repo`) when the skill was pulled from an import
     /// source. `None` for skills discovered directly from a school's own
     /// `skills/` tree.
@@ -150,6 +155,7 @@ impl Skills<Discovered> {
                 path: d.path.clone(),
                 tier: d.tier,
                 internal: d.internal,
+                frontmatter_name: d.frontmatter_name.clone(),
                 source: source.clone(),
                 state: Discovered,
             })
@@ -181,22 +187,23 @@ impl Skills<Discovered> {
         let local = tree.local.as_ref().unwrap_or(&default);
         let resolution = resolver::resolve_skills(&names, user, project, local);
 
-        let mut by_name: HashMap<String, (PathBuf, Tier, bool, Option<String>)> = self
+        let mut by_name: HashMap<String, (PathBuf, Tier, bool, Option<String>, Option<String>)> = self
             .items
             .into_iter()
-            .map(|s| (s.name, (s.path, s.tier, s.internal, s.source)))
+            .map(|s| (s.name, (s.path, s.tier, s.internal, s.frontmatter_name, s.source)))
             .collect();
 
         let items = resolution
             .skills
             .into_iter()
             .filter_map(|r| {
-                let (path, tier, internal, source) = by_name.remove(&r.name)?;
+                let (path, tier, internal, frontmatter_name, source) = by_name.remove(&r.name)?;
                 Some(Skill {
                     name: r.name,
                     path,
                     tier,
                     internal,
+                    frontmatter_name,
                     source,
                     state: Decided {
                         decision: r.decision,

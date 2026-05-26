@@ -136,24 +136,90 @@ pub enum ClassifyInput {
 /// Discover + resolve + map included skills to `(name, path)` pairs.
 ///
 /// Walks the school's `skills/` tree, resolves against the three config
-/// layers, and emits one `DesiredLink` per included skill. Path comes
-/// straight from `Skill<Decided>` — no separate name→path join.
+/// layers, and emits one `DesiredLink` per included skill. The link
+/// name follows the backend-emit rule from `docs/spec/skills/emit.md`:
+/// `frontmatter.name || basename(identity)`, sanitized at the boundary.
+///
+/// When two included skills produce the same backend dirname, the
+/// loser is dropped per spec § Loser-drop on collision (alphabetical
+/// by source path tiebreaker) and a warning is recorded.
 pub fn prepare(school_root: &Path, tree: &Tree) -> io::Result<PreparedSkills> {
     let skills = Skills::discover(school_root)?.resolve(tree);
-    let desired = skills
-        .included()
-        .map(|s| DesiredLink {
-            name: s.name.clone(),
-            target: s.path.clone(),
+    let (desired, collision_warnings) = build_desired(skills.included());
+    Ok(PreparedSkills {
+        desired,
+        skills,
+        collision_warnings,
+    })
+}
+
+/// Map an iterator of included skills to a deduplicated `DesiredLink`
+/// list, applying the backend emit rule and loser-drop policy.
+fn build_desired<'a, I>(included: I) -> (Vec<DesiredLink>, Vec<String>)
+where
+    I: Iterator<Item = &'a crate::skills::Skill<crate::skills::Decided>>,
+{
+    // Gather candidates first so we can sort alphabetically by source
+    // path before resolving collisions (deterministic tiebreaker per
+    // emit.md § Loser-drop on collision).
+    let mut candidates: Vec<(String, &Path, &str)> = included
+        .map(|s| {
+            let raw_name = s
+                .frontmatter_name
+                .as_deref()
+                .unwrap_or_else(|| basename_of(&s.name));
+            let link_name = crate::skills::sanitize::for_emit(raw_name);
+            (link_name, s.path.as_path(), s.name.as_str())
         })
         .collect();
-    Ok(PreparedSkills { desired, skills })
+    // Alphabetical by skill identity path (the school-internal source path).
+    candidates.sort_by(|a, b| a.2.cmp(b.2));
+
+    let mut by_link: std::collections::HashMap<String, (PathBuf, &str)> =
+        std::collections::HashMap::new();
+    let mut warnings: Vec<String> = Vec::new();
+
+    for (link_name, path, identity) in candidates {
+        if link_name.is_empty() {
+            warnings.push(format!(
+                "skill `{identity}` produces an empty backend name after sanitization; dropping",
+            ));
+            continue;
+        }
+        if let Some((_, winner_identity)) = by_link.get(&link_name) {
+            warnings.push(format!(
+                "backend-name collision at `{link_name}`: `{winner_identity}` wins over \
+                 `{identity}` (alphabetical-by-source-path). Loser is dropped from the backend. \
+                 Fix upstream: rename frontmatter `name:` or use `[[imports]]` `exclude_skills`.",
+            ));
+            continue;
+        }
+        by_link.insert(link_name.clone(), (path.to_path_buf(), identity));
+    }
+
+    // Restore some-canonical-order output (alphabetical by link name)
+    // so callers see deterministic plans.
+    let mut desired: Vec<DesiredLink> = by_link
+        .into_iter()
+        .map(|(name, (target, _))| DesiredLink { name, target })
+        .collect();
+    desired.sort_by(|a, b| a.name.cmp(&b.name));
+    (desired, warnings)
+}
+
+/// Last path segment of a slash-joined identity. For flat identities
+/// returns the whole identity; for nested returns the leaf.
+fn basename_of(identity: &str) -> &str {
+    identity.rsplit('/').next().unwrap_or(identity)
 }
 
 #[derive(Debug)]
 pub struct PreparedSkills {
     pub desired: Vec<DesiredLink>,
     pub skills: Skills<Decided>,
+    /// Warnings produced by the backend emit rule: empty-after-sanitize,
+    /// dirname collisions, etc. Surfaced via `emit_warnings`.
+    pub collision_warnings: Vec<String>,
 }
 
 /// Reconcile per-skill symlinks under `project_skills_dir`.
@@ -204,6 +270,9 @@ pub fn reconcile(
 /// Shared by all callers that run the prepare → reconcile sequence.
 pub fn emit_warnings(ace: &mut Ace, prepared: &PreparedSkills, link_result: &LinkResult) {
     for warning in &link_result.skill_warnings {
+        ace.warn(warning);
+    }
+    for warning in &prepared.collision_warnings {
         ace.warn(warning);
     }
     let diagnostics = prepared.skills.diagnostics();
@@ -455,6 +524,115 @@ mod tests {
             "expected ManagedSymlink through symlinked school root, got {:?}",
             entries[0].kind,
         );
+    }
+
+    // -- backend emit rule (spec: emit.md § Backend emit rule) --
+
+    use crate::skills::Skill;
+    use crate::skills::discover::Tier;
+    use crate::skills::{Decided, Decision};
+
+    fn included_skill(
+        identity: &str,
+        path: &str,
+        frontmatter_name: Option<&str>,
+    ) -> Skill<Decided> {
+        Skill {
+            name: identity.to_string(),
+            path: PathBuf::from(path),
+            tier: Tier::Curated,
+            internal: false,
+            frontmatter_name: frontmatter_name.map(String::from),
+            source: None,
+            state: Decided {
+                decision: Decision::Included,
+                trace: Vec::new(),
+            },
+        }
+    }
+
+    #[test]
+    fn flat_identity_link_name_equals_basename() {
+        let skills = vec![included_skill("rust-coding", "/s/rust-coding", None)];
+        let (desired, warnings) = build_desired(skills.iter());
+        assert_eq!(desired.len(), 1);
+        assert_eq!(desired[0].name, "rust-coding");
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn nested_identity_link_name_uses_leaf() {
+        // <school>/skills/typescript/coding/ → backend link `coding`.
+        let skills = vec![included_skill("typescript/coding", "/s/typescript/coding", None)];
+        let (desired, _) = build_desired(skills.iter());
+        assert_eq!(desired[0].name, "coding");
+    }
+
+    #[test]
+    fn frontmatter_name_overrides_basename() {
+        let skills = vec![included_skill(
+            "typescript/coding",
+            "/s/typescript/coding",
+            Some("ts-coding"),
+        )];
+        let (desired, _) = build_desired(skills.iter());
+        assert_eq!(desired[0].name, "ts-coding");
+    }
+
+    #[test]
+    fn collision_drops_loser_alphabetically() {
+        // Two nested skills produce the same leaf `coding`. Alphabetical
+        // by source path: `python/coding` wins over `typescript/coding`.
+        let skills = vec![
+            included_skill("typescript/coding", "/s/typescript/coding", None),
+            included_skill("python/coding", "/s/python/coding", None),
+        ];
+        let (desired, warnings) = build_desired(skills.iter());
+        assert_eq!(desired.len(), 1);
+        assert_eq!(desired[0].name, "coding");
+        assert_eq!(desired[0].target, PathBuf::from("/s/python/coding"));
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("collision"));
+        assert!(warnings[0].contains("python/coding"));
+        assert!(warnings[0].contains("typescript/coding"));
+    }
+
+    #[test]
+    fn frontmatter_name_can_resolve_a_collision() {
+        // typescript/coding has frontmatter `ts-coding`; collision
+        // averted because the link names differ.
+        let skills = vec![
+            included_skill("typescript/coding", "/s/typescript/coding", Some("ts-coding")),
+            included_skill("python/coding", "/s/python/coding", None),
+        ];
+        let (mut desired, warnings) = build_desired(skills.iter());
+        desired.sort_by(|a, b| a.name.cmp(&b.name));
+        assert_eq!(desired.len(), 2);
+        assert_eq!(desired[0].name, "coding");
+        assert_eq!(desired[1].name, "ts-coding");
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn bidi_chars_stripped_from_link_name() {
+        // U+202E in frontmatter name → sanitized out at emit boundary.
+        let skills = vec![included_skill(
+            "foo",
+            "/s/foo",
+            Some("good\u{202E}.exe"),
+        )];
+        let (desired, _) = build_desired(skills.iter());
+        assert_eq!(desired[0].name, "good.exe");
+    }
+
+    #[test]
+    fn empty_after_sanitize_warns_and_drops() {
+        // A name composed entirely of control chars sanitizes to empty.
+        let skills = vec![included_skill("foo", "/s/foo", Some("\x07\x1b"))];
+        let (desired, warnings) = build_desired(skills.iter());
+        assert!(desired.is_empty());
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("empty"));
     }
 
     #[test]
