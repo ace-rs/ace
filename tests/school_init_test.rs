@@ -5,6 +5,7 @@ use common::TestEnv;
 #[test]
 fn school_init_creates_files() {
     let env = TestEnv::new();
+    env.seed_ace_school_imports();
     env.git_init();
 
     env.ace()
@@ -22,6 +23,7 @@ fn school_init_creates_files() {
 #[test]
 fn school_init_claude_writes_claude_md() {
     let env = TestEnv::new();
+    env.seed_ace_school_imports();
     env.git_init();
 
     env.ace()
@@ -39,6 +41,7 @@ fn school_init_claude_writes_claude_md() {
 #[test]
 fn school_init_codex_writes_agents_md() {
     let env = TestEnv::new();
+    env.seed_ace_school_imports();
     env.git_init();
 
     env.ace()
@@ -56,6 +59,7 @@ fn school_init_codex_writes_agents_md() {
 #[test]
 fn school_init_not_in_git_repo() {
     let env = TestEnv::new();
+    env.seed_ace_school_imports();
     // No git init.
 
     env.ace()
@@ -68,6 +72,7 @@ fn school_init_not_in_git_repo() {
 #[test]
 fn school_init_already_exists() {
     let env = TestEnv::new();
+    env.seed_ace_school_imports();
     env.git_init();
     env.write_file("school.toml", "name = \"old-school\"\n");
 
@@ -81,6 +86,7 @@ fn school_init_already_exists() {
 #[test]
 fn school_init_force_updates_name() {
     let env = TestEnv::new();
+    env.seed_ace_school_imports();
     env.git_init();
     env.write_file("school.toml", "name = \"old-school\"\n");
 
@@ -96,6 +102,7 @@ fn school_init_force_updates_name() {
 #[test]
 fn school_init_writes_dogfood_ace_toml() {
     let env = TestEnv::new();
+    env.seed_ace_school_imports();
     env.git_init();
 
     env.ace()
@@ -110,6 +117,7 @@ fn school_init_writes_dogfood_ace_toml() {
 #[test]
 fn school_init_preserves_existing_ace_toml() {
     let env = TestEnv::new();
+    env.seed_ace_school_imports();
     env.git_init();
     env.write_file("ace.toml", "school = \"jedi/temple\"\n");
 
@@ -125,6 +133,7 @@ fn school_init_preserves_existing_ace_toml() {
 #[test]
 fn school_init_preserves_existing_files() {
     let env = TestEnv::new();
+    env.seed_ace_school_imports();
     env.git_init();
 
     // Pre-existing CLAUDE.md should not be overwritten.

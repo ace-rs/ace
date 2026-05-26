@@ -339,68 +339,32 @@ impl TestEnv {
 
     /// Set up a fake remote school: bare origin, cache clone, index entry, ace.toml.
     /// Project dir gets git init + ace.toml with flaude backend.
+    ///
+    /// Per-specifier templates are built once per binary; per-test cost is a
+    /// pair of `cp -R`s and one `git remote set-url`. Tests are free to push
+    /// commits to the returned `origin` (they get a private copy).
     pub fn setup_remote_school(&self, specifier: &str) -> RemoteSchool {
+        let tpl = remote_school_template(specifier);
+
         let origin = self.path("origin.git");
         let cache = self.path(&format!("data/ace/{specifier}"));
-        let work = self.path("_school_work");
-
-        // 1. Bare origin repo with main as default branch.
-        std::fs::create_dir_all(&origin).expect("create origin dir");
-        self.git_in(
-            &origin,
-            &["init", "--bare", "--quiet", "--template=", "-b", "main"],
-        );
-
-        // 2. Temp working copy → commit school content → push to origin.
-        self.git_in(
-            self.root(),
-            &[
-                "clone",
-                "--quiet",
-                origin.to_str().expect("origin path"),
-                work.to_str().expect("work path"),
-            ],
-        );
-
-        std::fs::write(
-            work.join("school.toml"),
-            format!("name = \"{specifier}\"\n"),
-        )
-        .expect("write school.toml");
-        std::fs::create_dir_all(work.join("skills/maverick")).expect("mkdir skills");
-        std::fs::write(work.join("skills/maverick/SKILL.md"), "# Maverick\n")
-            .expect("write SKILL.md");
-
-        self.git_in(&work, &["add", "-A"]);
-        self.git_in(
-            &work,
-            &[
-                "-c",
-                "user.email=test@test.com",
-                "-c",
-                "user.name=Test",
-                "commit",
-                "-m",
-                "initial",
-            ],
-        );
-        self.git_in(&work, &["push"]);
-        std::fs::remove_dir_all(&work).expect("remove work dir");
-
-        // 3. Clone origin → cache path (mimics ace install).
+        copy_tree(&tpl.origin, &origin);
         std::fs::create_dir_all(cache.parent().expect("cache parent"))
             .expect("create cache parent");
+        copy_tree(&tpl.cache, &cache);
+
+        // Rewrite the cache clone's origin URL to point at the per-test bare
+        // origin (template copies still reference the template's path).
         self.git_in(
-            self.root(),
+            &cache,
             &[
-                "clone",
-                "--quiet",
+                "remote",
+                "set-url",
+                "origin",
                 origin.to_str().expect("origin path"),
-                cache.to_str().expect("cache path"),
             ],
         );
 
-        // 4. Index entry.
         let index_path = self.path("cache/ace/index.toml");
         std::fs::create_dir_all(index_path.parent().expect("index parent"))
             .expect("create index parent");
@@ -410,21 +374,14 @@ impl TestEnv {
         )
         .expect("write index.toml");
 
-        // 5. gitconfig insteadOf redirect so ace re-clones (self-heal path)
-        // route through the sandbox origin instead of github.com.
-        let gh_url = format!("https://github.com/{specifier}.git");
-        let file_url = format!("file://{}", origin.display());
-        let config_block = format!("[url \"{file_url}\"]\n\tinsteadOf = {gh_url}\n");
-        let gitconfig_path = self.path(".gitconfig");
-        if gitconfig_path.exists() {
-            let mut existing = std::fs::read_to_string(&gitconfig_path).expect("read gitconfig");
-            existing.push_str(&config_block);
-            std::fs::write(&gitconfig_path, existing).expect("append gitconfig");
-        } else {
-            std::fs::write(&gitconfig_path, config_block).expect("write gitconfig");
-        }
+        // insteadOf redirect so any re-clone (self-heal path) goes through
+        // the sandbox origin instead of github.com.
+        append_gitconfig_redirect(
+            &self.path(".gitconfig"),
+            &format!("https://github.com/{specifier}.git"),
+            &origin,
+        );
 
-        // 6. Project dir: git init + ace.toml.
         self.git_init();
         self.write_file(
             "ace.toml",
@@ -473,9 +430,13 @@ impl TestEnv {
         self.git_in(
             &work,
             &[
-                "-c", "user.email=test@test.com",
-                "-c", "user.name=Test",
-                "commit", "-m", "seed",
+                "-c",
+                "user.email=test@test.com",
+                "-c",
+                "user.name=Test",
+                "commit",
+                "-m",
+                "seed",
             ],
         );
         self.git_in(&work, &["push", "--quiet"]);
@@ -531,5 +492,227 @@ impl TestEnv {
         let path = std::env::var("PATH").unwrap_or_default();
         cmd.env("PATH", format!("{}:{path}", prefix.display()));
         cmd
+    }
+
+    /// Pre-seed the standard `ace-rs/school` import cache so the `school
+    /// init` PullImports step resolves locally instead of cloning from
+    /// GitHub. Adds a `.gitconfig` `insteadOf` so any in-process fetch hits
+    /// the process-shared bare origin. The template is built once per test
+    /// binary; per-test cost is a small `cp -R`.
+    pub fn seed_ace_school_imports(&self) {
+        let tpl = ace_school_template();
+        let dest = self.path("cache/ace/imports/ace-rs/school");
+        copy_tree(&tpl.clone, &dest);
+        append_gitconfig_redirect(
+            &self.path(".gitconfig"),
+            "https://github.com/ace-rs/school.git",
+            &tpl.origin,
+        );
+    }
+}
+
+// -- Shared remote-school template (process-scoped, per specifier) --
+
+struct RemoteSchoolTemplate {
+    _tmp: tempfile::TempDir,
+    origin: PathBuf,
+    cache: PathBuf,
+}
+
+fn remote_school_template(specifier: &str) -> std::sync::Arc<RemoteSchoolTemplate> {
+    static TEMPLATES: std::sync::OnceLock<
+        std::sync::Mutex<HashMap<String, std::sync::Arc<RemoteSchoolTemplate>>>,
+    > = std::sync::OnceLock::new();
+    let mutex = TEMPLATES.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
+    let mut map = mutex.lock().expect("templates lock");
+    if let Some(t) = map.get(specifier) {
+        return std::sync::Arc::clone(t);
+    }
+    let t = std::sync::Arc::new(build_remote_school_template(specifier));
+    map.insert(specifier.to_string(), std::sync::Arc::clone(&t));
+    t
+}
+
+fn build_remote_school_template(specifier: &str) -> RemoteSchoolTemplate {
+    let tmp = tempfile::TempDir::new().expect("template tempdir");
+    let origin = tmp.path().join("origin.git");
+    let work = tmp.path().join("work");
+    let cache = tmp.path().join("cache");
+
+    std::fs::create_dir_all(&origin).expect("mkdir origin");
+    plain_git(
+        &origin,
+        &["init", "--bare", "--quiet", "--template=", "-b", "main"],
+    );
+
+    plain_git(
+        tmp.path(),
+        &[
+            "clone",
+            "--quiet",
+            origin.to_str().expect("origin utf8"),
+            work.to_str().expect("work utf8"),
+        ],
+    );
+
+    std::fs::write(
+        work.join("school.toml"),
+        format!("name = \"{specifier}\"\n"),
+    )
+    .expect("write school.toml");
+    std::fs::create_dir_all(work.join("skills/maverick")).expect("mkdir maverick");
+    std::fs::write(work.join("skills/maverick/SKILL.md"), "# Maverick\n").expect("write SKILL.md");
+
+    plain_git(&work, &["add", "-A"]);
+    plain_git(
+        &work,
+        &[
+            "-c",
+            "user.email=test@test.com",
+            "-c",
+            "user.name=Test",
+            "commit",
+            "--quiet",
+            "-m",
+            "initial",
+        ],
+    );
+    plain_git(&work, &["push", "--quiet"]);
+
+    plain_git(
+        tmp.path(),
+        &[
+            "clone",
+            "--quiet",
+            origin.to_str().expect("origin utf8"),
+            cache.to_str().expect("cache utf8"),
+        ],
+    );
+
+    RemoteSchoolTemplate {
+        _tmp: tmp,
+        origin,
+        cache,
+    }
+}
+
+// -- Shared import-cache template (process-scoped) --
+
+/// Process-wide template for the `ace-rs/school` import cache. Built once
+/// per test binary via `OnceLock`; each call to `seed_ace_school_imports`
+/// copies the cloned cache into the per-test XDG_CACHE_HOME so tests stay
+/// isolated.
+struct AceSchoolTemplate {
+    _tmp: tempfile::TempDir,
+    /// Bare origin path — referenced by tests' `.gitconfig` `insteadOf`.
+    origin: PathBuf,
+    /// Cloned cache contents, ready to copy into each test's import cache.
+    clone: PathBuf,
+}
+
+fn ace_school_template() -> &'static AceSchoolTemplate {
+    static T: std::sync::OnceLock<AceSchoolTemplate> = std::sync::OnceLock::new();
+    T.get_or_init(build_ace_school_template)
+}
+
+fn build_ace_school_template() -> AceSchoolTemplate {
+    let tmp = tempfile::TempDir::new().expect("template tempdir");
+    let origin = tmp.path().join("origin.git");
+    let work = tmp.path().join("work");
+    let clone = tmp.path().join("clone");
+
+    std::fs::create_dir_all(&origin).expect("mkdir origin");
+    plain_git(
+        &origin,
+        &["init", "--bare", "--quiet", "--template=", "-b", "main"],
+    );
+
+    std::fs::create_dir_all(work.join("skills/ace-school")).expect("mkdir ace-school");
+    std::fs::write(work.join("school.toml"), "name = \"ace-rs/school\"\n")
+        .expect("write school.toml");
+    std::fs::write(work.join("skills/ace-school/SKILL.md"), "# ace-school\n")
+        .expect("write SKILL.md");
+
+    plain_git(&work, &["init", "--quiet", "--template=", "-b", "main"]);
+    plain_git(&work, &["add", "-A"]);
+    plain_git(
+        &work,
+        &[
+            "-c",
+            "user.email=test@test.com",
+            "-c",
+            "user.name=Test",
+            "commit",
+            "--quiet",
+            "-m",
+            "initial",
+        ],
+    );
+    plain_git(
+        &work,
+        &[
+            "remote",
+            "add",
+            "origin",
+            origin.to_str().expect("origin path utf8"),
+        ],
+    );
+    plain_git(&work, &["push", "--quiet", "origin", "main"]);
+
+    plain_git(
+        tmp.path(),
+        &[
+            "clone",
+            "--quiet",
+            "--template=",
+            origin.to_str().expect("origin path utf8"),
+            clone.to_str().expect("clone path utf8"),
+        ],
+    );
+
+    AceSchoolTemplate {
+        _tmp: tmp,
+        origin,
+        clone,
+    }
+}
+
+fn plain_git(dir: &Path, args: &[&str]) {
+    let status = std::process::Command::new("git")
+        .args(args)
+        .env_clear()
+        .env("PATH", std::env::var("PATH").unwrap_or_default())
+        .current_dir(dir)
+        .status()
+        .unwrap_or_else(|e| panic!("git {args:?}: {e}"));
+    assert!(status.success(), "git {args:?} failed in {}", dir.display());
+}
+
+fn copy_tree(src: &Path, dst: &Path) {
+    if src.is_dir() {
+        std::fs::create_dir_all(dst).unwrap_or_else(|e| panic!("mkdir {}: {e}", dst.display()));
+        for entry in
+            std::fs::read_dir(src).unwrap_or_else(|e| panic!("read_dir {}: {e}", src.display()))
+        {
+            let entry = entry.expect("dir entry");
+            copy_tree(&entry.path(), &dst.join(entry.file_name()));
+        }
+    } else {
+        std::fs::copy(src, dst)
+            .unwrap_or_else(|e| panic!("copy {} → {}: {e}", src.display(), dst.display()));
+    }
+}
+
+fn append_gitconfig_redirect(path: &Path, gh_url: &str, origin: &Path) {
+    let block = format!(
+        "[url \"file://{}\"]\n\tinsteadOf = {gh_url}\n",
+        origin.display(),
+    );
+    if path.exists() {
+        let mut existing = std::fs::read_to_string(path).expect("read gitconfig");
+        existing.push_str(&block);
+        std::fs::write(path, existing).expect("append gitconfig");
+    } else {
+        std::fs::write(path, block).expect("write gitconfig");
     }
 }
