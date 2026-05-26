@@ -21,8 +21,9 @@ fn import_clone_failure_invalid_source() {
     env.git_init();
     env.write_dogfood_school("name = \"test-school\"\n");
     env.mkdir("skills");
+    env.redirect_to_invalid("nonexistent-owner-xxxxx/nonexistent-repo-xxxxx");
 
-    // Source that cannot be cloned — nonexistent GitHub repo.
+    // Source that cannot be cloned — redirected to a local nonexistent path.
     env.ace()
         .args(["import", "nonexistent-owner-xxxxx/nonexistent-repo-xxxxx", "--skill", "my-skill"])
         .assert()
@@ -51,6 +52,7 @@ fn import_from_local_school_context() {
     // School repo context (dogfood pair present) but invalid remote source.
     env.write_dogfood_school("name = \"my-school\"\n");
     env.mkdir("skills");
+    env.redirect_to_invalid("nonexistent-owner-xxxxx/nonexistent-repo-xxxxx");
 
     // The source is invalid, so clone fails — but this verifies that import
     // correctly resolves the school context via ace.toml's specifier.
@@ -67,6 +69,7 @@ fn import_without_skill_flag_clone_failure() {
     env.git_init();
     env.write_dogfood_school("name = \"test-school\"\n");
     env.mkdir("skills");
+    env.redirect_to_invalid("nonexistent-owner-xxxxx/nonexistent-repo-xxxxx");
 
     // No --skill flag — auto-select or prompt would happen after clone.
     // Clone fails first, so we verify the error path without --skill.
@@ -83,6 +86,7 @@ fn import_no_git_repo_with_school_toml() {
     // No git init — but school.toml exists.
     env.write_dogfood_school("name = \"test-school\"\n");
     env.mkdir("skills");
+    env.redirect_to_invalid("nonexistent-owner-xxxxx/nonexistent-repo-xxxxx");
 
     // Import should still work to find school context (school.toml check
     // doesn't require git), but clone will fail on the remote source.
@@ -120,6 +124,7 @@ source = "some-owner/some-repo"
     );
     env.mkdir("skills/existing-skill");
     env.write_file("skills/existing-skill/SKILL.md", "# Existing\n");
+    env.redirect_to_invalid("nonexistent-owner-xxxxx/nonexistent-repo-xxxxx");
 
     // Importing a new skill from an invalid source fails at clone.
     // Verifies that having existing imports doesn't break the import flow.

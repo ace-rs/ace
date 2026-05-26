@@ -502,11 +502,22 @@ impl TestEnv {
     pub fn seed_ace_school_imports(&self) {
         let tpl = ace_school_template();
         let dest = self.path("cache/ace/imports/ace-rs/school");
-        copy_tree(&tpl.clone, &dest);
+        copy_tree(&tpl.root, &dest);
         append_gitconfig_redirect(
             &self.path(".gitconfig"),
             "https://github.com/ace-rs/school.git",
-            &tpl.origin,
+            &tpl.root,
+        );
+    }
+
+    /// Redirect `https://github.com/<source>.git` to a known-nonexistent
+    /// local path so `git clone` fails immediately instead of hitting the
+    /// network. Used by tests that assert on clone-failure paths.
+    pub fn redirect_to_invalid(&self, source: &str) {
+        append_gitconfig_redirect(
+            &self.path(".gitconfig"),
+            &format!("https://github.com/{source}.git"),
+            Path::new("/nonexistent/path"),
         );
     }
 }
@@ -600,14 +611,18 @@ fn build_remote_school_template(specifier: &str) -> RemoteSchoolTemplate {
 
 /// Process-wide template for the `ace-rs/school` import cache. Built once
 /// per test binary via `OnceLock`; each call to `seed_ace_school_imports`
-/// copies the cloned cache into the per-test XDG_CACHE_HOME so tests stay
+/// copies the template into the per-test XDG_CACHE_HOME so tests stay
 /// isolated.
+///
+/// The template is a single repo that serves as both content and origin:
+/// `.git/config` has `remote.origin.url` pointing at the template's own
+/// path. Per-test caches inherit that URL on copy — `ace`'s fetch+merge
+/// then no-ops against the up-to-date template (no real network).
 struct AceSchoolTemplate {
     _tmp: tempfile::TempDir,
-    /// Bare origin path — referenced by tests' `.gitconfig` `insteadOf`.
-    origin: PathBuf,
-    /// Cloned cache contents, ready to copy into each test's import cache.
-    clone: PathBuf,
+    /// Self-referential repo path; also the `insteadOf` target for tests
+    /// whose code path falls through to a fresh `git clone`.
+    root: PathBuf,
 }
 
 fn ace_school_template() -> &'static AceSchoolTemplate {
@@ -617,26 +632,18 @@ fn ace_school_template() -> &'static AceSchoolTemplate {
 
 fn build_ace_school_template() -> AceSchoolTemplate {
     let tmp = tempfile::TempDir::new().expect("template tempdir");
-    let origin = tmp.path().join("origin.git");
-    let work = tmp.path().join("work");
-    let clone = tmp.path().join("clone");
+    let root = tmp.path().join("school");
 
-    std::fs::create_dir_all(&origin).expect("mkdir origin");
-    plain_git(
-        &origin,
-        &["init", "--bare", "--quiet", "--template=", "-b", "main"],
-    );
-
-    std::fs::create_dir_all(work.join("skills/ace-school")).expect("mkdir ace-school");
-    std::fs::write(work.join("school.toml"), "name = \"ace-rs/school\"\n")
+    std::fs::create_dir_all(root.join("skills/ace-school")).expect("mkdir ace-school");
+    std::fs::write(root.join("school.toml"), "name = \"ace-rs/school\"\n")
         .expect("write school.toml");
-    std::fs::write(work.join("skills/ace-school/SKILL.md"), "# ace-school\n")
+    std::fs::write(root.join("skills/ace-school/SKILL.md"), "# ace-school\n")
         .expect("write SKILL.md");
 
-    plain_git(&work, &["init", "--quiet", "--template=", "-b", "main"]);
-    plain_git(&work, &["add", "-A"]);
+    plain_git(&root, &["init", "--quiet", "--template=", "-b", "main"]);
+    plain_git(&root, &["add", "-A"]);
     plain_git(
-        &work,
+        &root,
         &[
             "-c",
             "user.email=test@test.com",
@@ -649,32 +656,16 @@ fn build_ace_school_template() -> AceSchoolTemplate {
         ],
     );
     plain_git(
-        &work,
+        &root,
         &[
             "remote",
             "add",
             "origin",
-            origin.to_str().expect("origin path utf8"),
-        ],
-    );
-    plain_git(&work, &["push", "--quiet", "origin", "main"]);
-
-    plain_git(
-        tmp.path(),
-        &[
-            "clone",
-            "--quiet",
-            "--template=",
-            origin.to_str().expect("origin path utf8"),
-            clone.to_str().expect("clone path utf8"),
+            root.to_str().expect("root path utf8"),
         ],
     );
 
-    AceSchoolTemplate {
-        _tmp: tmp,
-        origin,
-        clone,
-    }
+    AceSchoolTemplate { _tmp: tmp, root }
 }
 
 fn plain_git(dir: &Path, args: &[&str]) {

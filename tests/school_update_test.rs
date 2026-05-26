@@ -43,8 +43,9 @@ source = "nonexistent-owner-xxxxx/nonexistent-repo-xxxxx"
     );
     env.mkdir("skills/some-skill");
     env.write_file("skills/some-skill/SKILL.md", "# Some Skill\n");
+    env.redirect_to_invalid("nonexistent-owner-xxxxx/nonexistent-repo-xxxxx");
 
-    // Source repo doesn't exist — clone should fail.
+    // Source repo doesn't exist — clone should fail (locally, via redirect).
     env.ace()
         .args(["school", "update"])
         .assert()
@@ -86,6 +87,7 @@ source = "nonexistent-owner-xxxxx/nonexistent-repo-xxxxx"
     env.write_file("skills/skill-a/SKILL.md", "# Skill A\n");
     env.mkdir("skills/skill-b");
     env.write_file("skills/skill-b/SKILL.md", "# Skill B\n");
+    env.redirect_to_invalid("nonexistent-owner-xxxxx/nonexistent-repo-xxxxx");
 
     // Multiple imports from the same source — grouped into one clone attempt.
     // Clone fails, so we get the error.
@@ -129,6 +131,7 @@ source = "nonexistent-owner-xxxxx/nonexistent-repo-xxxxx"
     env.write_file("skills/local-skill/SKILL.md", "# Local Skill\n");
     env.mkdir("skills/imported-skill");
     env.write_file("skills/imported-skill/SKILL.md", "# Imported\n");
+    env.redirect_to_invalid("nonexistent-owner-xxxxx/nonexistent-repo-xxxxx");
 
     // Update fails due to clone, but local skill should still be on disk.
     env.ace()
