@@ -53,7 +53,7 @@ impl AddImport<'_> {
         }
 
         let selected = match self.skill {
-            Some(name) => skills.iter().find(|s| s.name == name)
+            Some(name) => skills.iter().find(|s| s.id == name)
                 .ok_or_else(|| AddImportError::SkillNotFound(name.to_string()))?,
             None if skills.len() == 1 => &skills[0],
             None => return Ok(AddImportResult::NeedsSelection(skills)),
@@ -61,20 +61,20 @@ impl AddImport<'_> {
 
         self.install_skill(selected)?;
 
-        ace.done(&format!("Imported skill: {}", selected.name));
-        Ok(AddImportResult::Done { skill: selected.name.clone() })
+        ace.done(&format!("Imported skill: {}", selected.id));
+        Ok(AddImportResult::Done { skill: selected.id.to_string() })
     }
 
     /// Install a specific discovered skill after selection.
     pub fn install_selected(&self, skill: &DiscoveredSkill, ace: &mut Ace) -> Result<(), AddImportError> {
-        ace.progress(&format!("Installing {}", skill.name));
+        ace.progress(&format!("Installing {}", skill.id));
         self.install_skill(skill)?;
-        ace.done(&format!("Imported skill: {}", skill.name));
+        ace.done(&format!("Imported skill: {}", skill.id));
         Ok(())
     }
 
     fn install_skill(&self, skill: &DiscoveredSkill) -> Result<(), AddImportError> {
-        let dest = self.school_root.join("skills").join(&skill.name);
+        let dest = self.school_root.join("skills").join(skill.id.as_str());
         if dest.exists() {
             std::fs::remove_dir_all(&dest)?;
         }
@@ -84,11 +84,11 @@ impl AddImport<'_> {
         let toml_path = self.school_root.join("school.toml");
         let mut school = config::school_toml::load(&toml_path)?;
 
-        let entry = school.imports.iter_mut().find(|i| i.skill == skill.name);
+        let entry = school.imports.iter_mut().find(|i| i.skill == skill.id.as_str());
         match entry {
             Some(existing) => existing.source = self.source.to_string(),
             None => school.imports.push(ImportDecl {
-                skill: skill.name.clone(),
+                skill: skill.id.to_string(),
                 source: self.source.to_string(),
                 include_experimental: false,
                 include_system: false,

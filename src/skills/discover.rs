@@ -32,6 +32,8 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
+use super::identity::SkillId;
+
 /// Hidden directory names that mark tier sub-trees under `skills/`. These are
 /// processed as separate priority entries; the `skills/` walk excludes them
 /// to avoid double-counting.
@@ -70,11 +72,10 @@ impl Tier {
 
 #[derive(Clone, Debug)]
 pub struct DiscoveredSkill {
-    /// Identity path — discovery prefix stripped, slash-joined. For flat
-    /// layouts this is the basename (`foo`). For nested layouts under a
-    /// priority dir it includes the inner segments (`typescript/coding`).
-    /// Acts as the unique key for cross-source collision detection.
-    pub name: String,
+    /// Identity — produced by the discovery layer's prefix-strip rule.
+    /// Backed by a `SkillId` newtype so the resolver/emit boundaries
+    /// can't be passed a raw user string by accident.
+    pub id: SkillId,
     /// Absolute path to the skill directory containing `SKILL.md`.
     pub path: PathBuf,
     /// Tier classification, derived from the priority dir the skill was
@@ -86,6 +87,7 @@ pub struct DiscoveredSkill {
     pub internal: bool,
 }
 
+
 /// Discover skills under `root` per the 2-stage cascade. See module docs.
 pub fn discover_skills(root: &Path) -> Result<Vec<DiscoveredSkill>, std::io::Error> {
     // Stage 1: direct skill at root.
@@ -93,11 +95,10 @@ pub fn discover_skills(root: &Path) -> Result<Vec<DiscoveredSkill>, std::io::Err
         let basename = root
             .file_name()
             .and_then(|n| n.to_str())
-            .unwrap_or("skill")
-            .to_string();
+            .unwrap_or("skill");
         let internal = read_internal_flag(&root.join("SKILL.md"));
         return Ok(vec![DiscoveredSkill {
-            name: basename,
+            id: SkillId::from_basename(basename),
             path: root.to_path_buf(),
             tier: Tier::Curated,
             internal,
@@ -152,14 +153,15 @@ fn walk_priority_dir(
     seen: &mut HashSet<String>,
 ) -> Result<(), std::io::Error> {
     if dir.join("SKILL.md").is_file() {
-        let identity = match dir.strip_prefix(prefix) {
-            Ok(rel) if !rel.as_os_str().is_empty() => path_to_identity(rel),
+        let rel = match dir.strip_prefix(prefix) {
+            Ok(rel) if !rel.as_os_str().is_empty() => rel,
             _ => return Ok(()), // priority root itself is not a skill; stage 1 territory
         };
-        if seen.insert(identity.clone()) {
+        let id = SkillId::from_relative_path(rel);
+        if seen.insert(id.to_string()) {
             let internal = read_internal_flag(&dir.join("SKILL.md"));
             skills.push(DiscoveredSkill {
-                name: identity,
+                id,
                 path: dir.to_path_buf(),
                 tier,
                 internal,
@@ -212,16 +214,6 @@ const SKIP_DIRS: &[&str] = &[
     "out",
     "vendor",
 ];
-
-fn path_to_identity(rel: &Path) -> String {
-    let mut parts: Vec<&str> = Vec::new();
-    for comp in rel.iter() {
-        if let Some(s) = comp.to_str() {
-            parts.push(s);
-        }
-    }
-    parts.join("/")
-}
 
 /// Best-effort `internal: true` extraction from a SKILL.md frontmatter
 /// block. A full frontmatter parser lives in `config::skill_meta`; this is
@@ -310,7 +302,7 @@ mod tests {
         }
 
         let skills = discover_skills(tmp.path()).expect("discover_skills");
-        let mut names: Vec<_> = skills.iter().map(|s| s.name.as_str()).collect();
+        let mut names: Vec<_> = skills.iter().map(|s| s.id.as_str()).collect();
         names.sort();
         assert_eq!(names, vec!["alpha", "beta", "gamma"]);
     }
@@ -332,7 +324,7 @@ mod tests {
 
         let skills = discover_skills(tmp.path()).expect("discover_skills");
         assert_eq!(skills.len(), 1);
-        assert_eq!(skills[0].name, "foo");
+        assert_eq!(skills[0].id, "foo");
         assert_eq!(skills[0].path, path);
         assert_eq!(skills[0].tier, Tier::Curated);
     }
@@ -344,7 +336,7 @@ mod tests {
 
         let skills = discover_skills(tmp.path()).expect("discover_skills");
         assert_eq!(skills.len(), 1);
-        assert_eq!(skills[0].name, "shell");
+        assert_eq!(skills[0].id, "shell");
         assert_eq!(skills[0].tier, Tier::Experimental);
     }
 
@@ -355,7 +347,7 @@ mod tests {
 
         let skills = discover_skills(tmp.path()).expect("discover_skills");
         assert_eq!(skills.len(), 1);
-        assert_eq!(skills[0].name, "skill-creator");
+        assert_eq!(skills[0].id, "skill-creator");
         assert_eq!(skills[0].tier, Tier::System);
     }
 
@@ -405,7 +397,7 @@ mod tests {
 
         let skills = discover_skills(tmp.path()).expect("discover_skills");
         let mut by_name: Vec<(&str, Tier)> =
-            skills.iter().map(|s| (s.name.as_str(), s.tier)).collect();
+            skills.iter().map(|s| (s.id.as_str(), s.tier)).collect();
         by_name.sort_by_key(|(n, _)| *n);
 
         assert_eq!(
@@ -450,7 +442,7 @@ mod tests {
 
         let skills = discover_skills(&root).expect("discover");
         assert_eq!(skills.len(), 1);
-        assert_eq!(skills[0].name, "my-repo");
+        assert_eq!(skills[0].id, "my-repo");
         assert_eq!(skills[0].path, root);
         assert_eq!(skills[0].tier, Tier::Curated);
     }
@@ -465,7 +457,7 @@ mod tests {
 
         let skills = discover_skills(&root).expect("discover");
         assert_eq!(skills.len(), 1, "stage 1 must short-circuit");
-        assert_eq!(skills[0].name, "mono");
+        assert_eq!(skills[0].id, "mono");
     }
 
     #[test]
@@ -475,7 +467,7 @@ mod tests {
         make_skill_at(tmp.path(), "skills/rust/coding");
 
         let skills = discover_skills(tmp.path()).expect("discover");
-        let mut names: Vec<_> = skills.iter().map(|s| s.name.as_str()).collect();
+        let mut names: Vec<_> = skills.iter().map(|s| s.id.as_str()).collect();
         names.sort();
         assert_eq!(names, vec!["rust/coding", "typescript/coding"]);
         for s in &skills {
@@ -490,7 +482,7 @@ mod tests {
 
         let skills = discover_skills(tmp.path()).expect("discover");
         assert_eq!(skills.len(), 1);
-        assert_eq!(skills[0].name, "group/leaf");
+        assert_eq!(skills[0].id, "group/leaf");
         assert_eq!(skills[0].tier, Tier::Curated);
     }
 
@@ -501,7 +493,7 @@ mod tests {
 
         let skills = discover_skills(tmp.path()).expect("discover");
         assert_eq!(skills.len(), 1);
-        assert_eq!(skills[0].name, "foo");
+        assert_eq!(skills[0].id, "foo");
         assert_eq!(skills[0].tier, Tier::Curated);
     }
 
@@ -512,7 +504,7 @@ mod tests {
 
         let skills = discover_skills(tmp.path()).expect("discover");
         assert_eq!(skills.len(), 1);
-        assert_eq!(skills[0].name, "typescript/coding");
+        assert_eq!(skills[0].id, "typescript/coding");
     }
 
     #[test]
@@ -533,7 +525,7 @@ mod tests {
         make_skill_at(tmp.path(), ".codex/skills/beta");
 
         let skills = discover_skills(tmp.path()).expect("discover");
-        let mut names: Vec<_> = skills.iter().map(|s| s.name.as_str()).collect();
+        let mut names: Vec<_> = skills.iter().map(|s| s.id.as_str()).collect();
         names.sort();
         assert_eq!(names, vec!["alpha", "beta"]);
     }
@@ -546,7 +538,7 @@ mod tests {
         make_skill_at(tmp.path(), "skills/real");
 
         let skills = discover_skills(tmp.path()).expect("discover");
-        let names: Vec<_> = skills.iter().map(|s| s.name.as_str()).collect();
+        let names: Vec<_> = skills.iter().map(|s| s.id.as_str()).collect();
         assert_eq!(names, vec!["real"]);
     }
 
@@ -583,7 +575,7 @@ mod tests {
         make_skill_at(tmp.path(), "skills/foo/sub");
 
         let skills = discover_skills(tmp.path()).expect("discover");
-        let names: Vec<_> = skills.iter().map(|s| s.name.as_str()).collect();
+        let names: Vec<_> = skills.iter().map(|s| s.id.as_str()).collect();
         assert_eq!(names, vec!["foo"]);
     }
 
@@ -596,7 +588,7 @@ mod tests {
         make_skill_at(tmp.path(), "skills/rust/coding");
 
         let skills = discover_skills(tmp.path()).expect("discover");
-        let mut names: Vec<_> = skills.iter().map(|s| s.name.as_str()).collect();
+        let mut names: Vec<_> = skills.iter().map(|s| s.id.as_str()).collect();
         names.sort();
         assert_eq!(names, vec!["python/coding", "rust/coding"]);
     }

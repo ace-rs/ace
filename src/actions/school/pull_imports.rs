@@ -83,7 +83,7 @@ impl PullImports<'_> {
 
             let batch_discovered: Vec<DiscoveredSkill> = discovered
                 .iter()
-                .filter(|d| names.iter().any(|n| n == &d.name))
+                .filter(|d| names.iter().any(|n| n.as_str() == d.id.as_str()))
                 .cloned()
                 .collect();
             let batch = Skills::<Discovered>::from_discovered_with_source(
@@ -161,7 +161,7 @@ mod tests {
 
     fn discovered(name: &str, tier: Tier) -> DiscoveredSkill {
         DiscoveredSkill {
-            name: name.to_string(),
+            id: crate::skills::SkillId::from_basename(name),
             path: std::path::PathBuf::from(name),
             tier,
             internal: false,

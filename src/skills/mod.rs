@@ -10,6 +10,10 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 pub mod discover;
+pub mod identity;
+
+#[allow(unused_imports)]
+pub use identity::{MatchHandle, SkillId};
 
 use crate::config::tree::Tree;
 use crate::config::ConfigError;
@@ -142,7 +146,7 @@ impl Skills<Discovered> {
         let items = discovered
             .iter()
             .map(|d| Skill {
-                name: d.name.clone(),
+                name: d.id.to_string(),
                 path: d.path.clone(),
                 tier: d.tier,
                 internal: d.internal,
@@ -335,7 +339,7 @@ mod tests {
 
     fn discovered(name: &str, tier: Tier) -> DiscoveredSkill {
         DiscoveredSkill {
-            name: name.to_string(),
+            id: SkillId::from_basename(name),
             path: PathBuf::from(format!("/school/{name}")),
             tier,
             internal: false,
@@ -459,7 +463,7 @@ mod tests {
         fs::write(skill_dir.join("SKILL.md"), "# my-skill").expect("write");
 
         let s = Skills::<Discovered>::from_discovered(&[DiscoveredSkill {
-            name: "my-skill".to_string(),
+            id: SkillId::from_basename("my-skill"),
             path: skill_dir,
             tier: Tier::Curated,
             internal: false,
