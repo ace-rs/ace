@@ -286,10 +286,11 @@ skills sharing a frontmatter `name` field is fine as long as their identity path
 
 - Decision doc(s) need to enumerate the SkillName/SkillMeta type APIs at implementation
   time. This decision sketches roles only.
-- Tier-dir ownership rewrites in `school-commands.md:103` and `school-toml.md:158` are
-  pending.
-- The exact spec target for the cross-source merge policy needs identification during impl
-  (likely `school-toml.md` or `school-commands.md`).
 - Doctor checks (Linear PROD9-123) to be edited with the skill-spec diagnostic list
   (frontmatter mismatch, kebab/length violations, missing fields, identity collisions,
   bidi/control chars in path components).
+
+Spec edits landed under `docs/spec/skills/` (model, selection, emit, sync) on 2026-05-26,
+along with tier-ownership wording fixes in `docs/spec/school/school-toml.md` and
+`docs/spec/school/school-commands.md`. Cross-source merge policy is in
+`docs/spec/skills/selection.md`.

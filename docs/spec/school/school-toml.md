@@ -148,62 +148,68 @@ cmd = ["wrapper", "claude"]
 
 ### `[[imports]]`
 
-Array of imported skill declarations. Each entry tracks a skill that was imported from an
-external repository via `ace import`. Used by `ace school update` to re-fetch skills from
-their sources.
+Array of import declarations. Each entry tracks an upstream skills repository and which
+skills from it are pulled into this school. Re-run by `ace school pull` (alias
+`ace school update`).
 
-- `skill` — Skill name or glob pattern. Exact names match the folder name under `skills/`.
-  Glob patterns use `*` to match zero or more characters.
-- `source` — GitHub `owner/repo` shorthand where the skill was imported from.
-- `include_experimental` — When `true`, glob matching also expands into
-  `skills/.experimental/`. Defaults to `false`. Only meaningful for wildcard entries —
-  explicit skill names resolve across all tiers regardless of this flag.
-- `include_system` — When `true`, glob matching also expands into `skills/.system/`.
-  Defaults to `false`. Same tier-filter semantics as `include_experimental`.
+The behavioral spec — match-handle semantics, tier expansion, cross-source merge — is
+in [skills/selection.md → `[[imports]]` schema](../skills/selection.md#imports-schema).
+This section documents the file shape.
 
-Skills are copied into the school as real files (the school owns and commits them). The
-`[[imports]]` entries record provenance so `ace school update` knows where to re-fetch
-from.
+#### Fields
 
-#### Exact imports
+- `source`               — GitHub `owner/repo` shorthand for the upstream skills repo.
+- `skills`               — list of match handles. Required (or its backcompat alias
+                           `skill`).
+- `exclude_skills`       — list of match handles subtracted from `skills`. Optional.
+- `include_experimental` — widen discovery to include `skills/.experimental/`.
+                           Default `false`.
+- `include_system`       — widen discovery to include `skills/.system/`. Default `false`.
+- `include_internal`     — admit skills with `internal: true` via glob matches.
+                           Default `false`.
+
+`.curated/`, `.experimental/`, `.system/` are
+[community conventions skills.sh recognizes](../skills/model.md#discovery-cascade) —
+not ACE-owned categories.
+
+#### Backcompat alias
+
+The singular `skill = "<pattern>"` is accepted as an alias for
+`skills = ["<pattern>"]`. Writers (`ace import`, `ace school *`) emit the plural form.
+Per [CLAUDE.md § Backcompat](../../../CLAUDE.md), the singular form is not removed in
+any minor / patch release.
+
+#### Examples
+
+Single skill:
 
 ```toml
 [[imports]]
-skill = "skill-creator"
 source = "anthropics/skills"
-
-[[imports]]
-skill = "frontend-design"
-source = "anthropics/skills"
+skills = ["skill-creator"]
 ```
 
-#### Wildcard imports
-
-Glob patterns re-discover matching skills on every `ace school update`. New skills added
-to the source that match the pattern are picked up automatically.
+Whole upstream:
 
 ```toml
-# All skills from a parent school
 [[imports]]
-skill = "*"
 source = "company/school"
-
-# Only coding convention skills
-[[imports]]
-skill = "*-coding"
-source = "company/school"
-
-# All frontend skills
-[[imports]]
-skill = "frontend-*"
-source = "company/school"
+skills = ["*"]
 ```
 
-Glob rules:
-- `*` matches zero or more characters. No `?`, `**`, or character classes.
-- Wildcard imports always overwrite existing skills with the latest from the source —
-  consistent with ACE's always-latest versioning philosophy (see `index.md`).
-- For conflicts between wildcard sources, the first `[[imports]]` entry wins.
-- Wildcard matches are tier-gated: `Curated` only by default, `Experimental` / `System`
-  tiers require explicit `include_experimental = true` / `include_system = true` on the
-  `[[imports]]` entry (or `--include-experimental` / `--include-system` at import time).
+Subset with subtraction (cross-source disjoint sets):
+
+```toml
+[[imports]]
+source         = "ace-rs/school"
+skills         = ["*"]
+exclude_skills = ["rust-coding"]
+
+[[imports]]
+source = "my/customizations"
+skills = ["rust-coding"]
+```
+
+Skills are copied into the school as real files (the school owns and commits them).
+The `[[imports]]` entries record provenance so `ace school pull` knows where to
+re-fetch from.

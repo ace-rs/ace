@@ -11,7 +11,13 @@ off to the underlying AI coding tool.
 - [configuration.md](configuration.md) — Config file locations, layering, format.
 - [architecture.md](architecture.md) — Layers, data flow, dependency direction.
 - [setup.md](setup.md) — `ace setup` first-run flow.
-- [skills-sync.md](skills-sync.md) — School folder sync (skills, rules, commands, agents).
+- [skills/model.md](skills/model.md) — What a skill IS: discovery cascade, identity,
+  frontmatter, sanitization.
+- [skills/selection.md](skills/selection.md) — Which skills are picked: match handle,
+  `[[imports]]` schema, cross-source merge.
+- [skills/emit.md](skills/emit.md) — Where skills land: school storage, backend emit
+  rule, loser-drop.
+- [skills/sync.md](skills/sync.md) — Consumer-side workflow: fetch, symlink, reconcile.
 - [prompt-templating.md](prompt-templating.md) — Session prompt composition and template
   rendering.
 - [mcp.md](mcp.md) — MCP server design (remote-only, OAuth delegation).

@@ -7,7 +7,7 @@ source of skills that every ACE school is expected to inherit.
 ## The standard school
 
 - Source: `ace-rs/school` (GitHub `owner/repo` shorthand).
-- Imported as: `skill = "*"` (every skill in the source).
+- Imported as: `skills = ["*"]` (every skill in the source).
 - Resolved on every `ace school pull`.
 
 The standard school is what provides `ace-school` (the workflow skill that

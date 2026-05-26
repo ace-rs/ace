@@ -188,8 +188,10 @@ ace explain <name>                        # provenance + per-step trace for one 
 ```
 
 `include` /`exclude`/`reset` write to project scope by default; pass the global `--user`
-or `--local` flag to target another layer. Patterns are validated up front (`*` only —
-`**`, `?`, and `[...]` are rejected).
+or `--local` flag to target another layer. Pattern semantics are documented in
+[skills/selection.md → Match handle](skills/selection.md#match-handle): bare names match
+exact-or-leaf, paths anchored at `/`, `*` matches any chars, `**` is accepted but
+behaves like `*`, `?` and character classes are not supported.
 
 There is intentionally no `ace skills set <pattern>...` verb. The `skills` field (the
 last-wins whitelist) is config-only — edit `ace.toml` directly. The CLI exposes the

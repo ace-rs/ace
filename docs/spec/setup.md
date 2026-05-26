@@ -64,7 +64,7 @@ Prepare ensures the school is ready to use. It is called by both `ace setup` and
    - **Yes** → **Pull**: `git pull --ff-only` on the cached repo.
 2. **Link**: sync school folders into `<project>/<backend_dir>/`. Two shapes:
    - `skills/` becomes a real directory with per-skill symlinks (one per Included skill
-     from the resolution — see [skills-sync.md](skills-sync.md#skill-selection) and
+     from the resolution — see [skills/sync.md](skills/sync.md#skill-selection) and
      [configuration.md](configuration.md#skills-selection)).
    - `rules/`, `commands/`, `agents/` are whole-dir symlinks. An existing real directory
      at the link path is renamed to `previous-<folder>/` first (one-time adoption).

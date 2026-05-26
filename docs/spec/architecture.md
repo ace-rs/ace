@@ -53,8 +53,10 @@ Each binding is independent and fallible. No shared trait — operations differ 
   `SchoolError::NotInitialized` when the resolved root has no `school.toml`
   (see `docs/spec/school/overview.md` Context Resolution).
 - `src/skills/` — `Skills<Discovered>` / `Skills<Decided>` typestate. `Skills::discover`
-  walks `<school>/skills/`; `.resolve(&Tree)` produces the resolved set with diagnostics.
-  `SkillError` wraps discovery I/O plus upstream `ConfigError` / `SchoolError`.
+  walks a source directory per the cascade in
+  [`skills/model.md`](skills/model.md#discovery-cascade); `.resolve(&Tree)` produces the
+  resolved set with diagnostics. `SkillError` wraps discovery I/O plus upstream
+  `ConfigError` / `SchoolError`.
 
 Each binding's error type carries `#[from] ConfigError` so tree-load failures bubble
 through without forced double-handling.

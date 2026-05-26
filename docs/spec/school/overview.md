@@ -95,7 +95,7 @@ working on.
 ```
 school.toml              # School metadata and configuration (see school-toml.md)
 skills/
-  <name>/
+  <identity-path>/       # may be flat (foo/) or nested (typescript/coding/)
     SKILL.md             # Skill definition (standard Claude Code skill format)
 rules/
   <name>.md              # Convention/rule files
@@ -106,7 +106,9 @@ agents/
 ```
 
 All four folders are optional. Only folders present in the school are linked into
-projects.
+projects. Skill layout (flat vs nested, identity rules) is documented in
+[skills/model.md → Identity](../skills/model.md#identity) and
+[skills/emit.md → School storage layout](../skills/emit.md#school-storage-layout).
 
 Beyond on-disk folders, `school.toml` itself ships first-class declarations that ACE
 applies to subscriber projects: top-level `session_prompt` (injected into every session),

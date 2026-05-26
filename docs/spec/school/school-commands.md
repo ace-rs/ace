@@ -22,8 +22,8 @@ Steps:
    name = "<name>"
 
    [[imports]]
-   skill = "*"
    source = "ace-rs/school"
+   skills = ["*"]
    ```
    The `ace-rs/school` import is the canonical source of `ace-school` and any other base
    skills. See `docs/spec/school/standard-imports.md`. Users may remove the entry for a
@@ -78,21 +78,25 @@ Import a skill from an external repository into the school. Top-level command (n
   Fails if used without `--all`.
 - **--include-system** — With `--all`: also expand into `skills/.system/`. Fails if used
   without `--all`.
+- **--include-internal** — With `--all`: admit skills with `internal: true` via glob
+  matches. Fails if used without `--all`.
 
 ### Parity with skills.sh
 
-The `skills` CLI (https://skills.sh, `npx skills`) supports `--skill '*'` and `--all` for
-bulk import, but only as a point-in-time snapshot — `skills update` only refreshes what's
-in the lock file. New skills added to the source require another `add`.
+The `skills` CLI (https://skills.sh, `npx skills`) supports `--skill '*'` and `--all`
+for bulk import, but only as a point-in-time snapshot — `skills update` only refreshes
+what's in the lock file. New skills added to the source require another `add`.
 
 ACE's wildcard imports go further: glob patterns in `[[imports]]` re-discover matching
-skills on every `ace school update`. New skills added to the source are picked up
+skills on every `ace school pull`. New skills added to the source are picked up
 automatically.
 
-The `skills` CLI only supports literal `*` (all-or-nothing). ACE supports `*` anywhere in
-the pattern (`frontend-*`, `*-coding`, `*-design-*`). The `skills` CLI uses exact name
-matching for `--skill` values — no glob, no `?`, no character classes. ACE matches this
-constraint (no `?` or character classes) but adds prefix/suffix/infix `*` matching.
+The `skills` CLI only supports literal `*` (all-or-nothing) and exact names for
+`--skill` values — no prefix/suffix patterns, no `?`, no character classes. ACE
+supports the match-handle grammar in
+[skills/selection.md → Match handle](../skills/selection.md#match-handle): bare names
+match exact-or-leaf, paths anchored at `/`, `*` anywhere in the pattern, `**` accepted
+but not special, no `?` or character classes.
 
 ### Flow
 
@@ -100,15 +104,17 @@ constraint (no `?` or character classes) but adds prefix/suffix/infix `*` matchi
    path). For an in-school invocation, the school's own `ace.toml` carries `school = "."`
    and resolves to cwd; for a project invocation, it resolves to the linked clone.
 2. Clone source repo to temp dir (`git clone --depth 1`).
-3. Discover `SKILL.md` files under `skills/` (priority: `skills/.curated/` > `skills/` >
-   `skills/.experimental/` > `skills/.system/`, first hit per name wins). Each skill is
-   tagged with its tier — `Curated` (top-level or `.curated/`), `Experimental`, or
-   `System`.
+3. Discover skills via the 2-stage cascade in
+   [skills/model.md → Discovery Cascade](../skills/model.md#discovery-cascade).
+   `.curated/`, `.experimental/`, `.system/` are community conventions skills.sh
+   recognizes — not ACE-owned categories.
 4. Select skill:
    - `--skill` given → find by name.
    - Single skill in repo → auto-import.
    - Multiple skills → interactive `inquire::Select` prompt.
-5. Copy skill folder into `{school_root}/skills/{skill_name}/`.
+5. Copy skill folder into `{school_root}/skills/{identity_path}/`. For top-level skills
+   (most common) the identity is the leaf name; nested skills preserve their source path
+   (e.g. `typescript/coding`).
 6. Append `[[imports]]` entry to `school.toml` (upsert — replace if skill name already
    exists).
 7. Print confirmation to stderr.
@@ -124,9 +130,10 @@ constraint (no `?` or character classes) but adds prefix/suffix/infix `*` matchi
   print a hint to run `ace school update`. No skills are copied immediately — resolution
   happens during update.
 - **Tier gating**: explicit `--skill <name>` resolves across all tiers (Curated,
-  Experimental, System). Glob matching and `--all` default to Curated only. Use
-  `--include-experimental` and/or `--include-system` to widen the match — both require
-  `--all`.
+  Experimental, System) and bypasses the `internal: true` filter (mirrors skills.sh).
+  Glob matching and `--all` default to Curated only and exclude `internal: true` skills.
+  Use `--include-experimental`, `--include-system`, and/or `--include-internal` to widen
+  the match — all require `--all`.
 
 ### Parent school pattern
 
@@ -137,8 +144,8 @@ ace import company/school --all
 ace school update
 ```
 
-This adds `skill = "*"` to `[[imports]]` and fetches all skills on update. New skills
-added to the parent are picked up automatically on subsequent updates.
+This adds `skills = ["*"]` to `[[imports]]` and fetches all skills on update. New
+skills added to the parent are picked up automatically on subsequent updates.
 
 ## `ace school pull` (alias: `ace school update`)
 
@@ -150,12 +157,9 @@ muscle-memory; `pull` is the canonical verb.
 1. Read `[[imports]]` from `school.toml`.
 2. If empty, print "no imports to pull" and return.
 3. Group imports by source (avoid cloning same repo twice).
-4. For each source group: clone to temp dir, discover skills.
-   - **Exact imports**: copy the named skill over existing. Resolves across all tiers.
-   - **Wildcard imports**: filter discovered skills to the tiers allowed by the
-     `[[imports]]` entry (`Curated` always; `Experimental` if
-     `include_experimental = true`; `System` if `include_system = true`), then match
-     against the glob pattern.
+4. For each source group: clone to temp dir, discover skills, resolve `[[imports]]` per
+   [skills/selection.md → `[[imports]]` schema](../skills/selection.md#imports-schema).
+   Tier expansion, internal-flag handling, and cross-source merge are documented there.
 5. Report which skills were updated to stderr.
 
 ### Important
@@ -169,15 +173,17 @@ muscle-memory; `pull` is the canonical verb.
 
 List the skills currently in the school's `skills/` directory. Read-only.
 
-For each skill: name (from `SKILL.md` frontmatter when available, else folder name), word
-count across all files in the skill folder, and description. The footer prints the skill
-total, aggregate word count, and a token estimate (~1.33 tokens/word).
+For each skill: name (from `SKILL.md` frontmatter when available, else identity-path
+leaf), word count across all files in the skill folder, and description. The footer
+prints the skill total, aggregate word count, and a token estimate (~1.33 tokens/word).
 
-Porcelain output is `name<TAB>words`, one per line, no footer.
+Porcelain output is `<identity-path><TAB>words`, one per line, no footer.
 
-Skill discovery here is a shallow `read_dir` of `<school>/skills/`. It does not apply tier
-filtering and does not walk `.curated/` / `.experimental/` / `.system/` subdirs — those
-are import-source conventions, not school-local layout.
+Skill discovery here walks `<school>/skills/` recursively for `SKILL.md` files. Each
+found skill is keyed by its identity path (the location relative to
+`<school>/skills/`). Tier dirs (`.curated/` / `.experimental/` / `.system/`) are not
+honored at the school boundary — those are upstream-source conventions; this listing
+reflects what the school itself stores after import.
 
 ## `ace school validate` (alias: `ace school check`)
 
