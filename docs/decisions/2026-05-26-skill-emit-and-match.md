@@ -1,8 +1,18 @@
 # Decision: Skill Backend Emit, Sanitization, and Frontmatter Handling (2026-05-26)
 
-Status: **decided** — emits match skills.sh's installer rule with loser-drop on collision;
+Status: **decided** — capability-driven emit: nested-capable backends emit verbatim,
+flat-only backends use the skills.sh installer rule with loser-drop on collision;
 sanitization at display + backend-emit boundaries only, using a Unicode-class whitelist;
 frontmatter passes through verbatim.
+
+> **Amended 2026-05-27.** The "universal flat emit" framing in the original ruling was
+> superseded by capability-driven emit. Each backend kind advertises a feature mask
+> (`FEATURE_NESTED_SKILLS`); the emit code branches on the feature, never on the backend's
+> name. A global depth cap (`MAX_SKILL_DEPTH = 5`) routes over-deep skills back through
+> the flatten branch even on nested-capable backends. See
+> [`docs/spec/skills/emit.md` § Backend emit rule](../spec/skills/emit.md#backend-emit-rule).
+> The skillName rule, alphabetical tiebreak, loser-drop, sanitization, and frontmatter
+> passthrough below remain in force — they apply on the flatten branch.
 
 Companion to the
 [discovery, identity, and storage decision](2026-05-26-skill-discovery-identity-storage.md).
@@ -67,9 +77,9 @@ and resolve compatibility gaps themselves"):
 - Other backends ignore unknown fields by spec convention; Claude Code reads its
   extensions. ACE does not intervene.
 - **ACE does not read the `compatibility` field.** It passes through verbatim like any
-  other frontmatter. No gate at emit, no launch-time warning, no inspection anywhere.
-  LLMs read it and adapt; ACE stays out. (Amended 2026-05-26 from an earlier draft that
-  spec'd a launch-time heuristic warning.)
+  other frontmatter. No gate at emit, no launch-time warning, no inspection anywhere. LLMs
+  read it and adapt; ACE stays out. (Amended 2026-05-26 from an earlier draft that spec'd
+  a launch-time heuristic warning.)
 
 ### Sanitization (Q9)
 
@@ -112,23 +122,28 @@ backend SKILL.md goes through `SanitizedString` conversion.
 Consumers who bypass ACE (run skills.sh directly against an ACE-authored school) get the
 un-sanitized payload. They're outside ACE's protection envelope by their own choice.
 
-## Contingency: flat emit is not permanent
+## Capability-driven emit (amended 2026-05-27)
 
-Universal flat emit is forced by Claude Code, the lowest common denominator. Codex
+Backends disagree on whether their loader walks nested skill dirs. Codex
 (`codex-rs/core-skills/src/loader.rs:455+`, BFS walk with `MAX_SCAN_DEPTH`) and OpenCode
-(`packages/opencode/src/skill/index.ts:23-25`, `**/SKILL.md` glob) both support nested
-emit today. Claude Code is the holdout: leaked v2.1.88 source shows flat-only loading, and
-there is active, unresolved user demand for nested support
+(`packages/opencode/src/skill/index.ts:23-25`, `**/SKILL.md` glob) support nested today.
+Claude Code is the holdout: leaked v2.1.88 source shows flat-only loading, with active
+unresolved demand for nested support
 ([anthropics/claude-code#18192](https://github.com/anthropics/claude-code/issues/18192) —
 OPEN, 52 👍, 34 comments; companion docs bug
-[#40640](https://github.com/anthropics/claude-code/issues/40640) — OPEN; multiple related
-issues closed as duplicate or stale).
+[#40640](https://github.com/anthropics/claude-code/issues/40640) — OPEN).
 
-If Claude Code lands nested discovery, ACE's nested-aware internal model (post-strip
-identity, see [discovery decision](2026-05-26-skill-discovery-identity-storage.md)) means
-we can switch to per-backend nested emit without re-architecting — only the emit rule
-changes. Loser-drop + warn becomes vestigial for backends that no longer collide. Reassess
-at that point.
+The original ruling assumed universal flat emit forced by the lowest common denominator.
+That framing was rejected: ACE now branches on a per-backend feature mask, never on the
+backend's name. Each `Kind` advertises `features() -> u32`; `link_skills` checks
+`features & FEATURE_NESTED_SKILLS` and routes per skill. A global `MAX_SKILL_DEPTH = 5`
+sends over-deep skills back through the flatten branch even on nested-capable backends.
+
+Current wiring: Claude=0, Flaude=0, Codex=`FEATURE_NESTED_SKILLS`,
+OpenCode=`FEATURE_NESTED_SKILLS`. If Claude Code lands nested discovery, flip its mask in
+the registry; no other code changes. Loser-drop + warn becomes vestigial for Claude at
+that point. The flatten-branch rules (skillName, sanitize, alphabetical tiebreak, loser-
+drop) stand unchanged for any skill that lands on the flatten branch.
 
 ## Out of scope
 

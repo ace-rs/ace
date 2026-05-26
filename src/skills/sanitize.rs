@@ -32,7 +32,6 @@
 /// `ace.warn`/`hint`/etc. boundaries when the input may carry untrusted
 /// frontmatter content (skill names, descriptions, error messages built
 /// from third-party metadata).
-#[allow(dead_code)] // adopted at display callsites in slice 8 audit
 pub fn for_terminal(s: &str) -> String {
     s.chars().filter(|c| !is_dangerous(*c)).collect()
 }

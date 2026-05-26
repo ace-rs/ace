@@ -68,7 +68,7 @@ impl Prepare<'_> {
 
         // Resolve which skills to link before constructing Link.
         let tree = ace.require_tree()?.clone();
-        let prepared = link_skills::prepare(&school_paths.root, &tree)
+        let prepared = link_skills::prepare(&school_paths.root, &tree, self.backend.features())
             .map_err(PrepareError::Write)?;
 
         let result = Link {

@@ -143,9 +143,13 @@ pub enum ClassifyInput {
 /// When two included skills produce the same backend dirname, the
 /// loser is dropped per spec § Loser-drop on collision (alphabetical
 /// by source path tiebreaker) and a warning is recorded.
-pub fn prepare(school_root: &Path, tree: &Tree) -> io::Result<PreparedSkills> {
+pub fn prepare(
+    school_root: &Path,
+    tree: &Tree,
+    backend_features: u32,
+) -> io::Result<PreparedSkills> {
     let skills = Skills::discover(school_root)?.resolve(tree);
-    let (desired, collision_warnings) = build_desired(skills.included());
+    let (desired, collision_warnings) = build_desired(skills.included(), backend_features);
     Ok(PreparedSkills {
         desired,
         skills,
@@ -154,15 +158,57 @@ pub fn prepare(school_root: &Path, tree: &Tree) -> io::Result<PreparedSkills> {
 }
 
 /// Map an iterator of included skills to a deduplicated `DesiredLink`
-/// list, applying the backend emit rule and loser-drop policy.
-fn build_desired<'a, I>(included: I) -> (Vec<DesiredLink>, Vec<String>)
+/// list, applying the capability-driven backend emit rule:
+///
+/// - Nested-capable backend (`FEATURE_NESTED_SKILLS` set) AND identity
+///   depth ≤ `MAX_SKILL_DEPTH` → emit verbatim at the identity path, no
+///   collision check (paths are unique in school storage).
+/// - Otherwise → flatten branch: `skillName = sanitize(frontmatter.name ||
+///   basename(identity))`, alphabetical-by-source-path tiebreak, loser-drop
+///   + warn on collision.
+///
+/// See `docs/spec/skills/emit.md` § Backend emit rule.
+fn build_desired<'a, I>(included: I, backend_features: u32) -> (Vec<DesiredLink>, Vec<String>)
 where
     I: Iterator<Item = &'a crate::skills::Skill<crate::skills::Decided>>,
 {
-    // Gather candidates first so we can sort alphabetically by source
-    // path before resolving collisions (deterministic tiebreaker per
-    // emit.md § Loser-drop on collision).
-    let mut candidates: Vec<(String, &Path, &str)> = included
+    use crate::backend::{FEATURE_NESTED_SKILLS, MAX_SKILL_DEPTH};
+
+    let nested_capable = backend_features & FEATURE_NESTED_SKILLS != 0;
+    let mut warnings: Vec<String> = Vec::new();
+
+    // Split skills by branch. Nested-emit skills carry their identity path
+    // verbatim and never collide (paths are unique in school storage). The
+    // remainder go through the flatten branch with sanitize + alphabetical
+    // tiebreak + loser-drop per `emit.md` § Loser-drop on collision.
+    let mut nested: Vec<DesiredLink> = Vec::new();
+    let mut to_flatten: Vec<&crate::skills::Skill<crate::skills::Decided>> = Vec::new();
+    for skill in included {
+        let depth = skill.name.split('/').count();
+        if nested_capable && depth <= MAX_SKILL_DEPTH {
+            let sanitized: Vec<String> = skill
+                .name
+                .split('/')
+                .map(crate::skills::sanitize::for_emit)
+                .collect();
+            if sanitized.iter().any(|s| s.is_empty()) {
+                warnings.push(format!(
+                    "skill `{}` produces an empty path segment after sanitization; dropping",
+                    skill.name,
+                ));
+                continue;
+            }
+            nested.push(DesiredLink {
+                name: sanitized.join("/"),
+                target: skill.path.clone(),
+            });
+        } else {
+            to_flatten.push(skill);
+        }
+    }
+
+    let mut candidates: Vec<(String, &Path, &str)> = to_flatten
+        .iter()
         .map(|s| {
             let raw_name = s
                 .frontmatter_name
@@ -172,12 +218,10 @@ where
             (link_name, s.path.as_path(), s.name.as_str())
         })
         .collect();
-    // Alphabetical by skill identity path (the school-internal source path).
     candidates.sort_by(|a, b| a.2.cmp(b.2));
 
     let mut by_link: std::collections::HashMap<String, (PathBuf, &str)> =
         std::collections::HashMap::new();
-    let mut warnings: Vec<String> = Vec::new();
 
     for (link_name, path, identity) in candidates {
         if link_name.is_empty() {
@@ -197,12 +241,12 @@ where
         by_link.insert(link_name.clone(), (path.to_path_buf(), identity));
     }
 
-    // Restore some-canonical-order output (alphabetical by link name)
-    // so callers see deterministic plans.
-    let mut desired: Vec<DesiredLink> = by_link
-        .into_iter()
-        .map(|(name, (target, _))| DesiredLink { name, target })
-        .collect();
+    let mut desired: Vec<DesiredLink> = nested;
+    desired.extend(
+        by_link
+            .into_iter()
+            .map(|(name, (target, _))| DesiredLink { name, target }),
+    );
     desired.sort_by(|a, b| a.name.cmp(&b.name));
     (desired, warnings)
 }
@@ -245,17 +289,26 @@ pub fn reconcile(
     for action in &plan.actions {
         match action {
             LinkAction::Create { name, target } => {
-                create_dir_symlink(target, &project_skills_dir.join(name))?;
+                let link = project_skills_dir.join(name);
+                if let Some(parent) = link.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                create_dir_symlink(target, &link)?;
                 result.created += 1;
             }
             LinkAction::Repoint { name, target } => {
                 let path = project_skills_dir.join(name);
+                if let Some(parent) = path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
                 fs::remove_file(&path)?;
                 create_dir_symlink(target, &path)?;
                 result.repointed += 1;
             }
             LinkAction::Remove { name } => {
-                fs::remove_file(project_skills_dir.join(name))?;
+                let path = project_skills_dir.join(name);
+                fs::remove_file(&path)?;
+                prune_empty_ancestors(&path, project_skills_dir);
                 result.removed += 1;
             }
             LinkAction::SkipForeign { name, reason } => {
@@ -264,6 +317,30 @@ pub fn reconcile(
         }
     }
     Ok(result)
+}
+
+/// Walk up from `removed_link` toward `stop` (exclusive), removing any
+/// directory along the way that is now empty. Stops on first non-empty
+/// directory or on read errors; never deletes `stop` itself.
+fn prune_empty_ancestors(removed_link: &Path, stop: &Path) {
+    let mut cur = removed_link.parent();
+    while let Some(dir) = cur {
+        if dir == stop {
+            return;
+        }
+        match fs::read_dir(dir) {
+            Ok(mut entries) => {
+                if entries.next().is_some() {
+                    return;
+                }
+            }
+            Err(_) => return,
+        }
+        if fs::remove_dir(dir).is_err() {
+            return;
+        }
+        cur = dir.parent();
+    }
 }
 
 /// Emit user-visible warnings for resolution diagnostics + link warnings.
@@ -279,13 +356,16 @@ pub fn emit_warnings(ace: &mut Ace, prepared: &PreparedSkills, link_result: &Lin
     for unknown in &diagnostics.unknown_patterns {
         ace.warn(&format!(
             "skill pattern matched no skill: {} (in {:?} {:?})",
-            unknown.pattern, unknown.source, unknown.field
+            crate::skills::sanitize::for_terminal(&unknown.pattern),
+            unknown.source,
+            unknown.field,
         ));
     }
     for collision in &diagnostics.collisions {
         ace.warn(&format!(
             "skill {} appears in both include_skills and exclude_skills at {:?} scope",
-            collision.skill, collision.source
+            crate::skills::sanitize::for_terminal(&collision.skill),
+            collision.source,
         ));
     }
 }
@@ -322,15 +402,69 @@ fn scan_current(
             None => continue,
         };
         let path = entry.path();
-        let kind_input = if is_symlink(&path) {
+        if is_symlink(&path) {
             let resolved = fs::canonicalize(&path).or_else(|_| fs::read_link(&path))?;
-            ClassifyInput::Symlink(resolved)
+            out.push(classify(&name, ClassifyInput::Symlink(resolved), &canonical_root));
+        } else if path.is_dir() {
+            // Tentatively descend: a real dir that contains only managed
+            // symlinks (or other such dirs) is an ACE-managed nested
+            // parent; emit each managed link as its own entry. If
+            // descent finds any non-managed content, the whole dir is
+            // treated as a ForeignEntry instead — preserving the
+            // existing left-alone behavior for user-placed dirs.
+            let mut nested = Vec::new();
+            let foreign = collect_nested(&path, project_skills_dir, &canonical_root, &mut nested)?;
+            if foreign || nested.is_empty() {
+                out.push(classify(&name, ClassifyInput::Other, &canonical_root));
+            } else {
+                out.extend(nested);
+            }
         } else {
-            ClassifyInput::Other
-        };
-        out.push(classify(&name, kind_input, &canonical_root));
+            out.push(classify(&name, ClassifyInput::Other, &canonical_root));
+        }
     }
     Ok(out)
+}
+
+/// Walk `dir` recursively. Append every symlink as a CurrentEntry rooted
+/// at `project_skills_dir`. Return `true` if any non-managed content
+/// (foreign symlink, real file, etc.) is found — the caller treats the
+/// whole top-level dir as a ForeignEntry in that case.
+fn collect_nested(
+    dir: &Path,
+    project_skills_dir: &Path,
+    canonical_root: &Path,
+    out: &mut Vec<CurrentEntry>,
+) -> io::Result<bool> {
+    let mut foreign = false;
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        let rel = match path.strip_prefix(project_skills_dir) {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+        let name = match rel.to_str() {
+            Some(s) => s.to_string(),
+            None => continue,
+        };
+        if is_symlink(&path) {
+            let resolved = fs::canonicalize(&path).or_else(|_| fs::read_link(&path))?;
+            let entry = classify(&name, ClassifyInput::Symlink(resolved), canonical_root);
+            if matches!(entry.kind, EntryKind::ManagedSymlink { .. }) {
+                out.push(entry);
+            } else {
+                foreign = true;
+            }
+        } else if path.is_dir() {
+            if collect_nested(&path, project_skills_dir, canonical_root, out)? {
+                foreign = true;
+            }
+        } else {
+            foreign = true;
+        }
+    }
+    Ok(foreign)
 }
 
 pub(super) fn is_symlink(path: &Path) -> bool {
@@ -554,7 +688,7 @@ mod tests {
     #[test]
     fn flat_identity_link_name_equals_basename() {
         let skills = [included_skill("rust-coding", "/s/rust-coding", None)];
-        let (desired, warnings) = build_desired(skills.iter());
+        let (desired, warnings) = build_desired(skills.iter(), 0);
         assert_eq!(desired.len(), 1);
         assert_eq!(desired[0].name, "rust-coding");
         assert!(warnings.is_empty());
@@ -564,7 +698,7 @@ mod tests {
     fn nested_identity_link_name_uses_leaf() {
         // <school>/skills/typescript/coding/ → backend link `coding`.
         let skills = [included_skill("typescript/coding", "/s/typescript/coding", None)];
-        let (desired, _) = build_desired(skills.iter());
+        let (desired, _) = build_desired(skills.iter(), 0);
         assert_eq!(desired[0].name, "coding");
     }
 
@@ -575,7 +709,7 @@ mod tests {
             "/s/typescript/coding",
             Some("ts-coding"),
         )];
-        let (desired, _) = build_desired(skills.iter());
+        let (desired, _) = build_desired(skills.iter(), 0);
         assert_eq!(desired[0].name, "ts-coding");
     }
 
@@ -587,7 +721,7 @@ mod tests {
             included_skill("typescript/coding", "/s/typescript/coding", None),
             included_skill("python/coding", "/s/python/coding", None),
         ];
-        let (desired, warnings) = build_desired(skills.iter());
+        let (desired, warnings) = build_desired(skills.iter(), 0);
         assert_eq!(desired.len(), 1);
         assert_eq!(desired[0].name, "coding");
         assert_eq!(desired[0].target, PathBuf::from("/s/python/coding"));
@@ -605,7 +739,7 @@ mod tests {
             included_skill("typescript/coding", "/s/typescript/coding", Some("ts-coding")),
             included_skill("python/coding", "/s/python/coding", None),
         ];
-        let (mut desired, warnings) = build_desired(skills.iter());
+        let (mut desired, warnings) = build_desired(skills.iter(), 0);
         desired.sort_by(|a, b| a.name.cmp(&b.name));
         assert_eq!(desired.len(), 2);
         assert_eq!(desired[0].name, "coding");
@@ -621,7 +755,7 @@ mod tests {
             "/s/foo",
             Some("good\u{202E}.exe"),
         )];
-        let (desired, _) = build_desired(skills.iter());
+        let (desired, _) = build_desired(skills.iter(), 0);
         assert_eq!(desired[0].name, "good.exe");
     }
 
@@ -629,7 +763,7 @@ mod tests {
     fn empty_after_sanitize_warns_and_drops() {
         // A name composed entirely of control chars sanitizes to empty.
         let skills = [included_skill("foo", "/s/foo", Some("\x07\x1b"))];
-        let (desired, warnings) = build_desired(skills.iter());
+        let (desired, warnings) = build_desired(skills.iter(), 0);
         assert!(desired.is_empty());
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("empty"));
@@ -656,5 +790,122 @@ mod tests {
                 LinkAction::Remove { name: "d".into() },
             ]
         );
+    }
+
+    // -- capability-driven emit (spec: emit.md § Backend emit rule) --
+
+    use crate::backend::FEATURE_NESTED_SKILLS;
+
+    #[test]
+    fn nested_capable_emits_verbatim() {
+        // FEATURE_NESTED_SKILLS set: identity path preserved as link name,
+        // no flatten.
+        let skills = [included_skill("typescript/coding", "/s/typescript/coding", None)];
+        let (desired, warnings) = build_desired(skills.iter(), FEATURE_NESTED_SKILLS);
+        assert_eq!(desired.len(), 1);
+        assert_eq!(desired[0].name, "typescript/coding");
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn flat_backend_flattens_identity() {
+        // features=0: existing behavior — leaf name only.
+        let skills = [included_skill("typescript/coding", "/s/typescript/coding", None)];
+        let (desired, _) = build_desired(skills.iter(), 0);
+        assert_eq!(desired[0].name, "coding");
+    }
+
+    #[test]
+    fn depth_cap_falls_through_to_flatten() {
+        // 6-segment identity exceeds MAX_SKILL_DEPTH=5 → flatten branch
+        // even with FEATURE_NESTED_SKILLS set.
+        let skills = [included_skill(
+            "a/b/c/d/e/f",
+            "/s/a/b/c/d/e/f",
+            None,
+        )];
+        let (desired, _) = build_desired(skills.iter(), FEATURE_NESTED_SKILLS);
+        assert_eq!(desired[0].name, "f");
+    }
+
+    #[test]
+    fn nested_emit_skips_collision_check() {
+        // Two skills share a leaf `foo` at different identity paths. On a
+        // nested-capable backend both emit verbatim — no collision, no warning.
+        let skills = [
+            included_skill("a/foo", "/s/a/foo", None),
+            included_skill("b/foo", "/s/b/foo", None),
+        ];
+        let (mut desired, warnings) =
+            build_desired(skills.iter(), FEATURE_NESTED_SKILLS);
+        desired.sort_by(|a, b| a.name.cmp(&b.name));
+        assert_eq!(desired.len(), 2);
+        assert_eq!(desired[0].name, "a/foo");
+        assert_eq!(desired[1].name, "b/foo");
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn frontmatter_name_ignored_on_nested_branch() {
+        // The nested branch emits at identity path; frontmatter `name`
+        // only matters on the flatten branch.
+        let skills = [included_skill(
+            "typescript/coding",
+            "/s/typescript/coding",
+            Some("ts-coding"),
+        )];
+        let (desired, _) = build_desired(skills.iter(), FEATURE_NESTED_SKILLS);
+        assert_eq!(desired[0].name, "typescript/coding");
+    }
+
+    // -- capability-driven emit: reconcile (nested layout) --
+
+    #[test]
+    #[cfg(unix)]
+    fn reconcile_creates_parent_dirs_for_nested_link() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path();
+        let school_skills = root.join("school").join("skills");
+        let nested_target = school_skills.join("typescript").join("coding");
+        std::fs::create_dir_all(&nested_target).expect("nested skill dir");
+
+        let project_skills = root.join("proj").join("skills");
+
+        let desired = vec![DesiredLink {
+            name: "typescript/coding".to_string(),
+            target: nested_target.clone(),
+        }];
+        reconcile(&school_skills, &project_skills, &desired).expect("reconcile");
+
+        let link = project_skills.join("typescript").join("coding");
+        assert!(is_symlink(&link), "expected nested symlink at {link:?}");
+        let resolved = std::fs::canonicalize(&link).expect("canonicalize");
+        assert_eq!(resolved, std::fs::canonicalize(&nested_target).expect("target"));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn reconcile_prunes_empty_parents_on_remove() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path();
+        let school_skills = root.join("school").join("skills");
+        let nested_target = school_skills.join("typescript").join("coding");
+        std::fs::create_dir_all(&nested_target).expect("nested skill dir");
+
+        let project_skills = root.join("proj").join("skills");
+        std::fs::create_dir_all(project_skills.join("typescript")).expect("proj nested");
+        std::os::unix::fs::symlink(&nested_target, project_skills.join("typescript").join("coding"))
+            .expect("seed symlink");
+
+        // Desired set is empty: the existing managed nested link should go,
+        // and the now-empty `typescript/` parent should be pruned.
+        reconcile(&school_skills, &project_skills, &[]).expect("reconcile");
+
+        assert!(!project_skills.join("typescript").join("coding").exists());
+        assert!(
+            !project_skills.join("typescript").exists(),
+            "empty parent should be pruned",
+        );
+        assert!(project_skills.exists(), "root skills dir stays");
     }
 }

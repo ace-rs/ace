@@ -1,16 +1,16 @@
 # Skill Emit
 
-Where skills land on disk: how a school stores imports, how a project consumer emits
-to a backend's flat skills dir, and what gets sanitized at each boundary. Companion to
-[model.md](model.md) (what a skill IS) and [selection.md](selection.md) (which skills
-are picked).
+Where skills land on disk: how a school stores imports, how a project consumer emits to a
+backend's flat skills dir, and what gets sanitized at each boundary. Companion to
+[model.md](model.md) (what a skill IS) and [selection.md](selection.md) (which skills are
+picked).
 
 ## School storage layout
 
 Schools store imported skills under `<school>/skills/<identity-path>/`. The outer
-`skills/` is the school's category root (sibling to `rules/`, `commands/`, `agents/`
-per [school/overview.md § Structure](../school/overview.md#structure)). The inner
-segments are the **identity path** — already prefix-stripped at the source side, so no
+`skills/` is the school's category root (sibling to `rules/`, `commands/`, `agents/` per
+[school/overview.md § Structure](../school/overview.md#structure)). The inner segments are
+the **identity path** — already prefix-stripped at the source side, so no
 `skills/skills/…` stutter.
 
 ```text
@@ -22,50 +22,76 @@ segments are the **identity path** — already prefix-stripped at the source sid
 ### Writes are additive / overwriting
 
 `ace school pull-imports` only adds or overwrites under `<school>/skills/`. ACE never
-deletes anything. Stale imports (skills dropped from `[[imports]]` resolution) persist
-in the working tree until the school author cleans them up manually (`git rm`,
-`rm -rf`). No manifest, no scan-and-diff, intentionally dumb.
+deletes anything. Stale imports (skills dropped from `[[imports]]` resolution) persist in
+the working tree until the school author cleans them up manually (`git rm`, `rm -rf`). No
+manifest, no scan-and-diff, intentionally dumb.
 
-Rationale: per
-[index.md § Versioning Philosophy](../index.md#versioning-philosophy), schools track
-latest main with full git history. Auto-deletion would mean ACE owns the school's
-working tree; instead the school author owns it, ACE just lays down imports and lets
-git track the rest.
+Rationale, two prongs:
+
+- **No version tracking by design.** The support matrix between non-deterministic LLMs,
+  project versions, tool versions, and ACE versions is unwinnable; ACE deliberately
+  doesn't try. See [index.md § Versioning Philosophy](../index.md#versioning-philosophy).
+- **Upstream deletions don't propagate downstream.** Preservation principle: an upstream
+  source removing a skill should not silently remove it from schools that already imported
+  it. The school author decides when (or whether) to follow upstream's removal, by hand.
+  ACE never gives upstream a destructive channel into downstream working trees.
+
+A future major version may revisit this with git-level tricks — `git subtree`, a different
+school layout, or another mechanism — to track upstream history more tightly without
+giving up the preservation guarantee. Out of scope for current versions.
 
 ### Downstream skills.sh compatibility (P2)
 
 The school is a *valid* skills.sh source, **not equivalent**. Consumers running
-`npx skills add <school>` experience skills.sh's silent first-wins dedup — same UX
-they would get from any nested-layout repo. ACE-internal consumers get the better
-behavior (loud warnings, per-import `exclude_skills`). The "compatible source" promise
-is met without lobotomizing ACE's internal model.
+`npx skills add <school>` experience skills.sh's silent first-wins dedup — same UX they
+would get from any nested-layout repo. ACE-internal consumers get the better behavior
+(loud warnings, per-import `exclude_skills`). The "compatible source" promise is met
+without lobotomizing ACE's internal model.
 
 ## Backend emit rule
 
-Backends (Claude Code, OpenCode, Codex, Droid) expect a **flat** layout —
-`<backend>/skills/<name>/`. ACE's internal model is nested path identity. Flattening
-at the emit boundary forces a naming rule and a collision policy.
+ACE's internal model is nested path identity. Backends disagree on whether their loader
+walks nested skill dirs: Claude Code is flat-only
+([anthropics/claude-code#18192](https://github.com/anthropics/claude-code/issues/18192)),
+while Codex
+([codex-rs/core-skills/src/loader.rs:455+](https://github.com/openai/codex/tree/main/codex-rs/core-skills/src/loader.rs),
+BFS walk with `MAX_SCAN_DEPTH`) and OpenCode
+([packages/opencode/src/skill/index.ts:23-25](https://github.com/sst/opencode),
+`**/SKILL.md` glob) walk nested layouts directly.
 
-For each discovered skill at backend emit time:
+Emit is **capability-driven**, not per-backend-coded. Each backend kind advertises a
+bitmask of features; the emit code branches on the feature, never on the backend's name.
+Two surfaces participate:
+
+- `FEATURE_NESTED_SKILLS` — when set, the backend's loader handles nested
+  `<backend>/skills/<identity-path>/` layouts. When clear, the loader sees only the top
+  level and ACE must flatten.
+- `MAX_SKILL_DEPTH` — global cap (5) on identity segments emitted nested. Skills deeper
+  than the cap fall through to the flatten path even on nested-capable backends.
+
+For each included skill, given the backend's `features`:
 
 ```text
-skillName = skill.name || basename(skill.identity)
-skillName = sanitize(skillName)
-// write to <backend>/skills/<skillName>/
+if (features & FEATURE_NESTED_SKILLS) && segments(identity) <= MAX_SKILL_DEPTH:
+    # nested emit
+    write to <backend>/skills/<identity>/        # verbatim, no flatten, no collision check
+else:
+    # flatten emit
+    skillName = sanitize(skill.name || basename(skill.identity))
+    write to <backend>/skills/<skillName>/
 ```
 
-The `skillName` rule matches `vercel-labs/skills` `src/installer.ts:247`. ACE's
-collision policy diverges from skills.sh:
+Sanitize still applies to every emitted path segment regardless of branch — that's a
+filesystem/render concern, not a flatten concern.
 
-- **Loud warning** at every `skillName` collision — skills.sh drops silently.
-- **Deterministic tiebreaker** — alphabetical by source path. skills.sh's effective
-  tiebreaker is first-encountered, which can churn as source repos reorder.
+The `skillName` rule for the flatten branch matches `vercel-labs/skills`
+`src/installer.ts:247`. The collision policy below applies only on the flatten branch;
+nested emit cannot collide because identity paths are unique by construction in school
+storage.
 
-Both implementations drop the loser; see [Loser-drop on collision](#loser-drop-on-collision).
+### Loser-drop on collision (flatten branch only)
 
-### Loser-drop on collision
-
-When two skills resolve to the same `skillName` at emit:
+When two skills on the flatten branch resolve to the same `skillName`:
 
 - **Tiebreaker** — alphabetical by source path. Winner emits.
 - **Loser** — omitted from the backend entirely.
@@ -74,33 +100,31 @@ When two skills resolve to the same `skillName` at emit:
     name).
   - Use `[[imports]]` `exclude_skills` to express disjoint sets per source.
 
-No path-prefix disambiguation. No segment expansion. No separator design. ACE applies
-the rule, drops the loser, and warns. It does not synthesize new names.
+No path-prefix disambiguation. No segment expansion. No separator design. ACE applies the
+rule, drops the loser, and warns. It does not synthesize new names.
 
-Cost: the loser is absent from the backend until authoring fix. It remains reachable
-in ACE's internal model (discoverable, globbable via match handles per
+Cost: the loser is absent from the backend until authoring fix. It remains reachable in
+ACE's internal model (discoverable, globbable via match handles per
 [selection.md](selection.md#match-handle)).
 
-### Why universal flat emit
+ACE's collision policy diverges from skills.sh on this branch:
 
-Codex
-([codex-rs/core-skills/src/loader.rs:455+](https://github.com/openai/codex/tree/main/codex-rs/core-skills/src/loader.rs),
-BFS walk with `MAX_SCAN_DEPTH`) and OpenCode
-([packages/opencode/src/skill/index.ts:23-25](https://github.com/sst/opencode),
-`**/SKILL.md` glob) both support nested emit today. Claude Code is the holdout: its
-loader is flat-only ([anthropics/claude-code#18192](https://github.com/anthropics/claude-code/issues/18192)
-is the active issue tracking nested support).
+- **Loud warning** at every `skillName` collision — skills.sh drops silently.
+- **Deterministic tiebreaker** — alphabetical by source path. skills.sh's effective
+  tiebreaker is first-encountered, which can churn as source repos reorder.
 
-ACE adopts universal flat emit across all backends rather than per-backend special
-casing — one rule, one collision policy, one set of warnings. Claude Code is the
-lowest common denominator; the others get a uniform shape.
+### Mixed-depth schools
 
-### Contingency
+A single school can contain skills at varying depths. Each skill is routed independently:
+a Codex emit with skills at `foo/`, `typescript/foo/`, and
+`langs/web/frameworks/react/foo/` (depth 5) emits all three nested; the same school
+emitting to Claude flattens all three, and the latter two collide on `foo` (loser dropped,
+warning emitted).
 
-If Claude Code lands nested discovery, ACE's nested-aware internal model means we can
-switch to per-backend nested emit without re-architecting — only the emit rule
-changes. Loser-drop + warn becomes vestigial for backends that no longer collide.
-Reassess at that point.
+### When Claude Code lands nested discovery
+
+Flip `FEATURE_NESTED_SKILLS` on for Claude in the registry. Loser-drop + warn becomes
+vestigial for Claude; no other code changes.
 
 ## Frontmatter passthrough
 
@@ -112,40 +136,45 @@ read the skill, adapt, and resolve compatibility gaps themselves"):
 - Other backends ignore unknown fields by spec convention; Claude Code reads its
   extensions. ACE does not intervene.
 - **ACE does not read the `compatibility` field.** It passes through like any other
-  frontmatter; no gating, no warnings, no inspection. LLMs read it and adapt; ACE
-  stays out.
+  frontmatter; no gating, no warnings, no inspection. LLMs read it and adapt; ACE stays
+  out.
 
 ## Sanitization at write boundaries
 
 Per [model.md § Sanitization](model.md#sanitization), the boundary policy is:
 
 - **School-storage writes** (`ace school pull-imports`) — preserve verbatim.
-- **Backend-emit writes** — sanitize into the written frontmatter.
+- **Backend-emit writes** — sanitize the link name. ACE emits per-skill symlinks rather
+  than materialized SKILL.md copies (see [sync.md § Symlinks over copies](sync.md#symlinks-over-copies)),
+  so the only string ACE synthesizes at the backend boundary is the directory name of
+  each symlink. That name passes through the Unicode-class filter; SKILL.md content is
+  the school's, preserved verbatim from upstream.
 - **ACE's own display** — sanitize on render.
 
 The Unicode-class whitelist (allow `L*`, `M*`, `N*`, `P*`, `S*`, `Zs`; drop `C*` plus
-bidi-override) applies at the backend-emit boundary. Path components are imported
-as-is with a warning; identity is a path, and post-hoc segment rewriting would break
-refs.
+bidi-override) applies at the link-name boundary. Path components are imported as-is
+with a warning; identity is a path, and post-hoc segment rewriting would break refs.
 
 ### Type-safety invariant
 
-Writes under `<school>/skills/…` and `<backend>/skills/…` accept only:
+Writes under `<school>/skills/…` and link names under `<backend>/skills/…` accept only:
 
 - Validated identities (from the discovery layer per
   [model.md](model.md#type-safety-invariant)), and
-- Sanitized frontmatter (carrying the sanitization marker per
-  [model.md](model.md#type-safety-invariant-1)) — except at school storage, which
-  takes raw bytes by design (passthrough preserves the school author's responsibility
-  and protects ACE consumers downstream).
+- Sanitized strings (carrying the sanitization marker per
+  [model.md](model.md#type-safety-invariant-1)) for any value ACE synthesizes at the
+  backend boundary — currently the link directory name. School storage takes raw bytes
+  by design (passthrough preserves the school author's responsibility and protects ACE
+  consumers downstream).
 
 The boundary type carries the proof. Code cannot write an unverified path or an
-unsanitized string to the backend by construction.
+unsanitized link name to the backend by construction.
 
 ## Out of scope
 
 - **Plugin systems** — see [model.md](model.md#out-of-scope). `pluginName` not read,
   `plugin-name:skill-name` not honored.
-- **Frontmatter translation** between backend variants — see [model.md](model.md#honored-fields-pass-through).
+- **Frontmatter translation** between backend variants — see
+  [model.md](model.md#honored-fields-pass-through).
 - **Lockfile / pinning** — see
   [index.md § Versioning Philosophy](../index.md#versioning-philosophy).

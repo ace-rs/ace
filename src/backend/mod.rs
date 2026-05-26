@@ -76,6 +76,16 @@ pub struct McpStatus {
     pub ok: bool,
 }
 
+/// Backend supports nested `<backend>/skills/<a>/<b>/<leaf>/` layouts.
+/// Cleared backends require flatten + collision policy at emit.
+pub const FEATURE_NESTED_SKILLS: u32 = 0x010;
+
+/// Global cap on identity-path segments emitted nested. Skills deeper than
+/// this fall through to the flatten branch even on nested-capable backends.
+/// Sized to match Codex's `MAX_SCAN_DEPTH` order of magnitude.
+#[allow(dead_code)]
+pub const MAX_SKILL_DEPTH: usize = 5;
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
@@ -137,6 +147,15 @@ impl Kind {
         match self {
             Kind::Claude | Kind::Flaude => "CLAUDE.md",
             Kind::Codex | Kind::OpenCode => "AGENTS.md",
+        }
+    }
+
+    /// Capability mask. See `FEATURE_*` constants. The emit code branches on
+    /// the bits set here, never on the backend's name.
+    pub fn features(&self) -> u32 {
+        match self {
+            Kind::Claude | Kind::Flaude => 0,
+            Kind::Codex | Kind::OpenCode => FEATURE_NESTED_SKILLS,
         }
     }
 
@@ -229,6 +248,10 @@ impl Backend {
         self.kind.backend_dir()
     }
 
+    pub fn features(&self) -> u32 {
+        self.kind.features()
+    }
+
     pub fn instructions_file(&self) -> &'static str {
         self.kind.instructions_file()
     }
@@ -315,7 +338,16 @@ pub(super) fn parse_status_array(json: &str) -> Vec<McpStatus> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Kind, Registry};
+    use super::{Kind, Registry, FEATURE_NESTED_SKILLS};
+
+    #[test]
+    fn features_per_kind() {
+        // Wiring per `docs/spec/skills/emit.md` § Backend emit rule.
+        assert_eq!(Kind::Claude.features(), 0);
+        assert_eq!(Kind::Flaude.features(), 0);
+        assert_eq!(Kind::Codex.features(), FEATURE_NESTED_SKILLS);
+        assert_eq!(Kind::OpenCode.features(), FEATURE_NESTED_SKILLS);
+    }
 
     #[test]
     fn registry_with_builtins_lookup() {
