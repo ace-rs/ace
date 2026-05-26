@@ -1,9 +1,9 @@
 # Skill Emit
 
 Where skills land on disk: how a school stores imports, how a project consumer emits to a
-backend's flat skills dir, and what gets sanitized at each boundary. Companion to
-[model.md](model.md) (what a skill IS) and [selection.md](selection.md) (which skills are
-picked).
+backend's skills dir (flat or nested per backend capability), and what gets sanitized at
+each boundary. Companion to [model.md](model.md) (what a skill IS) and
+[selection.md](selection.md) (which skills are picked).
 
 ## School storage layout
 
