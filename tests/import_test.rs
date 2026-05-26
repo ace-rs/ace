@@ -439,6 +439,76 @@ include_system = true
     env.assert_exists("skills/other-skill/SKILL.md");
 }
 
+// Spec: docs/spec/skills/model.md § Discovery cascade.
+// Nested layouts under skills/<group>/<leaf>/ are discovered via the
+// recursive walk inside the canonical priority dir; identity is the
+// post-strip path, written into the school at the same nested path.
+#[test]
+fn pull_imports_with_nested_source_layout_writes_nested_identity() {
+    let env = TestEnv::new();
+    env.git_init();
+
+    env.setup_tiered_origin("nested/upstream", &[
+        "skills/typescript/coding",
+        "skills/rust/coding",
+    ]);
+
+    env.write_dogfood_school(
+        r#"name = "test-school"
+
+[[imports]]
+source = "nested/upstream"
+skills = ["*"]
+"#,
+    );
+    env.mkdir("skills");
+
+    env.ace().args(["school", "update"]).assert().success();
+
+    // Identity is preserved through the school's storage layer.
+    env.assert_exists("skills/typescript/coding/SKILL.md");
+    env.assert_exists("skills/rust/coding/SKILL.md");
+}
+
+// Spec: docs/spec/skills/selection.md § Cross-source merge.
+// Two declarations claiming the same identity from different sources
+// surface a loud collision warning. First-declared wins.
+#[test]
+fn pull_imports_cross_source_collision_warns() {
+    let env = TestEnv::new();
+    env.git_init();
+
+    env.setup_tiered_origin("upstream/alpha", &["skills/shared"]);
+    env.setup_tiered_origin("fork/beta", &["skills/shared"]);
+
+    env.write_dogfood_school(
+        r#"name = "test-school"
+
+[[imports]]
+source = "upstream/alpha"
+skills = ["shared"]
+
+[[imports]]
+source = "fork/beta"
+skills = ["shared"]
+"#,
+    );
+    env.mkdir("skills");
+
+    let assert = env.ace().args(["school", "update"]).assert().success();
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&assert.get_output().stdout),
+        String::from_utf8_lossy(&assert.get_output().stderr),
+    );
+    assert!(
+        combined.contains("cross-source collision"),
+        "expected collision warning, got: {combined}"
+    );
+    // First-declared wins; only one copy lands on disk.
+    env.assert_exists("skills/shared/SKILL.md");
+}
+
 #[test]
 fn import_reuses_source_cache_on_second_call() {
     let env = TestEnv::new();
