@@ -1,14 +1,20 @@
-//! Skill resolution: turns `(skills, include_skills, exclude_skills)` across
-//! three config scopes into a structured trace per discovered skill.
+//! Project-side skill resolution: turns `(skills, include_skills,
+//! exclude_skills)` from `ace.toml` across the user / project / local
+//! scopes into a structured trace per discovered identity.
 //!
 //! Pure logic. The trace drives `ace skills` (provenance listing) and
-//! `ace explain <name>` (full chain). Today's `Scope::Implicit` is folded into
-//! the unified `Source::Default`.
+//! `ace explain <name>` (full chain). Today's `Scope::Implicit` is folded
+//! into the unified `Source::Default`.
+//!
+//! Sibling to the imports resolver (added in a later slice), which merges
+//! `[[imports]]` declarations within a single `school.toml`. They share
+//! glob + trace primitives but diverge on scope taxonomy and verdict
+//! variants — see `docs/spec/skills/selection.md` § Provenance.
 
 use std::collections::BTreeMap;
 
 use crate::config::ace_toml::AceToml;
-use crate::glob::glob_match;
+use crate::skills::identity::pattern_matches;
 
 use super::source::Source;
 
@@ -191,7 +197,7 @@ fn apply_base(
     for pattern in patterns {
         let mut matched = false;
         for skill in state.values_mut() {
-            if !glob_match(pattern, &skill.name) {
+            if !pattern_matches(pattern, &skill.name) {
                 continue;
             }
             matched = true;
@@ -258,7 +264,7 @@ fn apply_phase(
         for pattern in patterns {
             let mut matched = false;
             for skill in state.values_mut() {
-                if !glob_match(pattern, &skill.name) {
+                if !pattern_matches(pattern, &skill.name) {
                     continue;
                 }
                 matched = true;
@@ -531,5 +537,101 @@ mod tests {
             &AceToml::default(),
         );
         assert_eq!(included(&r), vec!["rust-coding"]);
+    }
+
+    // -- bare-name leaf match (spec: selection.md § Bare names) --
+    //
+    // Patterns without `*` or `/` match either exactly OR the trailing
+    // path segment of a nested identity. Preserves pre-nested-identity
+    // UX: `--skill rust-coding` resolves regardless of whether the skill
+    // lives flat or under a subpath.
+
+    fn nested_names() -> Vec<String> {
+        ["a", "rust-coding", "typescript/coding", "python/coding"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect()
+    }
+
+    #[test]
+    fn bare_name_matches_flat_identity_exactly() {
+        let r = resolve_skills(
+            &nested_names(),
+            &AceToml::default(),
+            &ace(&["rust-coding"], &[], &[]),
+            &AceToml::default(),
+        );
+        assert_eq!(included(&r), vec!["rust-coding"]);
+    }
+
+    #[test]
+    fn bare_name_matches_leaf_of_nested_identity() {
+        // `coding` matches identities ending in `/coding` — multi-match
+        // is the intended semantics, not an ambiguity error.
+        let r = resolve_skills(
+            &nested_names(),
+            &AceToml::default(),
+            &ace(&["coding"], &[], &[]),
+            &AceToml::default(),
+        );
+        let mut inc = included(&r);
+        inc.sort();
+        assert_eq!(inc, vec!["python/coding", "typescript/coding"]);
+    }
+
+    #[test]
+    fn bare_name_no_prefix_match() {
+        // `rust` should not match `rust-coding`. Only exact or leaf.
+        let r = resolve_skills(
+            &nested_names(),
+            &AceToml::default(),
+            &ace(&["rust"], &[], &[]),
+            &AceToml::default(),
+        );
+        assert!(included(&r).is_empty());
+    }
+
+    #[test]
+    fn path_anchored_pattern_no_leaf_fallback() {
+        // `typescript/coding` matches only that identity. `python/coding`
+        // (same leaf, different path) is not included.
+        let r = resolve_skills(
+            &nested_names(),
+            &AceToml::default(),
+            &ace(&["typescript/coding"], &[], &[]),
+            &AceToml::default(),
+        );
+        assert_eq!(included(&r), vec!["typescript/coding"]);
+    }
+
+    #[test]
+    fn glob_with_path_separator_matches_multi_segment() {
+        // `*/coding` matches multi-segment identities ending in `/coding`.
+        let r = resolve_skills(
+            &nested_names(),
+            &AceToml::default(),
+            &ace(&["*/coding"], &[], &[]),
+            &AceToml::default(),
+        );
+        let mut inc = included(&r);
+        inc.sort();
+        assert_eq!(inc, vec!["python/coding", "typescript/coding"]);
+    }
+
+    #[test]
+    fn bare_name_in_exclude_drops_leaf_matches() {
+        // Reuses the leaf-fallback rule on the negative side: bare-name
+        // `coding` drops `python/coding` and `typescript/coding` (leaf
+        // == `coding`) but NOT `rust-coding` (leaf is `rust-coding`,
+        // distinct from `coding`).
+        let r = resolve_skills(
+            &nested_names(),
+            &AceToml::default(),
+            &AceToml::default(),
+            &ace(&[], &[], &["coding"]),
+        );
+        let mut inc = included(&r);
+        inc.sort();
+        assert_eq!(inc, vec!["a", "rust-coding"]);
     }
 }

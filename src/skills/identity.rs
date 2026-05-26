@@ -170,24 +170,43 @@ impl MatchHandle {
     }
 
     /// True when this handle matches the given identity per the rules in
-    /// `docs/spec/skills/selection.md` § Match handle:
-    ///
-    /// - Glob (`*` present): standard glob match against the full identity
-    ///   path.
-    /// - Path-anchored (`/` present, no `*`): exact equality against the
-    ///   identity path.
-    /// - Bare name (no `*` or `/`): exact identity OR exact match of the
-    ///   trailing segment (leaf fallback).
+    /// `docs/spec/skills/selection.md` § Match handle. Delegates to the
+    /// free function [`pattern_matches`] for shared use by the project
+    /// and imports resolvers.
     pub fn matches(&self, id: &SkillId) -> bool {
-        if self.is_glob() {
-            return glob::glob_match(&self.0, id.as_str());
-        }
-        if self.is_path_anchored() {
-            return self.0 == id.as_str();
-        }
-        // Bare name: exact or leaf match.
-        id.as_str() == self.0 || id.leaf() == self.0
+        pattern_matches(&self.0, id.as_str())
     }
+}
+
+/// Apply the spec's match-handle rules to a raw string pattern and a raw
+/// identity string. Shared between [`MatchHandle::matches`] and the
+/// resolvers (which currently hold patterns/identities as `String` for
+/// historical reasons). See `docs/spec/skills/selection.md` § Match handle.
+///
+/// - Glob (`*` present): standard glob match against the full identity.
+/// - Path-anchored (`/` present, no `*`): exact equality against the
+///   identity path — no leaf-fallback.
+/// - Bare name (neither `*` nor `/`): exact identity OR exact match of
+///   the trailing path segment (leaf-fallback). This preserves the
+///   pre-nested-identity UX: typing `rust-coding` still resolves to the
+///   skill called `rust-coding` whether it lives flat (`rust-coding`) or
+///   nested (`typescript/rust-coding`).
+pub fn pattern_matches(pattern: &str, identity: &str) -> bool {
+    if pattern.contains('*') {
+        return glob::glob_match(pattern, identity);
+    }
+    if pattern.contains('/') {
+        return pattern == identity;
+    }
+    if pattern == identity {
+        return true;
+    }
+    // Leaf-fallback: trailing path segment of identity equals the bare name.
+    identity
+        .rsplit('/')
+        .next()
+        .map(|leaf| leaf == pattern)
+        .unwrap_or(false)
 }
 
 impl Deref for MatchHandle {
