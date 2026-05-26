@@ -215,26 +215,8 @@ impl Skills<Discovered> {
         }
     }
 
-    /// Keep only skills whose tier is in `allowed`.
-    pub fn filter_tiers(&self, allowed: &[Tier]) -> Self {
-        let items = self
-            .items
-            .iter()
-            .filter(|s| allowed.contains(&s.tier))
-            .cloned()
-            .collect();
-        Self { items, diagnostics: Diagnostics::default() }
-    }
-
     pub fn names(&self) -> impl Iterator<Item = &str> {
         self.items.iter().map(|s| s.name.as_str())
-    }
-
-    /// Skill names matching a glob pattern.
-    pub fn matching(&self, pattern: &str) -> Vec<&str> {
-        self.names()
-            .filter(|name| crate::glob::glob_match(pattern, name))
-            .collect()
     }
 
     /// Copy named skills into `dest_dir`. Each skill is classified Added
@@ -343,6 +325,7 @@ mod tests {
             path: PathBuf::from(format!("/school/{name}")),
             tier,
             internal: false,
+            frontmatter_name: None,
         }
     }
 
@@ -439,18 +422,6 @@ mod tests {
     }
 
     #[test]
-    fn filter_tiers_keeps_only_allowed() {
-        let s = Skills::<Discovered>::from_discovered(&[
-            discovered("cur", Tier::Curated),
-            discovered("exp", Tier::Experimental),
-            discovered("sys", Tier::System),
-        ]);
-        let filtered = s.filter_tiers(&[Tier::Curated]);
-        let names: Vec<&str> = filtered.names().collect();
-        assert_eq!(names, vec!["cur"]);
-    }
-
-    #[test]
     fn copy_into_adds_and_modifies() {
         use std::fs;
         let src = tempfile::tempdir().expect("src");
@@ -467,6 +438,7 @@ mod tests {
             path: skill_dir,
             tier: Tier::Curated,
             internal: false,
+            frontmatter_name: None,
         }]);
 
         let added = s.copy_into(dest.path(), &["my-skill"]).expect("copy");
@@ -555,16 +527,4 @@ mod tests {
         }
     }
 
-    #[test]
-    fn matching_glob_after_filter() {
-        let s = Skills::<Discovered>::from_discovered(&[
-            discovered("a-cur", Tier::Curated),
-            discovered("a-exp", Tier::Experimental),
-            discovered("b-cur", Tier::Curated),
-        ]);
-        let filtered = s.filter_tiers(&[Tier::Curated]);
-        let mut matched = filtered.matching("*-cur");
-        matched.sort();
-        assert_eq!(matched, vec!["a-cur", "b-cur"]);
-    }
 }

@@ -93,6 +93,7 @@ mod tests {
             path: PathBuf::from(format!("/school/{name}")),
             tier,
             internal: false,
+            frontmatter_name: None,
         }
     }
 

@@ -85,6 +85,11 @@ pub struct DiscoveredSkill {
     /// flag; filtering (against explicit-name imports, etc.) is the
     /// caller's job. Default false when not present in frontmatter.
     pub internal: bool,
+    /// Frontmatter `name:` value, when present. Used by the imports
+    /// resolver to detect cross-source mismatches at colliding
+    /// identities. `None` when the SKILL.md has no parseable name.
+    #[allow(dead_code)] // consumed by imports resolver
+    pub frontmatter_name: Option<String>,
 }
 
 
@@ -96,12 +101,13 @@ pub fn discover_skills(root: &Path) -> Result<Vec<DiscoveredSkill>, std::io::Err
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("skill");
-        let internal = read_internal_flag(&root.join("SKILL.md"));
+        let (internal, frontmatter_name) = read_frontmatter_flags(&root.join("SKILL.md"));
         return Ok(vec![DiscoveredSkill {
             id: SkillId::from_basename(basename),
             path: root.to_path_buf(),
             tier: Tier::Curated,
             internal,
+            frontmatter_name,
         }]);
     }
 
@@ -159,12 +165,13 @@ fn walk_priority_dir(
         };
         let id = SkillId::from_relative_path(rel);
         if seen.insert(id.to_string()) {
-            let internal = read_internal_flag(&dir.join("SKILL.md"));
+            let (internal, frontmatter_name) = read_frontmatter_flags(&dir.join("SKILL.md"));
             skills.push(DiscoveredSkill {
                 id,
                 path: dir.to_path_buf(),
                 tier,
                 internal,
+                frontmatter_name,
             });
         }
         // Skills cannot nest inside other skills; don't recurse into a dir
@@ -215,31 +222,46 @@ const SKIP_DIRS: &[&str] = &[
     "vendor",
 ];
 
-/// Best-effort `internal: true` extraction from a SKILL.md frontmatter
-/// block. A full frontmatter parser lives in `config::skill_meta`; this is
-/// a narrow read so discovery doesn't have to materialize the full struct
-/// for every skill on disk.
-fn read_internal_flag(skill_md: &Path) -> bool {
+/// Best-effort frontmatter extraction for the fields discovery cares
+/// about: `internal: true` (discovery-time filter) and `name:` (used by
+/// the imports resolver to flag cross-source divergence at colliding
+/// identities). A full frontmatter parser lives in `config::skill_meta`;
+/// this is a narrow read so discovery doesn't have to materialize the
+/// full struct for every skill on disk.
+///
+/// Returns `(internal, frontmatter_name)`. Either or both may be absent
+/// from the SKILL.md; the function never errors.
+fn read_frontmatter_flags(skill_md: &Path) -> (bool, Option<String>) {
     let Ok(content) = std::fs::read_to_string(skill_md) else {
-        return false;
+        return (false, None);
     };
     let content = content.trim_start();
     let Some(rest) = content.strip_prefix("---") else {
-        return false;
+        return (false, None);
     };
     let Some(close) = rest.find("\n---") else {
-        return false;
+        return (false, None);
     };
     let block = &rest[..close];
+    let mut internal = false;
+    let mut name: Option<String> = None;
     for line in block.lines() {
         let trimmed = line.trim();
-        let Some(val) = trimmed.strip_prefix("internal:") else {
-            continue;
-        };
-        let val = val.trim().trim_matches('"').trim_matches('\'').to_ascii_lowercase();
-        return val == "true";
+        if let Some(val) = trimmed.strip_prefix("internal:") {
+            let val = val
+                .trim()
+                .trim_matches('"')
+                .trim_matches('\'')
+                .to_ascii_lowercase();
+            internal = val == "true";
+        } else if let Some(val) = trimmed.strip_prefix("name:") {
+            let val = val.trim().trim_matches('"').trim_matches('\'');
+            if !val.is_empty() {
+                name = Some(val.to_string());
+            }
+        }
     }
-    false
+    (internal, name)
 }
 
 #[cfg(test)]

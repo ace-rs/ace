@@ -3,8 +3,10 @@ use std::path::Path;
 
 use crate::ace::Ace;
 use crate::config;
-use crate::glob;
-use crate::skills::discover::{DiscoveredSkill, Tier, discover_skills};
+use crate::resolver::{
+    DiscoveryBySource, ImportVerdict, ImportsResolution, resolve_imports,
+};
+use crate::skills::discover::{DiscoveredSkill, discover_skills};
 use crate::skills::{Discovered, Skills};
 
 pub struct PullImports<'a> {
@@ -38,13 +40,21 @@ impl PullImports<'_> {
             return Ok(PullImportsResult::NoImports);
         }
 
-        let by_source = group_by_source(&school.imports);
         let skills_dir = self.school_root.join("skills");
 
-        // Discover each source once. Multiple decls against the same source
-        // share the cached clone + discovery rather than re-walking per decl.
-        let mut discovery: HashMap<&str, Vec<DiscoveredSkill>> = HashMap::new();
-        for (source, _) in &by_source {
+        // Discover each unique source once.
+        let unique_sources: Vec<&str> = {
+            let mut seen: Vec<&str> = Vec::new();
+            for d in &school.imports {
+                let s = d.source.as_str();
+                if !seen.contains(&s) {
+                    seen.push(s);
+                }
+            }
+            seen
+        };
+        let mut discovery: HashMap<String, Vec<DiscoveredSkill>> = HashMap::new();
+        for source in &unique_sources {
             ace.progress(&format!("Fetching {source}"));
             let cached = match crate::git::ensure_source_cache(source) {
                 Ok(p) => p,
@@ -54,52 +64,34 @@ impl PullImports<'_> {
                     return Err(e.into());
                 }
             };
-            discovery.insert(source, discover_skills(&cached)?);
+            discovery.insert(source.to_string(), discover_skills(&cached)?);
         }
 
-        // Single pass in declaration order, last-wins on collision. See
-        // docs/spec/skills-sync.md § Import Merge Strategy.
+        // Hand off to the imports resolver. It picks per-decl matches,
+        // merges across decls (first-wins + warn), and emits provenance.
+        let discovery_refs: DiscoveryBySource = discovery
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_slice()))
+            .collect();
+        let resolution = resolve_imports(&school.imports, &discovery_refs);
+
+        surface_import_diagnostics(ace, &resolution, &school.imports);
+
+        // Build the to-copy set from Included verdicts; map each back to
+        // its source's discovered record so we keep the full SKILL.md
+        // payload, tier, etc.
         let mut accumulator: Skills<Discovered> = Skills::default();
-        for (source, decls) in &by_source {
-            let discovered = &discovery[source];
-            let full = Skills::<Discovered>::from_discovered_with_source(discovered, source);
-
-            let mut names: Vec<String> = Vec::new();
-            for decl in decls {
-                let patterns = decl.patterns();
-                if patterns.is_empty() {
-                    ace.warn(&format!(
-                        "import decl for {source} has no `skills` or `skill` field"
-                    ));
-                    continue;
-                }
-                for pattern in &patterns {
-                    let resolved = resolve_import_pattern(&full, decl, pattern);
-                    if resolved.is_empty() {
-                        ace.warn(&format!("no skills matching {pattern} in {source}"));
-                        continue;
-                    }
-                    for n in resolved {
-                        if !names.contains(&n) {
-                            names.push(n);
-                        }
-                    }
-                }
-            }
-            if names.is_empty() {
+        for resolved in resolution.included() {
+            let Some(disc) = discovery.get(&resolved.source) else {
                 continue;
+            };
+            if let Some(d) = disc.iter().find(|d| d.id.as_str() == resolved.identity) {
+                let batch = Skills::<Discovered>::from_discovered_with_source(
+                    std::slice::from_ref(d),
+                    &resolved.source,
+                );
+                accumulator.merge(batch);
             }
-
-            let batch_discovered: Vec<DiscoveredSkill> = discovered
-                .iter()
-                .filter(|d| names.iter().any(|n| n.as_str() == d.id.as_str()))
-                .cloned()
-                .collect();
-            let batch = Skills::<Discovered>::from_discovered_with_source(
-                &batch_discovered,
-                source,
-            );
-            accumulator.merge(batch);
         }
 
         let winning_names: Vec<String> = accumulator.names().map(String::from).collect();
@@ -113,155 +105,56 @@ impl PullImports<'_> {
 }
 
 
-/// Resolve a single pattern within an import decl against a discovered
-/// set. Explicit names are looked up across all tiers; glob patterns are
-/// tier-gated by the decl's `include_experimental` / `include_system`
-/// flags.
-///
-/// Multi-pattern decls call this per pattern and union the results in
-/// the caller; the full imports resolver (slice 5 — first-wins +
-/// collision warnings + exclude_skills suppression) supersedes this
-/// minimal expansion.
-fn resolve_import_pattern(
-    set: &Skills<Discovered>,
-    decl: &config::school_toml::ImportDecl,
-    pattern: &str,
-) -> Vec<String> {
-    if glob::is_glob(pattern) {
-        let mut allowed = vec![Tier::Curated];
-        if decl.include_experimental {
-            allowed.push(Tier::Experimental);
-        }
-        if decl.include_system {
-            allowed.push(Tier::System);
-        }
-        let filtered = set.filter_tiers(&allowed);
-        filtered.matching(pattern)
-            .into_iter()
-            .map(String::from)
-            .collect()
-    } else if set.names().any(|n| n == pattern) {
-        vec![pattern.to_string()]
-    } else {
-        Vec::new()
+/// Emit per-resolver warnings into the user-visible surface. Collision
+/// messages attribute the problem to the school per
+/// `docs/spec/skills/selection.md` § Warning boundaries.
+fn surface_import_diagnostics(
+    ace: &mut Ace,
+    resolution: &ImportsResolution,
+    decls: &[config::school_toml::ImportDecl],
+) {
+    for unknown in &resolution.unknown_patterns {
+        ace.warn(&format!(
+            "no skills matching `{}` in {}",
+            unknown.pattern, unknown.source,
+        ));
     }
-}
-
-/// Group decls by source preserving school.toml encounter order. Two sources
-/// colliding on the same skill within a single pass resolve in declaration
-/// order — first-declared wins — which would not be deterministic with a
-/// `HashMap`.
-fn group_by_source(
-    imports: &[config::school_toml::ImportDecl],
-) -> Vec<(&str, Vec<&config::school_toml::ImportDecl>)> {
-    let mut order: Vec<&str> = Vec::new();
-    let mut by_source: HashMap<&str, Vec<&config::school_toml::ImportDecl>> = HashMap::new();
-    for imp in imports {
-        let key = imp.source.as_str();
-        if !by_source.contains_key(key) {
-            order.push(key);
+    for collision in &resolution.collisions {
+        if collision.suppressed_by_exclude {
+            continue;
         }
-        by_source.entry(key).or_default().push(imp);
-    }
-    order
-        .into_iter()
-        .map(|s| (s, by_source.remove(s).expect("seeded above")))
-        .collect()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::config::school_toml::ImportDecl;
-    use crate::skills::discover::DiscoveredSkill;
-
-    fn discovered(name: &str, tier: Tier) -> DiscoveredSkill {
-        DiscoveredSkill {
-            id: crate::skills::SkillId::from_basename(name),
-            path: std::path::PathBuf::from(name),
-            tier,
-            internal: false,
+        ace.warn(&format!(
+            "the school you're consuming has a cross-source collision at `{}`: \
+             `{}` (decl #{}) wins over `{}` (decl #{}).",
+            collision.identity,
+            collision.winner_source,
+            collision.winner_decl_index,
+            collision.loser_source,
+            collision.loser_decl_index,
+        ));
+        ace.hint(
+            "add the colliding identity to the winning import's `exclude_skills` \
+             to express disjoint sets and silence this warning",
+        );
+        if collision.frontmatter_mismatch {
+            ace.warn(&format!(
+                "  + frontmatter `name:` diverges across sources at `{}` — likely upstream spec violation",
+                collision.identity,
+            ));
         }
     }
-
-    fn import(skill: &str, experimental: bool, system: bool) -> ImportDecl {
-        ImportDecl {
-            source: "owner/repo".to_string(),
-            skills: vec![skill.to_string()],
-            include_experimental: experimental,
-            include_system: system,
-            ..ImportDecl::default()
+    for resolved in &resolution.skills {
+        if matches!(resolved.verdict, ImportVerdict::FilteredInternal) {
+            // Only the originating decl needs to know; surface once per skill.
+            let decl_label = decls
+                .get(resolved.decl_index)
+                .map(|d| d.source.as_str())
+                .unwrap_or("?");
+            ace.warn(&format!(
+                "skill `{}` in {decl_label} is marked `internal: true`; \
+                 set `include_internal = true` on the decl, or import it by explicit name",
+                resolved.identity,
+            ));
         }
-    }
-
-    #[test]
-    fn resolve_glob_matches_curated_by_default() {
-        let set = Skills::<Discovered>::from_discovered(&[
-            discovered("alpha", Tier::Curated),
-            discovered("beta",  Tier::Experimental),
-            discovered("gamma", Tier::System),
-        ]);
-        let names = resolve_import_pattern(&set, &import("*", false, false), "*");
-        assert_eq!(names, vec!["alpha".to_string()]);
-    }
-
-    #[test]
-    fn resolve_glob_with_experimental_flag_adds_that_tier() {
-        let set = Skills::<Discovered>::from_discovered(&[
-            discovered("alpha", Tier::Curated),
-            discovered("beta",  Tier::Experimental),
-            discovered("gamma", Tier::System),
-        ]);
-        let mut names = resolve_import_pattern(&set, &import("*", true, false), "*");
-        names.sort();
-        assert_eq!(names, vec!["alpha".to_string(), "beta".to_string()]);
-    }
-
-    #[test]
-    fn resolve_glob_with_both_flags_adds_all_tiers() {
-        let set = Skills::<Discovered>::from_discovered(&[
-            discovered("alpha", Tier::Curated),
-            discovered("beta",  Tier::Experimental),
-            discovered("gamma", Tier::System),
-        ]);
-        let mut names = resolve_import_pattern(&set, &import("*", true, true), "*");
-        names.sort();
-        assert_eq!(names, vec!["alpha".to_string(), "beta".to_string(), "gamma".to_string()]);
-    }
-
-    #[test]
-    fn resolve_explicit_name_finds_skill_in_any_tier() {
-        let set = Skills::<Discovered>::from_discovered(&[
-            discovered("shell", Tier::Experimental),
-        ]);
-        let names = resolve_import_pattern(&set, &import("shell", false, false), "shell");
-        assert_eq!(names, vec!["shell".to_string()]);
-    }
-
-    #[test]
-    fn resolve_explicit_name_finds_skill_in_system_tier() {
-        let set = Skills::<Discovered>::from_discovered(&[
-            discovered("skill-creator", Tier::System),
-        ]);
-        let names = resolve_import_pattern(&set, &import("skill-creator", false, false), "skill-creator");
-        assert_eq!(names, vec!["skill-creator".to_string()]);
-    }
-
-    #[test]
-    fn resolve_explicit_name_missing_returns_empty() {
-        let set = Skills::<Discovered>::from_discovered(&[
-            discovered("alpha", Tier::Curated),
-        ]);
-        let names = resolve_import_pattern(&set, &import("missing", false, false), "missing");
-        assert!(names.is_empty());
-    }
-
-    #[test]
-    fn resolve_glob_no_matches_returns_empty() {
-        let set = Skills::<Discovered>::from_discovered(&[
-            discovered("alpha", Tier::Experimental),
-        ]);
-        let names = resolve_import_pattern(&set, &import("*", false, false), "*");
-        assert!(names.is_empty(), "curated-only default should not match experimental");
     }
 }
