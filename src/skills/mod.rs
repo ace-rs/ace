@@ -95,6 +95,10 @@ pub struct Skill<S> {
     pub name: String,
     pub path: PathBuf,
     pub tier: Tier,
+    /// `internal: true` in SKILL.md frontmatter. Used by the imports
+    /// resolver to gate skills behind explicit-name matches or the
+    /// `include_internal` flag (mirrors skills.sh).
+    pub internal: bool,
     /// Origin label (`owner/repo`) when the skill was pulled from an import
     /// source. `None` for skills discovered directly from a school's own
     /// `skills/` tree.
@@ -141,6 +145,7 @@ impl Skills<Discovered> {
                 name: d.name.clone(),
                 path: d.path.clone(),
                 tier: d.tier,
+                internal: d.internal,
                 source: source.clone(),
                 state: Discovered,
             })
@@ -172,21 +177,22 @@ impl Skills<Discovered> {
         let local = tree.local.as_ref().unwrap_or(&default);
         let resolution = resolver::resolve_skills(&names, user, project, local);
 
-        let mut by_name: HashMap<String, (PathBuf, Tier, Option<String>)> = self
+        let mut by_name: HashMap<String, (PathBuf, Tier, bool, Option<String>)> = self
             .items
             .into_iter()
-            .map(|s| (s.name, (s.path, s.tier, s.source)))
+            .map(|s| (s.name, (s.path, s.tier, s.internal, s.source)))
             .collect();
 
         let items = resolution
             .skills
             .into_iter()
             .filter_map(|r| {
-                let (path, tier, source) = by_name.remove(&r.name)?;
+                let (path, tier, internal, source) = by_name.remove(&r.name)?;
                 Some(Skill {
                     name: r.name,
                     path,
                     tier,
+                    internal,
                     source,
                     state: Decided {
                         decision: r.decision,
@@ -332,6 +338,7 @@ mod tests {
             name: name.to_string(),
             path: PathBuf::from(format!("/school/{name}")),
             tier,
+            internal: false,
         }
     }
 
@@ -455,6 +462,7 @@ mod tests {
             name: "my-skill".to_string(),
             path: skill_dir,
             tier: Tier::Curated,
+            internal: false,
         }]);
 
         let added = s.copy_into(dest.path(), &["my-skill"]).expect("copy");

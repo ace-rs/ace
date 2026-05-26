@@ -1,10 +1,55 @@
+//! Skill discovery — find every `SKILL.md` under a source root and tag each
+//! with identity, tier, and `internal` flag.
+//!
+//! See `docs/spec/skills/model.md` § Discovery Cascade and the two decision
+//! docs dated 2026-05-26.
+//!
+//! Two-stage cascade:
+//!
+//! 1. **Direct skill** — `<root>/SKILL.md` exists → the root itself is a skill.
+//!    Identity defaults to the basename of the root.
+//!
+//! 2. **Priority dirs (recursive within)** — walk each priority dir for
+//!    `SKILL.md` at any depth. First-found wins on identity collisions
+//!    across the stage. Within each priority dir, hidden subdirs are skipped
+//!    (other than the recognized tier dirs, which are themselves priority
+//!    entries).
+//!
+//!    Canonical priority order:
+//!      - `skills/.curated/`         → Tier::Curated
+//!      - `skills/`                  → Tier::Curated (tier subdirs excluded)
+//!      - `skills/.experimental/`    → Tier::Experimental
+//!      - `skills/.system/`          → Tier::System
+//!
+//!    Backend-fallback dirs (used only when the canonical entries yielded
+//!    nothing): `.claude/skills/`, `.codex/skills/`, `.opencode/skills/`,
+//!    `.cursor/skills/`, `.windsurf/skills/`, `.kiro/skills/`,
+//!    `.agents/skills/`. All tagged Tier::Curated.
+//!
+//! Skills outside stage 1 or stage 2 priority dirs are off-spec and not
+//! discovered (skills.sh's stage-3 whole-repo walk is deliberately dropped).
+
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-/// Hidden directory names that mark tier sub-trees under `skills/`. Source of
-/// truth for both `discover_skills` and any downstream code that needs to
-/// distinguish a tier dir from a real skill dir (e.g. diff parsing).
+/// Hidden directory names that mark tier sub-trees under `skills/`. These are
+/// processed as separate priority entries; the `skills/` walk excludes them
+/// to avoid double-counting.
 pub const TIER_DIRS: &[&str] = &[".curated", ".experimental", ".system"];
+
+/// Backend-specific skill dirs, used as fallback when the canonical priority
+/// entries yield no skills. Order is informational only — first-found wins
+/// only within a single fallback dir; multiple fallback dirs together can
+/// each contribute distinct identities.
+pub const BACKEND_DIRS: &[&str] = &[
+    ".claude/skills",
+    ".codex/skills",
+    ".opencode/skills",
+    ".cursor/skills",
+    ".windsurf/skills",
+    ".kiro/skills",
+    ".agents/skills",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Tier {
@@ -23,76 +68,209 @@ impl Tier {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DiscoveredSkill {
+    /// Identity path — discovery prefix stripped, slash-joined. For flat
+    /// layouts this is the basename (`foo`). For nested layouts under a
+    /// priority dir it includes the inner segments (`typescript/coding`).
+    /// Acts as the unique key for cross-source collision detection.
     pub name: String,
+    /// Absolute path to the skill directory containing `SKILL.md`.
     pub path: PathBuf,
+    /// Tier classification, derived from the priority dir the skill was
+    /// found under. Backend-fallback skills are tagged Curated.
     pub tier: Tier,
+    /// `internal: true` in SKILL.md frontmatter. Discovery preserves the
+    /// flag; filtering (against explicit-name imports, etc.) is the
+    /// caller's job. Default false when not present in frontmatter.
+    pub internal: bool,
 }
 
-/// Discover skills under `<dir>/skills/`. Priority (first hit per name wins):
-///
-/// 1. `skills/.curated/<name>/`      → Tier::Curated
-/// 2. `skills/<name>/`               → Tier::Curated
-/// 3. `skills/.experimental/<name>/` → Tier::Experimental
-/// 4. `skills/.system/<name>/`       → Tier::System
-///
-/// Collision between `.curated/` and top-level `skills/` resolves to `.curated/`.
-/// Skills at the repo root (outside `skills/`) are not discovered.
-pub fn discover_skills(dir: &Path) -> Result<Vec<DiscoveredSkill>, std::io::Error> {
-    let mut skills = Vec::new();
-    let mut seen = HashSet::new();
+/// Discover skills under `root` per the 2-stage cascade. See module docs.
+pub fn discover_skills(root: &Path) -> Result<Vec<DiscoveredSkill>, std::io::Error> {
+    // Stage 1: direct skill at root.
+    if root.join("SKILL.md").is_file() {
+        let basename = root
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("skill")
+            .to_string();
+        let internal = read_internal_flag(&root.join("SKILL.md"));
+        return Ok(vec![DiscoveredSkill {
+            name: basename,
+            path: root.to_path_buf(),
+            tier: Tier::Curated,
+            internal,
+        }]);
+    }
 
-    let search = [
-        (dir.join("skills/.curated"),      Tier::Curated),
-        (dir.join("skills"),               Tier::Curated),
-        (dir.join("skills/.experimental"), Tier::Experimental),
-        (dir.join("skills/.system"),       Tier::System),
+    let mut skills = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+
+    // Stage 2 canonical entries. `skills/` walk excludes tier subdirs to
+    // avoid double-counting with the dedicated tier entries.
+    let canonical: &[(PathBuf, Tier, bool)] = &[
+        (root.join("skills/.curated"),      Tier::Curated,      false),
+        (root.join("skills"),               Tier::Curated,      true),
+        (root.join("skills/.experimental"), Tier::Experimental, false),
+        (root.join("skills/.system"),       Tier::System,       false),
     ];
 
-    for (path, tier) in &search {
-        if path.is_dir() {
-            scan_for_skills(path, *tier, &mut skills, &mut seen)?;
+    for (dir, tier, exclude_tier_subdirs) in canonical {
+        if dir.is_dir() {
+            walk_priority_dir(dir, dir, *tier, *exclude_tier_subdirs, &mut skills, &mut seen)?;
+        }
+    }
+
+    // Stage 2 fallback: backend-specific dirs, only if canonical was empty.
+    if skills.is_empty() {
+        for backend_dir in BACKEND_DIRS {
+            let dir = root.join(backend_dir);
+            if dir.is_dir() {
+                walk_priority_dir(&dir, &dir, Tier::Curated, false, &mut skills, &mut seen)?;
+            }
         }
     }
 
     Ok(skills)
 }
 
-fn scan_for_skills(
-    parent: &Path,
+/// Recursively walk a priority dir, collecting any directory that contains a
+/// `SKILL.md`. The skill's identity is the parent dir's path relative to
+/// `prefix` (the priority root), slash-joined.
+///
+/// Hidden subdirs are skipped. When `exclude_tier_subdirs` is true (the
+/// canonical `skills/` walk), the top-level `.curated`/`.experimental`/
+/// `.system` dirs are also skipped — they're walked by their own canonical
+/// entries.
+fn walk_priority_dir(
+    dir: &Path,
+    prefix: &Path,
     tier: Tier,
+    exclude_tier_subdirs: bool,
     skills: &mut Vec<DiscoveredSkill>,
     seen: &mut HashSet<String>,
 ) -> Result<(), std::io::Error> {
-    for entry in std::fs::read_dir(parent)? {
+    if dir.join("SKILL.md").is_file() {
+        let identity = match dir.strip_prefix(prefix) {
+            Ok(rel) if !rel.as_os_str().is_empty() => path_to_identity(rel),
+            _ => return Ok(()), // priority root itself is not a skill; stage 1 territory
+        };
+        if seen.insert(identity.clone()) {
+            let internal = read_internal_flag(&dir.join("SKILL.md"));
+            skills.push(DiscoveredSkill {
+                name: identity,
+                path: dir.to_path_buf(),
+                tier,
+                internal,
+            });
+        }
+        // Skills cannot nest inside other skills; don't recurse into a dir
+        // that's already a skill. Matches skills.sh behavior.
+        return Ok(());
+    }
+
+    for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
-
-        if !path.is_dir() {
+        let file_type = entry.file_type()?;
+        if !file_type.is_dir() {
             continue;
         }
-
         let name = match path.file_name().and_then(|n| n.to_str()) {
-            Some(n) => n.to_string(),
+            Some(n) => n,
             None => continue,
         };
-
         if name.starts_with('.') {
+            // Tier dirs at the top of `skills/` are handled by their own
+            // canonical entries — skip to avoid duplicates.
+            if exclude_tier_subdirs && dir == prefix && TIER_DIRS.contains(&name) {
+                continue;
+            }
+            // Other hidden dirs (.git, .venv, etc.) are skipped wholesale.
             continue;
         }
-
-        if path.join("SKILL.md").exists() && seen.insert(name.clone()) {
-            skills.push(DiscoveredSkill { name, path, tier });
+        if SKIP_DIRS.contains(&name) {
+            continue;
         }
+        walk_priority_dir(&path, prefix, tier, exclude_tier_subdirs, skills, seen)?;
     }
     Ok(())
+}
+
+/// Dirs we never recurse into. Matches skills.sh's defaults plus a few
+/// ecosystem extensions to keep recursive walks bounded.
+const SKIP_DIRS: &[&str] = &[
+    "node_modules",
+    "dist",
+    "build",
+    "__pycache__",
+    "target",
+    ".venv",
+    ".next",
+    ".turbo",
+    "out",
+    "vendor",
+];
+
+fn path_to_identity(rel: &Path) -> String {
+    let mut parts: Vec<&str> = Vec::new();
+    for comp in rel.iter() {
+        if let Some(s) = comp.to_str() {
+            parts.push(s);
+        }
+    }
+    parts.join("/")
+}
+
+/// Best-effort `internal: true` extraction from a SKILL.md frontmatter
+/// block. A full frontmatter parser lives in `config::skill_meta`; this is
+/// a narrow read so discovery doesn't have to materialize the full struct
+/// for every skill on disk.
+fn read_internal_flag(skill_md: &Path) -> bool {
+    let Ok(content) = std::fs::read_to_string(skill_md) else {
+        return false;
+    };
+    let content = content.trim_start();
+    let Some(rest) = content.strip_prefix("---") else {
+        return false;
+    };
+    let Some(close) = rest.find("\n---") else {
+        return false;
+    };
+    let block = &rest[..close];
+    for line in block.lines() {
+        let trimmed = line.trim();
+        let Some(val) = trimmed.strip_prefix("internal:") else {
+            continue;
+        };
+        let val = val.trim().trim_matches('"').trim_matches('\'').to_ascii_lowercase();
+        return val == "true";
+    }
+    false
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
+
+    fn make_skill_at(base: &Path, rel: &str) -> PathBuf {
+        let dir = base.join(rel);
+        fs::create_dir_all(&dir).expect("create skill dir");
+        fs::write(dir.join("SKILL.md"), "# skill").expect("write SKILL.md");
+        dir
+    }
+
+    fn make_skill_with_frontmatter(base: &Path, rel: &str, frontmatter: &str) -> PathBuf {
+        let dir = base.join(rel);
+        fs::create_dir_all(&dir).expect("create skill dir");
+        let body = format!("---\n{frontmatter}\n---\n# skill\n");
+        fs::write(dir.join("SKILL.md"), body).expect("write SKILL.md");
+        dir
+    }
+
+    // -- preserved tests --
 
     #[test]
     fn empty_dir_returns_no_skills() {
@@ -109,7 +287,10 @@ mod tests {
         fs::write(tmp.path().join("skills/SKILL.md"), "").expect("write SKILL.md");
 
         let skills = discover_skills(tmp.path()).expect("discover_skills");
-        assert!(skills.is_empty(), "regular files in skills/ should not be treated as skills");
+        // The `skills/SKILL.md` at the top of the priority dir is stage-1
+        // territory for the `skills/` root, but we deliberately ignore an
+        // empty identity (priority root itself). Result: no skills.
+        assert!(skills.is_empty(), "files in skills/ should not be treated as skills");
     }
 
     #[test]
@@ -124,27 +305,14 @@ mod tests {
     #[test]
     fn finds_multiple_skills() {
         let tmp = tempfile::tempdir().expect("create temp dir");
-        let skills_dir = tmp.path().join("skills");
-        fs::create_dir(&skills_dir).expect("create skills dir");
         for name in ["alpha", "beta", "gamma"] {
-            let d = skills_dir.join(name);
-            fs::create_dir(&d).expect("create dir");
-            fs::write(d.join("SKILL.md"), "").expect("write SKILL.md");
+            make_skill_at(tmp.path(), &format!("skills/{name}"));
         }
 
         let skills = discover_skills(tmp.path()).expect("discover_skills");
         let mut names: Vec<_> = skills.iter().map(|s| s.name.as_str()).collect();
         names.sort();
         assert_eq!(names, vec!["alpha", "beta", "gamma"]);
-    }
-
-    // -- tier discovery (PROD9-75) --
-
-    fn make_skill_at(base: &Path, rel: &str) -> PathBuf {
-        let dir = base.join(rel);
-        fs::create_dir_all(&dir).expect("create skill dir");
-        fs::write(dir.join("SKILL.md"), "# skill").expect("write SKILL.md");
-        dir
     }
 
     #[test]
@@ -253,7 +421,8 @@ mod tests {
 
     #[test]
     fn root_level_skill_outside_skills_dir_is_not_discovered() {
-        // Spec change: root-children scanning removed (PROD9-75).
+        // No SKILL.md at root, an orphan SKILL.md at <root>/orphan/.
+        // Neither stage 1 (root SKILL.md) nor stage 2 (under skills/) fires.
         let tmp = tempfile::tempdir().expect("tempdir");
         make_skill_at(tmp.path(), "orphan");
 
@@ -268,5 +437,167 @@ mod tests {
 
         let skills = discover_skills(tmp.path()).expect("discover_skills");
         assert!(skills.is_empty());
+    }
+
+    // -- new tests for the 2-stage cascade --
+
+    #[test]
+    fn stage1_root_skill_md_is_discovered() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path().join("my-repo");
+        fs::create_dir_all(&root).expect("mkdir root");
+        fs::write(root.join("SKILL.md"), "# root skill").expect("write");
+
+        let skills = discover_skills(&root).expect("discover");
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].name, "my-repo");
+        assert_eq!(skills[0].path, root);
+        assert_eq!(skills[0].tier, Tier::Curated);
+    }
+
+    #[test]
+    fn stage1_short_circuits_stage2() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path().join("mono");
+        fs::create_dir_all(&root).expect("mkdir");
+        fs::write(root.join("SKILL.md"), "# root skill").expect("write root SKILL.md");
+        make_skill_at(&root, "skills/inner");
+
+        let skills = discover_skills(&root).expect("discover");
+        assert_eq!(skills.len(), 1, "stage 1 must short-circuit");
+        assert_eq!(skills[0].name, "mono");
+    }
+
+    #[test]
+    fn nested_layout_under_canonical_skills_dir() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_skill_at(tmp.path(), "skills/typescript/coding");
+        make_skill_at(tmp.path(), "skills/rust/coding");
+
+        let skills = discover_skills(tmp.path()).expect("discover");
+        let mut names: Vec<_> = skills.iter().map(|s| s.name.as_str()).collect();
+        names.sort();
+        assert_eq!(names, vec!["rust/coding", "typescript/coding"]);
+        for s in &skills {
+            assert_eq!(s.tier, Tier::Curated);
+        }
+    }
+
+    #[test]
+    fn nested_layout_under_curated_tier() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_skill_at(tmp.path(), "skills/.curated/group/leaf");
+
+        let skills = discover_skills(tmp.path()).expect("discover");
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].name, "group/leaf");
+        assert_eq!(skills[0].tier, Tier::Curated);
+    }
+
+    #[test]
+    fn backend_fallback_dir_finds_skills_when_canonical_empty() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_skill_at(tmp.path(), ".claude/skills/foo");
+
+        let skills = discover_skills(tmp.path()).expect("discover");
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].name, "foo");
+        assert_eq!(skills[0].tier, Tier::Curated);
+    }
+
+    #[test]
+    fn backend_fallback_supports_nested_layout() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_skill_at(tmp.path(), ".codex/skills/typescript/coding");
+
+        let skills = discover_skills(tmp.path()).expect("discover");
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].name, "typescript/coding");
+    }
+
+    #[test]
+    fn backend_fallback_silenced_when_canonical_has_skills() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let canonical = make_skill_at(tmp.path(), "skills/foo");
+        make_skill_at(tmp.path(), ".claude/skills/foo");
+
+        let skills = discover_skills(tmp.path()).expect("discover");
+        assert_eq!(skills.len(), 1, "fallback must be silenced when canonical yields skills");
+        assert_eq!(skills[0].path, canonical);
+    }
+
+    #[test]
+    fn multiple_backend_dirs_can_each_contribute() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_skill_at(tmp.path(), ".claude/skills/alpha");
+        make_skill_at(tmp.path(), ".codex/skills/beta");
+
+        let skills = discover_skills(tmp.path()).expect("discover");
+        let mut names: Vec<_> = skills.iter().map(|s| s.name.as_str()).collect();
+        names.sort();
+        assert_eq!(names, vec!["alpha", "beta"]);
+    }
+
+    #[test]
+    fn skip_dirs_not_recursed() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_skill_at(tmp.path(), "skills/node_modules/junk");
+        make_skill_at(tmp.path(), "skills/target/junk");
+        make_skill_at(tmp.path(), "skills/real");
+
+        let skills = discover_skills(tmp.path()).expect("discover");
+        let names: Vec<_> = skills.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, vec!["real"]);
+    }
+
+    #[test]
+    fn internal_flag_parsed_from_frontmatter() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_skill_with_frontmatter(
+            tmp.path(),
+            "skills/secret",
+            "name: secret\ndescription: hidden\ninternal: true",
+        );
+
+        let skills = discover_skills(tmp.path()).expect("discover");
+        assert_eq!(skills.len(), 1);
+        assert!(skills[0].internal, "internal: true should be detected");
+    }
+
+    #[test]
+    fn internal_flag_defaults_false() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_skill_at(tmp.path(), "skills/public");
+
+        let skills = discover_skills(tmp.path()).expect("discover");
+        assert_eq!(skills.len(), 1);
+        assert!(!skills[0].internal);
+    }
+
+    #[test]
+    fn skill_does_not_recurse_into_itself() {
+        // A SKILL.md at skills/foo/ should not also pick up skills/foo/sub/SKILL.md
+        // as a separate skill — skills cannot nest.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_skill_at(tmp.path(), "skills/foo");
+        make_skill_at(tmp.path(), "skills/foo/sub");
+
+        let skills = discover_skills(tmp.path()).expect("discover");
+        let names: Vec<_> = skills.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, vec!["foo"]);
+    }
+
+    #[test]
+    fn nested_identity_strips_priority_prefix_correctly() {
+        // Same leaf name under different parents → distinct identities,
+        // no collision.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_skill_at(tmp.path(), "skills/python/coding");
+        make_skill_at(tmp.path(), "skills/rust/coding");
+
+        let skills = discover_skills(tmp.path()).expect("discover");
+        let mut names: Vec<_> = skills.iter().map(|s| s.name.as_str()).collect();
+        names.sort();
+        assert_eq!(names, vec!["python/coding", "rust/coding"]);
     }
 }

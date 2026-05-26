@@ -164,6 +164,7 @@ mod tests {
             name: name.to_string(),
             path: std::path::PathBuf::from(name),
             tier,
+            internal: false,
         }
     }
 
