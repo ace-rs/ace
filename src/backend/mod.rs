@@ -338,7 +338,8 @@ pub(super) fn parse_status_array(json: &str) -> Vec<McpStatus> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Kind, Registry, FEATURE_NESTED_SKILLS};
+    use super::{Backend, Kind, Registry, FEATURE_NESTED_SKILLS};
+    use std::collections::HashMap;
 
     #[test]
     fn features_per_kind() {
@@ -367,5 +368,27 @@ mod tests {
         assert_eq!(flaude.kind, Kind::Flaude);
 
         assert!(registry.lookup("unknown").is_none());
+    }
+
+    #[test]
+    fn custom_backend_inherits_kind_features() {
+        // `[[backends]] name = "my-codex" kind = "codex"` must inherit
+        // FEATURE_NESTED_SKILLS via Backend::features → Kind::features.
+        // Pins the delegator at Backend::features against silent regression.
+        let custom = Backend {
+            name: "my-codex".to_string(),
+            kind: Kind::Codex,
+            cmd: vec!["custom-codex".to_string()],
+            env: HashMap::new(),
+        };
+        assert_eq!(custom.features(), FEATURE_NESTED_SKILLS);
+
+        let custom_flat = Backend {
+            name: "my-claude".to_string(),
+            kind: Kind::Claude,
+            cmd: vec!["custom-claude".to_string()],
+            env: HashMap::new(),
+        };
+        assert_eq!(custom_flat.features(), 0);
     }
 }

@@ -84,6 +84,20 @@ else:
 Sanitize still applies to every emitted path segment regardless of branch — that's a
 filesystem/render concern, not a flatten concern.
 
+On the flatten branch, after sanitize the resolved `skillName` is additionally rejected
+(warn-and-drop) when it would escape the skills dir, shadow a dotfile, or exceed
+filesystem limits:
+
+- contains `/` (would synthesize a fake nested layout on a flat backend) or `\` (path
+  separator on Windows)
+- equals `.` or `..` (refers to the skills dir or its parent)
+- starts with `.` (would shadow a real dotfile like `.gitignore`/`.env`)
+- exceeds 255 bytes (per-component filesystem cap)
+
+Imported skills aren't user-controlled, so ACE handles hostile frontmatter at the emit
+boundary rather than asking for an upstream rename. Identity-path slashes are legitimate
+on the nested branch and never reach this check.
+
 The `skillName` rule for the flatten branch matches `vercel-labs/skills`
 `src/installer.ts:247`. The collision policy below applies only on the flatten branch;
 nested emit cannot collide because identity paths are unique by construction in school

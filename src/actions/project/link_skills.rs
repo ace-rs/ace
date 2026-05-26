@@ -242,6 +242,17 @@ where
             ));
             continue;
         }
+        if let Some(reason) = unsafe_flatten_name(&link_name) {
+            // Frontmatter-driven path components on the flatten branch are a
+            // traversal/spoof vector. Imported skills aren't user-controlled,
+            // so warn-and-drop at the emit boundary rather than ask for an
+            // upstream edit. Identity-path slashes are handled on the nested
+            // branch and never reach here.
+            warnings.push(format!(
+                "skill `{identity}` produces backend name `{link_name}` ({reason}); dropping",
+            ));
+            continue;
+        }
         if let Some((_, winner_identity)) = by_link.get(&link_name) {
             warnings.push(format!(
                 "backend-name collision at `{link_name}`: `{winner_identity}` wins over \
@@ -267,6 +278,38 @@ where
 /// returns the whole identity; for nested returns the leaf.
 fn basename_of(identity: &str) -> &str {
     identity.rsplit('/').next().unwrap_or(identity)
+}
+
+/// Reject backend-name strings that would escape the project skills dir
+/// or synthesize a fake nested layout. Returns a short reason for the
+/// warning message; `None` means safe to emit on the flatten branch.
+///
+/// Caller-side guarantees: `name` is non-empty and already sanitized via
+/// `sanitize::for_emit` (control + bidi-override chars dropped). This
+/// function adds the path-traversal layer on top.
+fn unsafe_flatten_name(name: &str) -> Option<&'static str> {
+    // 255 bytes is the per-component cap on most filesystems (ext4, APFS,
+    // NTFS); reject earlier so the failure is visible at the emit boundary
+    // rather than mid-reconcile.
+    if name.len() > 255 {
+        return Some("name exceeds 255 bytes");
+    }
+    if name == "." || name == ".." {
+        return Some("dot-segment");
+    }
+    if name.starts_with('.') {
+        // Leading-dot names would shadow real dotfiles in the backend skills
+        // dir (`.gitignore`, `.env`, etc.). Legitimate skills have no reason
+        // to be hidden; this is a low-cost defense against dotfile poisoning.
+        return Some("leading-dot name would shadow a dotfile");
+    }
+    if name.contains('/') {
+        return Some("slash would synthesize a nested layout on a flat backend");
+    }
+    if name.contains('\\') {
+        return Some("backslash is a path separator on some platforms");
+    }
+    None
 }
 
 #[derive(Debug)]
@@ -900,6 +943,114 @@ mod tests {
     }
 
     #[test]
+    fn mixed_depth_routes_per_skill() {
+        // Depth 3 (≤ MAX_SKILL_DEPTH) emits nested; depth 6 falls through
+        // to flatten as leaf — same emit, per-skill router.
+        let skills = [
+            included_skill("a/b/c", "/s/a/b/c", None),
+            included_skill("a/b/c/d/e/f", "/s/a/b/c/d/e/f", None),
+        ];
+        let (mut desired, _) = build_desired(skills.iter(), FEATURE_NESTED_SKILLS);
+        desired.sort_by(|a, b| a.name.cmp(&b.name));
+        assert_eq!(desired.len(), 2);
+        assert_eq!(desired[0].name, "a/b/c");
+        assert_eq!(desired[0].target, PathBuf::from("/s/a/b/c"));
+        assert_eq!(desired[1].name, "f");
+        assert_eq!(desired[1].target, PathBuf::from("/s/a/b/c/d/e/f"));
+    }
+
+    #[test]
+    fn slash_in_frontmatter_name_on_flatten_warns_and_drops() {
+        // Third-party skill frontmatter `name: "foo/bar"` would synthesize a
+        // fake nested layout on a flat backend. We can't ask users to edit
+        // imported skills, so warn-and-drop at the emit boundary.
+        let skills = [included_skill("foo", "/s/foo", Some("foo/bar"))];
+        let (desired, warnings) = build_desired(skills.iter(), 0);
+        assert!(desired.is_empty(), "skill should be dropped on flatten branch");
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("foo"));
+        assert!(warnings[0].contains('/'));
+    }
+
+    #[test]
+    fn path_traversal_in_frontmatter_name_dropped() {
+        // Classic ../.. escape attempt via imported skill frontmatter.
+        // Caught by the slash check; pinned here against future refactors.
+        let skills = [included_skill("foo", "/s/foo", Some("../../etc/passwd"))];
+        let (desired, warnings) = build_desired(skills.iter(), 0);
+        assert!(desired.is_empty());
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("foo"));
+    }
+
+    #[test]
+    fn dot_segment_frontmatter_name_dropped() {
+        // Bare `.` and `..` bypass the slash check but still traverse:
+        // `<skills>/.` is the dir itself; `<skills>/..` is the parent.
+        for spoof in [".", ".."] {
+            let skills = [included_skill("foo", "/s/foo", Some(spoof))];
+            let (desired, warnings) = build_desired(skills.iter(), 0);
+            assert!(desired.is_empty(), "{spoof:?} should be dropped");
+            assert_eq!(warnings.len(), 1);
+            assert!(warnings[0].contains("dot-segment"), "warning was: {}", warnings[0]);
+        }
+    }
+
+    #[test]
+    fn absolute_path_frontmatter_name_dropped() {
+        // Leading-slash absolute path → caught by slash check, but pin it
+        // explicitly so the intent survives if checks are reordered.
+        let skills = [included_skill("foo", "/s/foo", Some("/etc/passwd"))];
+        let (desired, warnings) = build_desired(skills.iter(), 0);
+        assert!(desired.is_empty());
+        assert!(warnings[0].contains("/etc/passwd"));
+    }
+
+    #[test]
+    fn leading_dot_frontmatter_name_dropped() {
+        // `.gitignore`, `.env`, etc. — would shadow real dotfiles in the
+        // backend skills dir. Drop defensively.
+        for spoof in [".gitignore", ".env", ".ssh", ".hidden"] {
+            let skills = [included_skill("foo", "/s/foo", Some(spoof))];
+            let (desired, warnings) = build_desired(skills.iter(), 0);
+            assert!(desired.is_empty(), "{spoof:?} should be dropped");
+            assert!(warnings[0].contains("leading-dot"), "warning was: {}", warnings[0]);
+        }
+    }
+
+    #[test]
+    fn oversized_frontmatter_name_dropped() {
+        // Filesystem per-component cap is 255 bytes; reject earlier.
+        let huge = "a".repeat(300);
+        let skills = [included_skill("foo", "/s/foo", Some(&huge))];
+        let (desired, warnings) = build_desired(skills.iter(), 0);
+        assert!(desired.is_empty());
+        assert!(warnings[0].contains("255"), "warning was: {}", warnings[0]);
+    }
+
+    #[test]
+    fn backslash_in_frontmatter_name_dropped() {
+        // Backslash is a legal filename char on unix but a path separator
+        // on Windows. Reject defensively — symbol with no legitimate use
+        // in a flat-backend skill name.
+        let skills = [included_skill("foo", "/s/foo", Some("foo\\bar"))];
+        let (desired, warnings) = build_desired(skills.iter(), 0);
+        assert!(desired.is_empty());
+        assert!(warnings[0].contains("backslash"), "warning was: {}", warnings[0]);
+    }
+
+    #[test]
+    fn slash_in_identity_on_nested_branch_is_legitimate() {
+        // Identity-path `/` is the whole point of the nested branch; only
+        // frontmatter-driven slash on the flatten branch is the threat.
+        let skills = [included_skill("typescript/coding", "/s/typescript/coding", None)];
+        let (desired, warnings) = build_desired(skills.iter(), FEATURE_NESTED_SKILLS);
+        assert_eq!(desired.len(), 1);
+        assert_eq!(desired[0].name, "typescript/coding");
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
     fn frontmatter_name_ignored_on_nested_branch() {
         // The nested branch emits at identity path; frontmatter `name`
         // only matters on the flatten branch.
@@ -936,6 +1087,42 @@ mod tests {
         assert!(is_symlink(&link), "expected nested symlink at {link:?}");
         let resolved = std::fs::canonicalize(&link).expect("canonicalize");
         assert_eq!(resolved, std::fs::canonicalize(&nested_target).expect("target"));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn reconcile_repoints_existing_nested_link() {
+        // Seed a managed symlink at a nested path → reconcile with same
+        // name + new target → assert Repoint re-pointed via the
+        // create_dir_all(parent) path, with the parent dir intact.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path();
+        let school_skills = root.join("school").join("skills");
+        let old_target = school_skills.join("typescript").join("coding");
+        let new_target = school_skills.join("typescript").join("coding-v2");
+        std::fs::create_dir_all(&old_target).expect("old target");
+        std::fs::create_dir_all(&new_target).expect("new target");
+
+        let project_skills = root.join("proj").join("skills");
+        std::fs::create_dir_all(project_skills.join("typescript")).expect("proj nested");
+        std::os::unix::fs::symlink(&old_target, project_skills.join("typescript").join("coding"))
+            .expect("seed managed link");
+
+        let desired = vec![DesiredLink {
+            name: "typescript/coding".to_string(),
+            target: new_target.clone(),
+        }];
+        reconcile(&school_skills, &school_skills, &project_skills, &desired)
+            .expect("reconcile");
+
+        let link = project_skills.join("typescript").join("coding");
+        assert!(is_symlink(&link), "link should still exist");
+        let resolved = std::fs::canonicalize(&link).expect("canonicalize");
+        assert_eq!(resolved, std::fs::canonicalize(&new_target).expect("target"));
+        assert!(
+            project_skills.join("typescript").is_dir(),
+            "parent dir should remain intact",
+        );
     }
 
     #[test]
