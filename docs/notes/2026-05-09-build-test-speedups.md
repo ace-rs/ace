@@ -49,12 +49,10 @@ is independently measurable.
    output, surfaces ordering flakes more clearly. Worth adopting just for the
    output, particularly given the existing `git::tests::ls_remote_tags_local_repo`
    ordering flake.
-2. **Add `[profile.test]`** to `Cargo.toml`:
-   ```toml
-   [profile.test]
-   debug = "line-tables-only"
-   ```
-   Real link-time savings on integration test binaries (each is its own crate).
+2. ~~**Add `[profile.test]`** to `Cargo.toml`~~ — landed 2026-05-27.
+   Cold `cargo test --no-run` after `cargo clean`: 21.45s → 17.14s (~20%).
+   Warm `cargo test` runtime unchanged (~9–10s, within noise). 729 tests
+   still pass.
 
 ### Tier 2
 
