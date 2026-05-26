@@ -553,7 +553,7 @@ mod tests {
 
     #[test]
     fn flat_identity_link_name_equals_basename() {
-        let skills = vec![included_skill("rust-coding", "/s/rust-coding", None)];
+        let skills = [included_skill("rust-coding", "/s/rust-coding", None)];
         let (desired, warnings) = build_desired(skills.iter());
         assert_eq!(desired.len(), 1);
         assert_eq!(desired[0].name, "rust-coding");
@@ -563,14 +563,14 @@ mod tests {
     #[test]
     fn nested_identity_link_name_uses_leaf() {
         // <school>/skills/typescript/coding/ → backend link `coding`.
-        let skills = vec![included_skill("typescript/coding", "/s/typescript/coding", None)];
+        let skills = [included_skill("typescript/coding", "/s/typescript/coding", None)];
         let (desired, _) = build_desired(skills.iter());
         assert_eq!(desired[0].name, "coding");
     }
 
     #[test]
     fn frontmatter_name_overrides_basename() {
-        let skills = vec![included_skill(
+        let skills = [included_skill(
             "typescript/coding",
             "/s/typescript/coding",
             Some("ts-coding"),
@@ -583,7 +583,7 @@ mod tests {
     fn collision_drops_loser_alphabetically() {
         // Two nested skills produce the same leaf `coding`. Alphabetical
         // by source path: `python/coding` wins over `typescript/coding`.
-        let skills = vec![
+        let skills = [
             included_skill("typescript/coding", "/s/typescript/coding", None),
             included_skill("python/coding", "/s/python/coding", None),
         ];
@@ -601,7 +601,7 @@ mod tests {
     fn frontmatter_name_can_resolve_a_collision() {
         // typescript/coding has frontmatter `ts-coding`; collision
         // averted because the link names differ.
-        let skills = vec![
+        let skills = [
             included_skill("typescript/coding", "/s/typescript/coding", Some("ts-coding")),
             included_skill("python/coding", "/s/python/coding", None),
         ];
@@ -616,7 +616,7 @@ mod tests {
     #[test]
     fn bidi_chars_stripped_from_link_name() {
         // U+202E in frontmatter name → sanitized out at emit boundary.
-        let skills = vec![included_skill(
+        let skills = [included_skill(
             "foo",
             "/s/foo",
             Some("good\u{202E}.exe"),
@@ -628,7 +628,7 @@ mod tests {
     #[test]
     fn empty_after_sanitize_warns_and_drops() {
         // A name composed entirely of control chars sanitizes to empty.
-        let skills = vec![included_skill("foo", "/s/foo", Some("\x07\x1b"))];
+        let skills = [included_skill("foo", "/s/foo", Some("\x07\x1b"))];
         let (desired, warnings) = build_desired(skills.iter());
         assert!(desired.is_empty());
         assert_eq!(warnings.len(), 1);

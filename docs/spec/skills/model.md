@@ -167,12 +167,23 @@ backend SKILL.md — compromises whatever consumes that surface.
 
 ### Approach
 
-**Unicode-class whitelist, not denylist.** Allowed general categories: `L*` (letters),
-`M*` (marks), `N*` (numbers), `P*` (punctuation), `S*` (symbols), `Zs` (space
-separator). Drop everything in `C*` (control) plus the bidi-override block.
+**Operational denylist matching the whitelist's intent.** Conceptually we want a
+Unicode-class allow list: `L*` (letters), `M*` (marks), `N*` (numbers), `P*`
+(punctuation), `S*` (symbols), `Zs` (space separator). Drop everything in `C*`
+(control) plus the bidi-override block.
 
-Denylisting known-bad terminal escapes is a losing race against novel exploits. A
-Unicode-class allow gives a defensible, principled boundary.
+The operational implementation is the equivalent denylist: drop `Cc` (control,
+via `char::is_control`) plus the bidi-override block (U+202A–U+202E,
+U+2066–U+2069). The other `C*` subcategories — `Cn` (unassigned), `Co` (private
+use), `Cs` (surrogate) — don't appear in well-formed Rust strings and aren't
+the threat model. `Cf` format chars outside the bidi-override range (e.g.
+zero-width joiners) are preserved for legitimate glyph composition; the spec's
+strict-allow language was aspirational and would have required a
+`unicode-general-category` dependency for ~0 added safety. The operational rule
+gives the same security envelope without the dep.
+
+Denylisting known-bad terminal escapes by name is what we explicitly avoid —
+the threat model is general-category-shaped, not signature-shaped.
 
 ### Path components from foreign repos
 

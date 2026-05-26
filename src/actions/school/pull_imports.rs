@@ -21,6 +21,8 @@ pub enum PullImportsError {
     Config(#[from] config::ConfigError),
     #[error("{0}")]
     Git(#[from] crate::git::GitError),
+    #[error("import decl #{index} for `{decl_source}` has no `skills` or `skill` field")]
+    InvalidDecl { decl_source: String, index: usize },
 }
 
 pub enum PullImportsResult {
@@ -31,6 +33,7 @@ pub enum PullImportsResult {
     },
 }
 
+
 impl PullImports<'_> {
     pub fn run(&self, ace: &mut Ace) -> Result<PullImportsResult, PullImportsError> {
         let toml_path = self.school_root.join("school.toml");
@@ -38,6 +41,17 @@ impl PullImports<'_> {
 
         if school.imports.is_empty() {
             return Ok(PullImportsResult::NoImports);
+        }
+
+        // Spec: docs/spec/skills/selection.md § Canonical shape —
+        // "A declaration with neither `skills` nor `skill` is an error."
+        for (i, decl) in school.imports.iter().enumerate() {
+            if !decl.has_patterns() {
+                return Err(PullImportsError::InvalidDecl {
+                    decl_source: decl.source.clone(),
+                    index: i,
+                });
+            }
         }
 
         let skills_dir = self.school_root.join("skills");

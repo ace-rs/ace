@@ -17,8 +17,6 @@ pub fn is_glob(pattern: &str) -> bool {
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum GlobError {
-    #[error("`**` is not supported; use a single `*`")]
-    DoubleStar,
     #[error("`?` is not a supported wildcard")]
     Question,
     #[error("character classes (`[...]`) are not supported")]
@@ -29,14 +27,13 @@ pub enum GlobError {
 
 /// Reject patterns whose syntax goes beyond what `glob_match` supports.
 ///
-/// Accepts only literals and `*`. Rejects `**`, `?`, and `[...]` so CLI
-/// users see a clear error at entry instead of a silent zero-match later.
+/// Accepts literals and `*`. `**` is accepted and treated as `*` (per
+/// `docs/spec/skills/selection.md` § Glob patterns table — "**: same as
+/// *, accepted, not special"). `?` and `[...]` are rejected so CLI users
+/// see a clear error at entry instead of a silent zero-match later.
 pub fn validate(pattern: &str) -> Result<(), GlobError> {
     if pattern.is_empty() {
         return Err(GlobError::Empty);
-    }
-    if pattern.contains("**") {
-        return Err(GlobError::DoubleStar);
     }
     if pattern.contains('?') {
         return Err(GlobError::Question);
@@ -162,10 +159,13 @@ mod tests {
     }
 
     #[test]
-    fn validate_rejects_double_star() {
-        assert_eq!(validate("**"), Err(GlobError::DoubleStar));
-        assert_eq!(validate("a**b"), Err(GlobError::DoubleStar));
-        assert_eq!(validate("**/foo"), Err(GlobError::DoubleStar));
+    fn validate_accepts_double_star() {
+        // Per docs/spec/skills/selection.md: `**` is accepted, treated
+        // as `*`. The matcher already handles consecutive stars; the
+        // validator no longer rejects.
+        assert_eq!(validate("**"), Ok(()));
+        assert_eq!(validate("a**b"), Ok(()));
+        assert_eq!(validate("**/foo"), Ok(()));
     }
 
     #[test]

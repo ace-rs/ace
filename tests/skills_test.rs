@@ -151,15 +151,18 @@ fn skills_user_scope_writes_to_user_ace_toml() {
 
 #[test]
 fn skills_invalid_pattern_is_rejected() {
+    // `?` is still rejected; `**` is now spec-accepted (treated as `*`)
+    // per docs/spec/skills/selection.md § Glob patterns. Use `?` here
+    // to keep covering the validator's reject path.
     let env = TestEnv::new();
     setup_school_with_skills(&env, "ts11", &["alpha"]);
 
     let output = env.ace()
-        .args(["skills", "include", "**"])
+        .args(["skills", "include", "alpha?"])
         .output()
-        .expect("ace skills include **");
-    assert!(!output.status.success(), "should reject `**`");
+        .expect("ace skills include alpha?");
+    assert!(!output.status.success(), "should reject `?`");
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("invalid pattern") || stderr.contains("**"),
+    assert!(stderr.contains("invalid pattern") || stderr.contains("?"),
         "expected validation error in stderr:\n{stderr}");
 }

@@ -187,17 +187,37 @@ impl Skills<Discovered> {
         let local = tree.local.as_ref().unwrap_or(&default);
         let resolution = resolver::resolve_skills(&names, user, project, local);
 
-        let mut by_name: HashMap<String, (PathBuf, Tier, bool, Option<String>, Option<String>)> = self
+        // Pull each resolved name back together with its discovery
+        // payload. A small local struct beats a 5-tuple for readability
+        // (and silences the clippy::type_complexity lint).
+        struct Carry {
+            path: PathBuf,
+            tier: Tier,
+            internal: bool,
+            frontmatter_name: Option<String>,
+            source: Option<String>,
+        }
+        let mut by_name: HashMap<String, Carry> = self
             .items
             .into_iter()
-            .map(|s| (s.name, (s.path, s.tier, s.internal, s.frontmatter_name, s.source)))
+            .map(|s| (
+                s.name,
+                Carry {
+                    path: s.path,
+                    tier: s.tier,
+                    internal: s.internal,
+                    frontmatter_name: s.frontmatter_name,
+                    source: s.source,
+                },
+            ))
             .collect();
 
         let items = resolution
             .skills
             .into_iter()
             .filter_map(|r| {
-                let (path, tier, internal, frontmatter_name, source) = by_name.remove(&r.name)?;
+                let Carry { path, tier, internal, frontmatter_name, source } =
+                    by_name.remove(&r.name)?;
                 Some(Skill {
                     name: r.name,
                     path,

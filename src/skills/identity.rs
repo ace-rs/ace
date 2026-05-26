@@ -4,11 +4,13 @@
 //! (see `docs/spec/skills/model.md` § Type-safety invariant and
 //! `docs/spec/skills/selection.md` § Match handle):
 //!
-//! - [`SkillId`] — a path-shaped identity produced **only** by the discovery
-//!   layer after the prefix-strip rule has been applied. External code
-//!   cannot synthesize a `SkillId` from a raw string. The constructor is
-//!   `pub(in crate::skills)`, so only modules inside `crate::skills` can
-//!   build one — discovery is the entry point.
+//! - [`SkillId`] — a path-shaped identity produced **only** by the
+//!   discovery layer after the prefix-strip rule has been applied.
+//!   Constructors are `pub(crate)` — visible across the binary so
+//!   typed test fixtures in `crate::actions::*` can construct fakes,
+//!   but unreachable from any hypothetical external library consumer.
+//!   Discovery is the only production entry point; the looser
+//!   visibility is a convention, not a hard wall.
 //!
 //! - [`MatchHandle`] — a user-supplied pattern: CLI `--skill`, `[[imports]]`
 //!   `skills`, `ace.toml` `{skills, include_skills, exclude_skills}`. Built
@@ -294,8 +296,10 @@ mod tests {
         assert!(MatchHandle::new("*").is_ok());
         assert!(MatchHandle::new("typescript/coding").is_ok());
         assert!(MatchHandle::new("rust-*").is_ok());
+        // Per docs/spec/skills/selection.md, `**` is accepted (treated
+        // as `*` by the matcher) — no longer rejected.
+        assert!(MatchHandle::new("**").is_ok());
         assert!(MatchHandle::new("").is_err());
-        assert!(MatchHandle::new("**").is_err());
         assert!(MatchHandle::new("foo?").is_err());
         assert!(MatchHandle::new("[abc]").is_err());
     }

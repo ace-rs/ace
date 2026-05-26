@@ -84,7 +84,14 @@ impl AddImport<'_> {
         let toml_path = self.school_root.join("school.toml");
         let mut school = config::school_toml::load(&toml_path)?;
 
-        let entry = school.imports.iter_mut().find(|i| i.skill == skill.id.as_str());
+        // Match against the canonical plural set, not just the singular
+        // alias — a decl using the new `skills = [...]` form must still
+        // be detected as a duplicate for the same skill.
+        let needle = skill.id.as_str();
+        let entry = school
+            .imports
+            .iter_mut()
+            .find(|i| i.patterns().contains(&needle));
         match entry {
             Some(existing) => existing.source = self.source.to_string(),
             None => school.imports.push(ImportDecl {
