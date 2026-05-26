@@ -213,6 +213,55 @@ noisy skill, lose the warning. We deliberately do not add a consumer-side equiva
 of per-import `exclude_skills`; the goal is to keep pressure on the school maintainer
 to express intent upstream.
 
+## Provenance
+
+Cross-source merge requires ACE to know, for every resolved skill, which
+`[[imports]]` declaration produced it and which other declarations would also
+have matched it absent exclusion. Provenance powers:
+
+- **Collision warnings** that name both winner and loser source paths.
+- **`exclude_skills` suppression** — when a would-be collider sits in the
+  consuming declaration's `exclude_skills`, the warning is suppressed because
+  the maintainer signalled intent.
+- **Future `ace school explain <skill>`** — once authors ask for it, the
+  resolver shape supports a per-skill trace analogous to `ace explain <skill>`
+  at the project layer (see [configuration.md → CLI](../configuration.md#cli)).
+  It lists each `[[imports]]` declaration considered, what matched, what was
+  filtered, and which source won.
+
+### Resolver shape
+
+Import resolution mirrors the project-side resolver: discovered skills go
+through pattern matching, filtering, and merge to produce a per-skill verdict
+with a trace. The two resolvers are **siblings, not the same resolver**:
+
+- **Project resolver** layers `ace.toml` fields (`skills` / `include_skills` /
+  `exclude_skills`) across user / project / local scopes. See
+  [configuration.md § Skills Selection](../configuration.md#skills-selection).
+- **Imports resolver** merges across `[[imports]]` declarations within one
+  `school.toml`. See this spec.
+
+They share infrastructure where the shapes line up: the discovered → decided
+typestate progression, the trace-of-steps concept, the per-skill diagnostics
+bag, the glob and filter utilities. They diverge where the layers differ — the
+project resolver's scope taxonomy (user / project / local / school / override)
+does not apply at the school level, where the imports resolver tracks
+`[[imports]]` declaration index and source name instead. Verdict variants are
+layer-specific: the project resolver decides included or excluded; the imports
+resolver also distinguishes "lost to a higher-precedence declaration" to power
+collision warnings.
+
+### Type-safety invariant
+
+Provenance is attached at the point a skill is selected from its source's
+discovered set. Code outside the import-resolution layer cannot synthesize
+provenance, nor consume a resolved skill without it — the invariant is
+type-encoded.
+
+Project-resolved and import-resolved skills are distinct kinds. A
+project-resolved skill cannot be substituted where an import-resolved skill is
+expected, and vice versa — the wrong-layer mix-up is unrepresentable.
+
 ## Out of scope
 
 - **Lockfile / pinning** — see

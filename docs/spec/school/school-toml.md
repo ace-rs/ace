@@ -179,6 +179,25 @@ The singular `skill = "<pattern>"` is accepted as an alias for
 Per [CLAUDE.md § Backcompat](../../../CLAUDE.md), the singular form is not removed in
 any minor / patch release.
 
+#### Migration
+
+ACE never proactively rewrites a `school.toml` that the user did not cause to be
+saved. Singular `skill = ...` keys persist on disk until a write happens.
+
+Writes happen during `ace import`, `ace school pull`, `ace school add-import`,
+and any other `ace school <subcmd>` that updates `school.toml`. The writer
+always emits the canonical plural form, so the whole file normalizes on the
+next save — incremental modernization for free as authors continue using their
+school.
+
+`ace school fix` is the explicit one-shot — see
+[school-commands.md → `ace school fix`](school-commands.md#ace-school-fix).
+Schema-only re-serialize: read `school.toml`, write it back in canonical form.
+No network, no import resolution. Idempotent.
+
+ACE may emit a non-blocking hint when it reads singular keys, so the author
+knows the next write will normalize.
+
 #### Examples
 
 Single skill:

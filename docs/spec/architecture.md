@@ -35,6 +35,10 @@ with per-field provenance. Infallible past parse.
   carrying a `Source { User, Project, Local, School, Override, Default }`.
 - `resolve_skills(...) -> Resolution` — the skills-specific resolver (lives here for
   shared `Source` vocabulary; consumed by `skills/`).
+- `resolve_imports(decls, sources) -> ImportResolution` — school-side imports resolver.
+  Mirrors `resolve_skills` shape; produces an import-decided set with per-skill
+  provenance for collision warnings. See
+  [skills/selection.md § Provenance](skills/selection.md#provenance).
 
 The resolver does not look up the backend, read school.toml beyond what
 `Tree::load_school` already loaded, or touch the filesystem.
@@ -56,7 +60,9 @@ Each binding is independent and fallible. No shared trait — operations differ 
   walks a source directory per the cascade in
   [`skills/model.md`](skills/model.md#discovery-cascade); `.resolve(&Tree)` produces the
   resolved set with diagnostics. `SkillError` wraps discovery I/O plus upstream
-  `ConfigError` / `SchoolError`.
+  `ConfigError` / `SchoolError`. A sibling state `Skill<Imported>` carries the
+  school-side imports resolver verdict (parallel to `Skill<Decided>` for the project
+  layer).
 
 Each binding's error type carries `#[from] ConfigError` so tree-load failures bubble
 through without forced double-handling.
