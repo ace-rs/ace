@@ -157,32 +157,49 @@ last in Phase 2 — until the in-process moves land the file split still
 maps to "what gets exercised by this suite" and is useful for narrow
 `cargo test --test <name>` runs.
 
-## Phase 2 slice order (revised)
+## Phase 2 progress
 
-Original Slice A (lazy `canonicalize()`) dropped per audit. Re-numbered:
+Landed 2026-05-27 (commits dc85d18, 8dafe6f):
 
-1. **Slice A — school_init in-process (canary).** Convert all 9 tests using
-   the chosen `PullImports` isolation strategy. Validates the pattern on
-   the largest single hotspot. Measure suite wall-clock + `school_init_test`
-   isolated runtime before/after.
-2. **Slice B — `config_test.rs` in-process.** 44 tests, all spawn-only,
-   pure config parsing. Easy second slice; validates the pattern on a wider
-   tests-per-file ratio.
-3. **Slice C — small-spawn suites in-process.** `exec`, `explain`, `fmt`,
-   `learn`, `mcp`, `school_update`, `setup`, `skills`, `upgrade`, `yolo`.
-   Group into 2–3 PRs by topic; not one giant PR.
-4. **Slice D — `setup_remote_school`-backed suites in-process where possible.**
-   `diff`, `import`, `link`, `pull`, `update`. Each test classified at slice
-   time: `in-process candidate` (most assertions are about resulting files
-   in the project dir) vs `must spawn` (assertions about stdout/stderr/exit
-   wiring).
-5. **Slice E — shared `setup_remote_school` template.** For the remaining
-   real-fixture callers (post-Slice D), implement `OnceLock`-backed bare
-   origin + cache + per-test `cp -r`. Verify no mutation cross-pollution.
-6. **Slice F — binary consolidation.** Apply the regrouping table above.
-   Measure cold-build wall-clock for the final comparison.
+- **Shared `ace-rs/school` import-cache template.** Process-wide OnceLock
+  template seeded into each `school_init` test's XDG_CACHE_HOME. ace's
+  PullImports finds the cache locally; no real clone. school_init suite
+  ~10s → ~1.5s wall (6×).
+- **Shared `setup_remote_school` per-specifier template.** Origin+cache
+  built once per binary per specifier; per-test cost is a pair of
+  `cp -R`s + one `git remote set-url`. Heavy fixture suites
+  (pull/update/import/diff/link) modestly faster.
+- **Local-redirect for clone-failure tests.** `redirect_to_invalid()`
+  helper points `https://github.com/<source>.git` at a local nonexistent
+  path so `git clone` fails in ~20ms instead of network-timeout. Applied
+  to 8 tests across `import_test`/`school_update_test`.
 
-Stop-gate between every slice for re-measurement and review.
+**Warm `cargo test` wall-clock**: 9.4s → 6.8s (~28%). 729 tests pass.
+
+## Open slices not pursued
+
+Re-evaluated mid-phase. The remaining ideas need bigger refactors or
+hit diminishing returns versus the user's "minimal and elegant"
+constraint:
+
+- **In-process action-struct tests** (`Init`, `Config`, etc.). Requires
+  threading paths through `Ace` instead of reading `XDG_*` env, since
+  parallel in-process tests share global env. Substantial production
+  refactor — not done here.
+- **Per-binary parallelism.** Cargo runs integration binaries serially.
+  `cargo-nextest` would parallelize but the user ruled it out.
+- **Binary consolidation** (20 → ~6 binaries). Mostly worth doing
+  alongside an in-process conversion; not on its own.
+- **Lazy `canonicalize()` in `TestEnv::new()`.** Dropped at audit time —
+  symlink-equality tests on macOS depend on it; cost is sub-millisecond.
+
+## Floor
+
+Remaining slow tests (0.5–0.8s) are doing legitimate multi-step ace
+flows. The structural floor is ~50–150ms per `ace` subprocess invocation
+× ~200 invocations across the suite, scheduled in parallel within each
+binary and serially across binaries. Further wins require either an
+in-process path or fewer subprocess hops.
 
 ## Out of scope (re-stated)
 
