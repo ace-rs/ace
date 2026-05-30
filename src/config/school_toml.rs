@@ -32,13 +32,15 @@ pub struct SchoolToml {
 /// § `[[imports]]` schema.
 ///
 /// Two pattern fields coexist for backcompat:
-/// - `skills: Vec<String>` is the canonical plural form; writers always
-///   emit this when populated.
+/// - `skills: Vec<String>` is the canonical plural form — the only form
+///   ever emitted.
 /// - `skill: String` is the historical singular alias. Liberally accepted
-///   on deserialize; round-tripped on serialize if non-empty.
+///   on deserialize, then folded into `skills` by [`ImportDecl::normalize`]
+///   (called from [`load`]) and never re-emitted. Interior code only ever
+///   sees the plural form.
 ///
 /// At least one of the two must be non-empty for the decl to select
-/// anything. Use [`ImportDecl::patterns`] to read the merged set.
+/// anything.
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ImportDecl {
@@ -46,8 +48,9 @@ pub struct ImportDecl {
     /// Canonical plural form. Empty by default.
     #[serde(skip_serializing_if = "is_empty_vec")]
     pub skills: Vec<String>,
-    /// Backcompat singular alias. Empty by default.
-    #[serde(skip_serializing_if = "is_empty_str")]
+    /// Backcompat singular alias. Accepted on load, normalized into
+    /// `skills`, never emitted.
+    #[serde(skip_serializing)]
     pub skill: String,
     /// Patterns to subtract from the matched set. Also doubles as the
     /// collision-warning suppressor — when a sibling import would collide,
@@ -66,21 +69,24 @@ pub struct ImportDecl {
 }
 
 impl ImportDecl {
-    /// Union of `skills` (canonical) and `skill` (alias) in declaration
-    /// order: `skills` entries first, then the singular alias if it
-    /// wasn't already covered.
-    pub fn patterns(&self) -> Vec<&str> {
-        let mut out: Vec<&str> = self.skills.iter().map(String::as_str).collect();
-        if !self.skill.is_empty() && !out.contains(&self.skill.as_str()) {
-            out.push(self.skill.as_str());
+    /// Fold the singular `skill` alias into the canonical `skills` list
+    /// (skills-first order, deduped) and clear it. Called from [`load`] so
+    /// interior code only ever sees the plural form.
+    fn normalize(&mut self) {
+        let alias = std::mem::take(&mut self.skill);
+        if !alias.is_empty() && !self.skills.iter().any(|s| s == &alias) {
+            self.skills.push(alias);
         }
-        out
+    }
+
+    /// Match handles selecting which skills to import.
+    pub fn patterns(&self) -> Vec<&str> {
+        self.skills.iter().map(String::as_str).collect()
     }
 
     /// True when the decl selects no skills at all (caller must error).
-    #[allow(dead_code)] // used at imports-resolver slice
     pub fn has_patterns(&self) -> bool {
-        !self.skills.is_empty() || !self.skill.is_empty()
+        !self.skills.is_empty()
     }
 }
 
@@ -108,7 +114,10 @@ pub struct Project {
 
 pub fn load(path: &Path) -> Result<SchoolToml, ConfigError> {
     let content = std::fs::read_to_string(path)?;
-    let config: SchoolToml = toml::from_str(&content)?;
+    let mut config: SchoolToml = toml::from_str(&content)?;
+    for decl in &mut config.imports {
+        decl.normalize();
+    }
     Ok(config)
 }
 
@@ -148,7 +157,7 @@ mod tests {
     #[test]
     fn import_decl_omits_false_flags_when_serialized() {
         let decl = ImportDecl {
-            skill: "foo".to_string(),
+            skills: vec!["foo".to_string()],
             source: "owner/repo".to_string(),
             ..ImportDecl::default()
         };
@@ -164,7 +173,7 @@ mod tests {
     #[test]
     fn import_decl_writes_true_flags() {
         let decl = ImportDecl {
-            skill: "*".to_string(),
+            skills: vec!["*".to_string()],
             source: "owner/repo".to_string(),
             include_experimental: true,
             ..ImportDecl::default()
@@ -198,50 +207,60 @@ mod tests {
     }
 
     #[test]
-    fn import_decl_singular_alone_round_trips() {
-        // Old schools written before the plural existed must continue to
-        // round-trip the singular form (CLAUDE.md backcompat contract).
-        let toml_str = "source = \"owner/repo\"\nskill = \"foo\"\n";
-        let decl: ImportDecl = toml::from_str(toml_str).expect("parse");
-        let out = toml::to_string(&decl).expect("serialize");
-        assert!(out.contains("skill = \"foo\""), "singular form lost on round-trip: {out}");
-        assert!(!out.contains("skills = "), "should not emit empty plural: {out}");
+    fn import_decl_normalize_folds_singular_into_skills() {
+        let mut decl = ImportDecl {
+            source: "owner/repo".to_string(),
+            skill: "foo".to_string(),
+            ..ImportDecl::default()
+        };
+        decl.normalize();
+        assert_eq!(decl.skills, vec!["foo".to_string()]);
+        assert!(decl.skill.is_empty(), "singular alias cleared after normalize");
     }
 
     #[test]
-    fn import_decl_patterns_merges_both_forms() {
-        // Mixed-mode decl (both `skill` and `skills` set) is liberally
-        // accepted. Patterns returns the union.
-        let toml_str = "source = \"owner/repo\"\nskill = \"foo\"\nskills = [\"bar\", \"baz\"]\n";
-        let decl: ImportDecl = toml::from_str(toml_str).expect("parse");
-        assert_eq!(decl.patterns(), vec!["bar", "baz", "foo"]);
-    }
+    fn import_decl_normalize_appends_and_dedups() {
+        // skills-first order; singular appended only when absent.
+        let mut append = ImportDecl {
+            source: "owner/repo".to_string(),
+            skills: vec!["bar".to_string()],
+            skill: "foo".to_string(),
+            ..ImportDecl::default()
+        };
+        append.normalize();
+        assert_eq!(append.skills, vec!["bar".to_string(), "foo".to_string()]);
+        assert!(append.skill.is_empty());
 
-    #[test]
-    fn import_decl_patterns_dedups_when_singular_present_in_plural() {
-        let decl = ImportDecl {
+        let mut dup = ImportDecl {
             source: "owner/repo".to_string(),
             skills: vec!["foo".to_string(), "bar".to_string()],
             skill: "foo".to_string(),
             ..ImportDecl::default()
         };
-        assert_eq!(decl.patterns(), vec!["foo", "bar"]);
+        dup.normalize();
+        assert_eq!(dup.skills, vec!["foo".to_string(), "bar".to_string()]);
     }
 
     #[test]
-    fn import_decl_has_patterns_reflects_either_field() {
+    fn import_decl_singular_normalized_emits_plural() {
+        // Old schools written with the singular alias rewrite to the plural
+        // form once loaded+normalized — the legacy key is never re-emitted
+        // (pre-1.0 backcompat: normalize on load, drop alias on save).
+        let mut decl: ImportDecl =
+            toml::from_str("source = \"owner/repo\"\nskill = \"foo\"\n").expect("parse");
+        decl.normalize();
+        let out = toml::to_string(&decl).expect("serialize");
+        assert!(out.contains("skills = [\"foo\"]"), "expected plural form: {out}");
+        assert!(!out.contains("skill = "), "singular alias must not be emitted: {out}");
+    }
+
+    #[test]
+    fn import_decl_has_patterns_reflects_skills() {
         let empty = ImportDecl {
             source: "owner/repo".to_string(),
             ..ImportDecl::default()
         };
         assert!(!empty.has_patterns());
-
-        let singular = ImportDecl {
-            source: "owner/repo".to_string(),
-            skill: "foo".to_string(),
-            ..ImportDecl::default()
-        };
-        assert!(singular.has_patterns());
 
         let plural = ImportDecl {
             source: "owner/repo".to_string(),

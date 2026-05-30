@@ -118,9 +118,11 @@ A declaration with neither `skills` nor `skill` is an error.
 ### Backcompat alias
 
 The existing singular `skill = "<pattern>"` is accepted as an alias for
-`skills = ["<pattern>"]`. Liberal accept; writers (`ace import`, `ace school *`) emit
-the plural form. Per [CLAUDE.md § Backcompat](../../../CLAUDE.md), `school.toml` keys
-are a public contract: the singular form is not removed in any minor / patch release.
+`skills = ["<pattern>"]`. Liberal accept; on load it is folded into `skills`
+immediately, so any rewrite (incl. `ace fmt` round-trips) emits the plural
+form and never the legacy key. Per [CLAUDE.md § Backcompat](../../../CLAUDE.md),
+`school.toml` keys are a public contract: the singular form continues to be *accepted*
+in any minor / patch release — only its emission is dropped.
 
 ### Per-skill resolution
 
