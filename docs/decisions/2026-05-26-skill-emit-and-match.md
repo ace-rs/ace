@@ -83,6 +83,14 @@ and resolve compatibility gaps themselves"):
 
 ### Sanitization (Q9)
 
+> **Superseded 2026-05-30** by
+> [`2026-05-30-skill-name-admission-policy.md`](2026-05-30-skill-name-admission-policy.md).
+> The Unicode-class whitelist intent below stands; what changed: the *gate* moves from
+> emit to **discovery** (admit-predicate, not transform), rejected skills are
+> excluded-not-mutated, import hard-refuses, and the "sanitize into written
+> frontmatter" boundary row is dropped (ACE symlinks — it never writes backend
+> frontmatter). Read the new entry for the active policy.
+
 Threat model: malformed or malicious frontmatter containing terminal escape sequences
 (CWE-150), bidi-override chars (U+202A–U+202E, U+2066–U+2069), and other display-spoofing
 payloads. If ACE displays raw `name` /`description` unsanitized, ACE's terminal is
