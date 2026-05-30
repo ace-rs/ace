@@ -32,6 +32,11 @@ the ACE tool.
 - Error enums by layer: `ConfigError` (`src/config/`), action-scoped errors
   (`SetupError`/`PrepareError`/`InitError`/etc. in `src/actions/`), `CmdError`
   (`src/cmd/`). Pure-I/O actions return `std::io::Error` directly.
+- `CmdError` carries a process exit class via `ExitCode` (`exit_code()`,
+  dispatched by `exit_on_err`). Build ad-hoc errors with `CmdError::usage`/
+  `unavailable`/`failed` — the exit class is mandatory at construction; there is
+  no catch-all `Other`. New leaf-error variants must be routed in the matching
+  `*_exit_code` classifier. Contract: `docs/decisions/2026-05-30-exit-codes.md`.
 
 ## Project-Repo vs School-Repo Context
 
