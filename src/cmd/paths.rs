@@ -17,7 +17,7 @@ fn run_inner(ace: &mut Ace, key: Option<&str>) -> Result<(), CmdError> {
     match key {
         Some(k) => {
             let Some(value) = lookup_key(&all, k) else {
-                return Err(CmdError::Other(format!("unknown key: {k}")));
+                return Err(CmdError::usage(format!("unknown key: {k}")));
             };
             ace.data(value);
         }

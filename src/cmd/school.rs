@@ -62,8 +62,8 @@ fn run_validate(ace: &mut Ace) -> Result<(), CmdError> {
             ace.done("school.toml looks good");
             Ok(())
         }
-        1 => Err(CmdError::Other("1 validation issue found".into())),
-        n => Err(CmdError::Other(format!("{n} validation issues found"))),
+        1 => Err(CmdError::failed("1 validation issue found")),
+        n => Err(CmdError::failed(format!("{n} validation issues found"))),
     }
 }
 

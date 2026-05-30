@@ -203,7 +203,7 @@ fn run_reset(ace: &mut Ace, name: Option<String>) -> Result<(), CmdError> {
     };
 
     RemoveMcp{ backend: &backend, names: &names, project_dir: &project_dir }.run(ace)
-        .map_err(CmdError::Other)?;
+        .map_err(CmdError::failed)?;
 
     Ok(())
 }
@@ -219,10 +219,9 @@ fn run_register(ace: &mut Ace, name: String) -> Result<(), CmdError> {
     // want this to work even when the entry is currently excluded).
     let entry = ace.school()?
         .and_then(|s| s.mcp.iter().find(|e| e.name == name).cloned())
-        .ok_or_else(|| CmdError::with_hint(
-            format!("MCP '{name}' not defined in school"),
-            "run `ace mcp`",
-        ))?;
+        .ok_or_else(|| {
+            CmdError::usage(format!("MCP '{name}' not defined in school")).with_hint("run `ace mcp`")
+        })?;
 
     let local_path = ace.require_paths()?.local.clone();
     edit_mcp_config::include(&local_path, &name)?;

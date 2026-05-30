@@ -220,6 +220,28 @@ enum Command {
     Version,
 }
 
+/// Error exit class. Success exits `0` via the normal `main()` return and never
+/// flows through `CmdError`, so there is no `Ok` here. See
+/// `docs/decisions/2026-05-30-exit-codes.md`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ExitCode {
+    Usage,
+    Unavailable,
+    Operational,
+    Cancelled,
+}
+
+impl ExitCode {
+    fn code(self) -> i32 {
+        match self {
+            Self::Usage => 1,
+            Self::Unavailable => 2,
+            Self::Operational => 3,
+            Self::Cancelled => 130,
+        }
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum CmdError {
     #[error("{0}")]
@@ -250,21 +272,48 @@ pub(crate) enum CmdError {
     Git(#[from] GitError),
     #[error("{0}")]
     Prompt(#[from] IoError),
-    #[error("{0}")]
-    Other(String),
+    /// Ad-hoc error built at a call site. Its exit class is mandatory at
+    /// construction (`usage`/`unavailable`/`failed`) — there is no
+    /// un-classified catch-all to reach for.
     #[error("{message}")]
-    OtherHinted { message: String, hints: Vec<String> },
+    Adhoc { message: String, hints: Vec<String>, code: ExitCode },
 }
 
 impl CmdError {
-    /// Construct an ad-hoc error with a single paired recovery hint.
-    pub fn with_hint(message: impl Into<String>, hint: impl Into<String>) -> Self {
-        Self::OtherHinted { message: message.into(), hints: vec![hint.into()] }
+    /// Bad input the user supplied — CLI flags/args or authored config. Exit 1.
+    pub fn usage(message: impl Into<String>) -> Self {
+        Self::adhoc(message, ExitCode::Usage)
     }
 
-    /// Construct an ad-hoc error with multiple recovery hints, rendered in order.
-    pub fn with_hints(message: impl Into<String>, hints: Vec<String>) -> Self {
-        Self::OtherHinted { message: message.into(), hints }
+    /// A required resource or precondition is absent. Exit 2.
+    pub fn unavailable(message: impl Into<String>) -> Self {
+        Self::adhoc(message, ExitCode::Unavailable)
+    }
+
+    /// A valid operation was attempted and failed. Exit 3.
+    pub fn failed(message: impl Into<String>) -> Self {
+        Self::adhoc(message, ExitCode::Operational)
+    }
+
+    fn adhoc(message: impl Into<String>, code: ExitCode) -> Self {
+        Self::Adhoc { message: message.into(), hints: Vec::new(), code }
+    }
+
+    /// Attach a single recovery hint, preserving the error's class.
+    pub fn with_hint(self, hint: impl Into<String>) -> Self {
+        self.with_hints(vec![hint.into()])
+    }
+
+    /// Attach recovery hints, rendered in order, preserving the error's class.
+    pub fn with_hints(self, extra: Vec<String>) -> Self {
+        match self {
+            Self::Adhoc { message, mut hints, code } => {
+                hints.extend(extra);
+                Self::Adhoc { message, hints, code }
+            }
+            // Hints only attach to ad-hoc errors; typed variants carry their own.
+            other => other,
+        }
     }
 
     /// Recovery hints paired with the error. Empty means no known recovery
@@ -272,9 +321,146 @@ impl CmdError {
     pub fn hints(&self) -> Vec<String> {
         match self {
             Self::School(e) => e.hint().map(str::to_string).into_iter().collect(),
-            Self::OtherHinted { hints, .. } => hints.clone(),
+            Self::Adhoc { hints, .. } => hints.clone(),
             _ => Vec::new(),
         }
+    }
+
+    /// Process exit class for this error. Wrapper variants delegate to the
+    /// inner error. See `docs/decisions/2026-05-30-exit-codes.md`.
+    pub fn exit_code(&self) -> ExitCode {
+        match self {
+            Self::Adhoc { code, .. } => *code,
+            Self::Prompt(e) => io_exit_code(e),
+            Self::Io(_) | Self::Git(_) => ExitCode::Operational,
+            Self::Config(e) => config_exit_code(e),
+            Self::Backend(e) => backend_exit_code(e),
+            Self::School(e) => school_exit_code(e),
+            Self::Skill(e) => skill_exit_code(e),
+            Self::Setup(e) => setup_exit_code(e),
+            Self::Learn(e) => learn_exit_code(e),
+            Self::Prepare(e) => prepare_exit_code(e),
+            Self::McpRegister(e) => mcp_register_exit_code(e),
+            Self::Import(e) => add_import_exit_code(e),
+            Self::InitSchool(e) => init_exit_code(e),
+            Self::PullImports(e) => pull_imports_exit_code(e),
+        }
+    }
+}
+
+// -- Exit-class mapping per leaf error. Wrapper variants delegate inward. --
+
+fn io_exit_code(e: &IoError) -> ExitCode {
+    match e {
+        IoError::Cancelled => ExitCode::Cancelled,
+        IoError::Io(_) => ExitCode::Operational,
+    }
+}
+
+fn config_exit_code(e: &ConfigError) -> ExitCode {
+    match e {
+        // Bad content the user authored in a config file.
+        ConfigError::Parse(_)
+        | ConfigError::Encode(_)
+        | ConfigError::TraversalInSource(_)
+        | ConfigError::TraversalInPath(_) => ExitCode::Usage,
+        ConfigError::NoConfig
+        | ConfigError::NoConfigDir
+        | ConfigError::NoCacheDir
+        | ConfigError::NoDataDir => ExitCode::Unavailable,
+        ConfigError::Io(_) => ExitCode::Operational,
+    }
+}
+
+fn backend_exit_code(e: &crate::backend::BackendError) -> ExitCode {
+    use crate::backend::BackendError;
+    match e {
+        BackendError::TreeLoad(c) => config_exit_code(c),
+        BackendError::Unknown(_) => ExitCode::Unavailable,
+        BackendError::Unresolvable(_) | BackendError::KindMismatch { .. } => ExitCode::Usage,
+    }
+}
+
+fn school_exit_code(e: &crate::school::SchoolError) -> ExitCode {
+    use crate::school::SchoolError;
+    match e {
+        SchoolError::TreeLoad(c) => config_exit_code(c),
+        SchoolError::NoSpecifier | SchoolError::NotInitialized => ExitCode::Unavailable,
+    }
+}
+
+fn skill_exit_code(e: &crate::skills::SkillError) -> ExitCode {
+    use crate::skills::SkillError;
+    match e {
+        SkillError::TreeLoad(c) => config_exit_code(c),
+        SkillError::School(s) => school_exit_code(s),
+        SkillError::Discovery(_) => ExitCode::Operational,
+    }
+}
+
+fn setup_exit_code(e: &SetupError) -> ExitCode {
+    match e {
+        SetupError::Config(c) => config_exit_code(c),
+        SetupError::NotInGitRepo => ExitCode::Unavailable,
+        SetupError::AlreadySetUp => ExitCode::Usage,
+    }
+}
+
+fn learn_exit_code(e: &LearnError) -> ExitCode {
+    match e {
+        LearnError::School(s) => school_exit_code(s),
+        LearnError::Skill(s) => skill_exit_code(s),
+        LearnError::Config(c) => config_exit_code(c),
+        LearnError::Backend(b) => backend_exit_code(b),
+        LearnError::Prompt(p) => io_exit_code(p),
+        LearnError::BackendSpawn(_)
+        | LearnError::BackendNonZero { .. }
+        | LearnError::TomlWrite(_) => ExitCode::Operational,
+    }
+}
+
+fn prepare_exit_code(e: &PrepareError) -> ExitCode {
+    match e {
+        PrepareError::Config(c) => config_exit_code(c),
+        PrepareError::Clone(_) | PrepareError::Write(_) => ExitCode::Operational,
+    }
+}
+
+fn mcp_register_exit_code(e: &RegisterMcpError) -> ExitCode {
+    match e {
+        RegisterMcpError::Register(_) => ExitCode::Operational,
+        RegisterMcpError::Io(p) => io_exit_code(p),
+        RegisterMcpError::Config(c) => config_exit_code(c),
+    }
+}
+
+fn add_import_exit_code(e: &AddImportError) -> ExitCode {
+    match e {
+        AddImportError::NoSkills(_) | AddImportError::SkillNotFound(_) => ExitCode::Usage,
+        AddImportError::Config(c) => config_exit_code(c),
+        AddImportError::Clone(_)
+        | AddImportError::Io(_)
+        | AddImportError::RejectedImports { .. } => ExitCode::Operational,
+    }
+}
+
+fn init_exit_code(e: &InitError) -> ExitCode {
+    match e {
+        InitError::NotInGitRepo => ExitCode::Unavailable,
+        InitError::AlreadyExists => ExitCode::Usage,
+        InitError::Config(c) => config_exit_code(c),
+        InitError::Write(_) => ExitCode::Operational,
+        InitError::Pull(p) => pull_imports_exit_code(p),
+    }
+}
+
+fn pull_imports_exit_code(e: &PullImportsError) -> ExitCode {
+    match e {
+        PullImportsError::Config(c) => config_exit_code(c),
+        PullImportsError::InvalidDecl { .. } => ExitCode::Usage,
+        PullImportsError::Io(_)
+        | PullImportsError::Git(_)
+        | PullImportsError::RejectedImports { .. } => ExitCode::Operational,
     }
 }
 
@@ -354,8 +540,8 @@ fn resolve_scope_override(cli: &Cli) -> Result<Option<Scope>, CmdError> {
     match selected.as_slice() {
         [] => Ok(None),
         [scope] => Ok(Some(*scope)),
-        _ => Err(CmdError::Other(
-            "cannot combine multiple scope flags (--user, --project, --local)".to_string(),
+        _ => Err(CmdError::usage(
+            "cannot combine multiple scope flags (--user, --project, --local)",
         )),
     }
 }
@@ -395,9 +581,7 @@ fn resolve_backend_override(cli: &Cli) -> Result<Option<String>, CmdError> {
     match selected.as_slice() {
         [] => Ok(None),
         [backend] => Ok(Some(backend.clone())),
-        _ => Err(CmdError::Other(
-            "cannot combine multiple backend override flags".to_string(),
-        )),
+        _ => Err(CmdError::usage("cannot combine multiple backend override flags")),
     }
 }
 
@@ -405,7 +589,7 @@ fn resolve_trust_override(cli: &Cli) -> Result<Option<Trust>, CmdError> {
     let mut selected: Vec<Trust> = Vec::new();
 
     if let Some(raw) = &cli.trust {
-        selected.push(raw.parse::<Trust>().map_err(CmdError::Other)?);
+        selected.push(raw.parse::<Trust>().map_err(CmdError::usage)?);
     }
     if cli.auto {
         selected.push(Trust::Auto);
@@ -419,8 +603,8 @@ fn resolve_trust_override(cli: &Cli) -> Result<Option<Trust>, CmdError> {
     match selected.as_slice() {
         [] => Ok(None),
         [t] => Ok(Some(*t)),
-        _ => Err(CmdError::Other(
-            "cannot combine multiple trust override flags (--trust, --auto, --yolo)".to_string(),
+        _ => Err(CmdError::usage(
+            "cannot combine multiple trust override flags (--trust, --auto, --yolo)",
         )),
     }
 }
@@ -429,10 +613,10 @@ fn parse_env_overrides(entries: &[String]) -> Result<HashMap<String, String>, Cm
     let mut out = HashMap::new();
     for entry in entries {
         let (key, value) = entry.split_once('=').ok_or_else(|| {
-            CmdError::Other(format!("invalid --env `{entry}` (expected KEY=VAL)"))
+            CmdError::usage(format!("invalid --env `{entry}` (expected KEY=VAL)"))
         })?;
         if key.is_empty() {
-            return Err(CmdError::Other(format!(
+            return Err(CmdError::usage(format!(
                 "invalid --env `{entry}` (expected KEY=VAL)"
             )));
         }
@@ -448,7 +632,7 @@ fn exit_on_err(ace: &mut Ace, result: Result<(), CmdError>) {
         for h in hints {
             ace.hint(&h);
         }
-        std::process::exit(1);
+        std::process::exit(e.exit_code().code());
     }
 }
 
@@ -484,17 +668,15 @@ mod tests {
 
     #[test]
     fn cmd_error_with_hint_carries_single_hint() {
-        let err = CmdError::with_hint("boom", "do the thing");
+        let err = CmdError::failed("boom").with_hint("do the thing");
         assert_eq!(err.to_string(), "boom");
         assert_eq!(err.hints(), vec!["do the thing".to_string()]);
     }
 
     #[test]
     fn cmd_error_with_hints_preserves_order() {
-        let err = CmdError::with_hints(
-            "boom",
-            vec!["first".to_string(), "second".to_string(), "third".to_string()],
-        );
+        let err = CmdError::failed("boom")
+            .with_hints(vec!["first".to_string(), "second".to_string(), "third".to_string()]);
         assert_eq!(
             err.hints(),
             vec!["first".to_string(), "second".to_string(), "third".to_string()]
@@ -502,9 +684,80 @@ mod tests {
     }
 
     #[test]
-    fn cmd_error_other_has_no_hint() {
-        let err = CmdError::Other("plain failure".to_string());
+    fn cmd_error_adhoc_has_no_hint_by_default() {
+        let err = CmdError::failed("plain failure");
         assert!(err.hints().is_empty());
+    }
+
+    // -- exit-code contract (docs/decisions/2026-05-30-exit-codes.md) --
+
+    fn git_err() -> GitError {
+        GitError::Exec { cmd: "status".into(), source: std::io::Error::other("boom") }
+    }
+
+    #[test]
+    fn adhoc_constructors_carry_their_class() {
+        assert_eq!(CmdError::usage("x").exit_code(), ExitCode::Usage);
+        assert_eq!(CmdError::unavailable("x").exit_code(), ExitCode::Unavailable);
+        assert_eq!(CmdError::failed("x").exit_code(), ExitCode::Operational);
+    }
+
+    #[test]
+    fn hints_preserve_the_class() {
+        let err = CmdError::unavailable("no school").with_hint("run ace setup");
+        assert_eq!(err.exit_code(), ExitCode::Unavailable);
+    }
+
+    #[test]
+    fn cancellation_maps_to_130() {
+        assert_eq!(CmdError::Prompt(IoError::Cancelled).exit_code(), ExitCode::Cancelled);
+        assert_eq!(ExitCode::Cancelled.code(), 130);
+    }
+
+    #[test]
+    fn preconditions_map_to_unavailable() {
+        use crate::school::SchoolError;
+        assert_eq!(CmdError::School(SchoolError::NoSpecifier).exit_code(), ExitCode::Unavailable);
+        assert_eq!(CmdError::School(SchoolError::NotInitialized).exit_code(), ExitCode::Unavailable);
+        assert_eq!(
+            CmdError::Backend(crate::backend::BackendError::Unknown("x".into())).exit_code(),
+            ExitCode::Unavailable
+        );
+        assert_eq!(CmdError::Setup(SetupError::NotInGitRepo).exit_code(), ExitCode::Unavailable);
+        assert_eq!(CmdError::Config(ConfigError::NoConfig).exit_code(), ExitCode::Unavailable);
+    }
+
+    #[test]
+    fn operations_map_to_operational() {
+        assert_eq!(CmdError::Git(git_err()).exit_code(), ExitCode::Operational);
+        assert_eq!(
+            CmdError::Prepare(PrepareError::Clone("nope".into())).exit_code(),
+            ExitCode::Operational
+        );
+    }
+
+    #[test]
+    fn authored_config_defects_map_to_usage() {
+        // Decision 3: malformed config the user wrote is their Usage error.
+        let parse = toml::from_str::<toml::Table>("x = ").expect_err("bad toml");
+        assert_eq!(CmdError::Config(ConfigError::Parse(parse)).exit_code(), ExitCode::Usage);
+        assert_eq!(
+            CmdError::Config(ConfigError::TraversalInPath("..".into())).exit_code(),
+            ExitCode::Usage
+        );
+        assert_eq!(
+            CmdError::Backend(crate::backend::BackendError::Unresolvable("x".into())).exit_code(),
+            ExitCode::Usage
+        );
+    }
+
+    #[test]
+    fn wrapper_variants_delegate_to_inner() {
+        // Setup wraps Config; the inner code wins, not a fixed outer one.
+        assert_eq!(
+            CmdError::Setup(SetupError::Config(ConfigError::NoConfig)).exit_code(),
+            ExitCode::Unavailable
+        );
     }
 
     #[test]

@@ -84,7 +84,7 @@ fn mutate_op(ace: &mut Ace, op: Op) -> Result<(), CmdError> {
 
 fn validate_all(patterns: &[String]) -> Result<Vec<String>, CmdError> {
     for p in patterns {
-        glob::validate(p).map_err(|e| CmdError::Other(format!("invalid pattern `{p}`: {e}")))?;
+        glob::validate(p).map_err(|e| CmdError::usage(format!("invalid pattern `{p}`: {e}")))?;
     }
     Ok(patterns.to_vec())
 }

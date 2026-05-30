@@ -77,13 +77,13 @@ fn show(ace: &Ace) -> Result<(), CmdError> {
     };
 
     let output = toml::to_string_pretty(&effective)
-        .map_err(|e| CmdError::Other(e.to_string()))?;
+        .map_err(|e| CmdError::failed(e.to_string()))?;
     print!("{output}");
 
     let school_output = ace.school()?
         .map(toml::to_string_pretty)
         .transpose()
-        .map_err(|e| CmdError::Other(e.to_string()))?;
+        .map_err(|e| CmdError::failed(e.to_string()))?;
     if let Some(s) = school_output {
         println!("\n# school.toml");
         print!("{s}");
@@ -95,7 +95,7 @@ fn show(ace: &Ace) -> Result<(), CmdError> {
 /// `ace config get <key>` — print resolved value for a single key.
 fn get(ace: &mut Ace, key: &str) -> Result<(), CmdError> {
     let config_key = ConfigKey::parse(key)
-        .ok_or_else(|| CmdError::Other(format!("unknown config key: {key}")))?;
+        .ok_or_else(|| CmdError::usage(format!("unknown config key: {key}")))?;
 
     let r = ace.require_resolved()?;
 
@@ -118,7 +118,7 @@ fn get(ace: &mut Ace, key: &str) -> Result<(), CmdError> {
 /// `ace config set <key> <value>` — write a field to the appropriate layer.
 fn set(ace: &mut Ace, key: &str, value: &str) -> Result<(), CmdError> {
     let config_key = ConfigKey::parse(key)
-        .ok_or_else(|| CmdError::Other(format!("unknown config key: {key}")))?;
+        .ok_or_else(|| CmdError::usage(format!("unknown config key: {key}")))?;
 
     let scope = ace.scope_override()
         .unwrap_or_else(|| Scope::default_for_key(config_key.scope_key()));
@@ -139,7 +139,7 @@ fn set(ace: &mut Ace, key: &str, value: &str) -> Result<(), CmdError> {
             if !known.contains(value) {
                 let mut listed: Vec<&str> = known.iter().map(String::as_str).collect();
                 listed.sort();
-                return Err(CmdError::Other(format!(
+                return Err(CmdError::usage(format!(
                     "unknown backend: {value} (known: {})",
                     listed.join(", "),
                 )));
@@ -180,7 +180,7 @@ fn explain(ace: &Ace, key: Option<&str>) -> Result<(), CmdError> {
     let parsed = key
         .map(|k| {
             ConfigKey::parse(k)
-                .ok_or_else(|| CmdError::Other(format!("unknown config key: {k}")))
+                .ok_or_else(|| CmdError::usage(format!("unknown config key: {k}")))
         })
         .transpose()?;
 
@@ -306,7 +306,7 @@ fn explain(ace: &Ace, key: Option<&str>) -> Result<(), CmdError> {
         // A specific key was requested but produced nothing. Only env.* can hit
         // this path (unknown env name); other keys always exist with defaults.
         if let Some(k) = key {
-            return Err(CmdError::Other(format!("unknown config key: {k}")));
+            return Err(CmdError::usage(format!("unknown config key: {k}")));
         }
     }
 
@@ -411,14 +411,14 @@ fn known_backend_names(tree: &Tree) -> HashSet<String> {
 }
 
 fn parse_trust(value: &str) -> Result<Trust, CmdError> {
-    value.parse::<Trust>().map_err(CmdError::Other)
+    value.parse::<Trust>().map_err(CmdError::usage)
 }
 
 fn parse_bool(value: &str) -> Result<bool, CmdError> {
     match value {
         "true" => Ok(true),
         "false" => Ok(false),
-        _ => Err(CmdError::Other(format!(
+        _ => Err(CmdError::usage(format!(
             "expected true or false, got: {value}"
         ))),
     }

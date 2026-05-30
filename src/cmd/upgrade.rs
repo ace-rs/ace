@@ -40,17 +40,17 @@ fn run_inner(
 
     let binary = ureq::get(&url)
         .call()
-        .map_err(|e| super::CmdError::Other(format!("download failed: {e}")))?
+        .map_err(|e| super::CmdError::failed(format!("download failed: {e}")))?
         .body_mut()
         .read_to_vec()
-        .map_err(|e| super::CmdError::Other(format!("download read failed: {e}")))?;
+        .map_err(|e| super::CmdError::failed(format!("download read failed: {e}")))?;
 
     let exe_path = std::env::current_exe()
-        .map_err(|e| super::CmdError::Other(format!("cannot locate binary: {e}")))?;
+        .map_err(|e| super::CmdError::failed(format!("cannot locate binary: {e}")))?;
 
     if replace::is_homebrew_managed(&exe_path) {
-        return Err(super::CmdError::Other(
-            "this binary is managed by Homebrew — run `brew upgrade ace` instead".to_string(),
+        return Err(super::CmdError::usage(
+            "this binary is managed by Homebrew — run `brew upgrade ace` instead",
         ));
     }
 
@@ -72,16 +72,16 @@ fn resolve_target_version(
 ) -> Result<semver::Version, super::CmdError> {
     if let Some(v) = version {
         if !force {
-            return Err(super::CmdError::Other("specific version requires --force".to_string()));
+            return Err(super::CmdError::usage("specific version requires --force"));
         }
         return semver::Version::parse(v)
-            .map_err(|e| super::CmdError::Other(format!("invalid version: {e}")));
+            .map_err(|e| super::CmdError::usage(format!("invalid version: {e}")));
     }
 
     if !silent { ace.progress("checking for updates..."); }
 
     let latest = check::fetch_latest_version()
-        .map_err(super::CmdError::Other)?;
+        .map_err(super::CmdError::failed)?;
 
     if let Some(marker) = check::cache_marker_path() {
         let _ = check::write_cache_marker(&marker, &latest);

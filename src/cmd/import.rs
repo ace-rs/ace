@@ -33,8 +33,8 @@ fn run_inner(
     include_system: bool,
 ) -> Result<(), CmdError> {
     if (include_experimental || include_system) && !all {
-        return Err(CmdError::Other(
-            "--include-experimental / --include-system require --all".to_string(),
+        return Err(CmdError::usage(
+            "--include-experimental / --include-system require --all",
         ));
     }
 

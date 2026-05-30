@@ -26,7 +26,7 @@ fn run_inner(ace: &mut Ace) -> Result<(), CmdError> {
     let backend_features = backend.features();
     let tree = ace.require_tree()?.clone();
     let prepared = link_skills::prepare(&school_paths.root, &tree, backend_features)
-        .map_err(|e| CmdError::Other(format!("scan school skills: {e}")))?;
+        .map_err(|e| CmdError::failed(format!("scan school skills: {e}")))?;
     let ace_data_root = ace_data_dir()?;
 
     let result = Link {
