@@ -6,7 +6,7 @@
 
 use std::fmt::Write;
 
-use crate::skills::{Entry, Decided, Skill, Skills, Source};
+use crate::skills::{Decided, Entry, Skill, Skills, Source};
 
 /// Tab-separated table with header. Matches `ace paths` style for machine parsing.
 pub fn render_table(skills: &Skills<Decided>, show_excluded: bool) -> String {
@@ -15,7 +15,7 @@ pub fn render_table(skills: &Skills<Decided>, show_excluded: bool) -> String {
         let _ = writeln!(
             out,
             "{}\t{}\t{}\t{}",
-            skill.name,
+            crate::skills::name::render(&skill.name),
             skill.tier.label(),
             skill.state.decision.label(),
             reason_for(skill),
@@ -28,19 +28,16 @@ pub fn render_table(skills: &Skills<Decided>, show_excluded: bool) -> String {
 pub fn render_names(skills: &Skills<Decided>, show_excluded: bool) -> String {
     let mut out = String::new();
     for skill in visible(skills, show_excluded) {
-        out.push_str(&skill.name);
+        out.push_str(crate::skills::name::render(&skill.name).as_ref());
         out.push('\n');
     }
     out
 }
 
-fn visible(
-    skills: &Skills<Decided>,
-    show_excluded: bool,
-) -> impl Iterator<Item = &Skill<Decided>> {
-    skills
-        .iter()
-        .filter(move |s| show_excluded || s.state.decision == crate::skills::Decision::Included)
+fn visible(skills: &Skills<Decided>, show_excluded: bool) -> impl Iterator<Item = &Skill<Decided>> {
+    skills.iter().filter(move |s| {
+        show_excluded || matches!(s.state.decision, crate::skills::Decision::Included)
+    })
 }
 
 /// Human-readable summary of the last trace contribution. Used in the REASON
@@ -56,7 +53,12 @@ fn reason_for(skill: &Skill<Decided>) -> String {
 fn format_reason(e: &Entry) -> String {
     match e.source {
         Source::Default => "implicit base (no skills filter)".to_string(),
-        _ => format!("{}: {} \"{}\"", e.source.label(), e.field.label(), e.pattern),
+        _ => format!(
+            "{}: {} \"{}\"",
+            e.source.label(),
+            e.field.label(),
+            crate::skills::name::render(&e.pattern),
+        ),
     }
 }
 
@@ -65,8 +67,8 @@ mod tests {
     use super::*;
     use crate::config::ace_toml::AceToml;
     use crate::config::tree::Tree;
-    use crate::skills::discover::{DiscoveredSkill, Tier};
     use crate::skills::Discovered;
+    use crate::skills::discover::{DiscoveredSkill, Tier};
     use std::path::PathBuf;
 
     fn ace(skills: &[&str], inc: &[&str], exc: &[&str]) -> AceToml {
@@ -109,11 +111,18 @@ mod tests {
     fn default_hides_excluded() {
         let s = resolve(
             all_curated(&["a", "b", "rust-coding", "rust-fmt"]),
-            &tree(AceToml::default(), ace(&["rust-*"], &[], &[]), AceToml::default()),
+            &tree(
+                AceToml::default(),
+                ace(&["rust-*"], &[], &[]),
+                AceToml::default(),
+            ),
         );
         let out = render_table(&s, false);
         let lines: Vec<&str> = out.lines().skip(1).collect();
-        let names: Vec<&str> = lines.iter().map(|l| l.split('\t').next().unwrap()).collect();
+        let names: Vec<&str> = lines
+            .iter()
+            .map(|l| l.split('\t').next().unwrap())
+            .collect();
         assert_eq!(names, vec!["rust-coding", "rust-fmt"]);
         assert!(lines.iter().all(|l| l.contains("\tactive\t")));
     }
@@ -122,7 +131,11 @@ mod tests {
     fn show_all_includes_excluded() {
         let s = resolve(
             all_curated(&["a", "b", "rust-coding", "rust-fmt"]),
-            &tree(AceToml::default(), ace(&["rust-*"], &[], &[]), AceToml::default()),
+            &tree(
+                AceToml::default(),
+                ace(&["rust-*"], &[], &[]),
+                AceToml::default(),
+            ),
         );
         let out = render_table(&s, true);
         let data_lines: Vec<&str> = out.lines().skip(1).collect();
@@ -159,7 +172,10 @@ mod tests {
             ),
         );
         let out = render_table(&s, false);
-        let line = out.lines().find(|l| l.starts_with("rust-coding\t")).expect("rc");
+        let line = out
+            .lines()
+            .find(|l| l.starts_with("rust-coding\t"))
+            .expect("rc");
         assert!(line.contains("user"));
         assert!(line.contains("include_skills"));
         assert!(line.contains("rust-*"));
@@ -183,7 +199,10 @@ mod tests {
             discovered("b", Tier::Experimental),
             discovered("c", Tier::System),
         ];
-        let s = resolve(disc, &tree(AceToml::default(), AceToml::default(), AceToml::default()));
+        let s = resolve(
+            disc,
+            &tree(AceToml::default(), AceToml::default(), AceToml::default()),
+        );
         let out = render_table(&s, false);
         let tier_for = |name: &str| -> String {
             out.lines()
@@ -203,7 +222,11 @@ mod tests {
     fn excluded_row_reports_removal_reason() {
         let s = resolve(
             all_curated(&["a", "b"]),
-            &tree(AceToml::default(), ace(&[], &[], &["a"]), AceToml::default()),
+            &tree(
+                AceToml::default(),
+                ace(&[], &[], &["a"]),
+                AceToml::default(),
+            ),
         );
         let out = render_table(&s, true);
         let line = out.lines().find(|l| l.starts_with("a\t")).expect("a");
@@ -240,7 +263,10 @@ mod tests {
 
     #[test]
     fn render_table_empty_just_header() {
-        let s = resolve(vec![], &tree(AceToml::default(), AceToml::default(), AceToml::default()));
+        let s = resolve(
+            vec![],
+            &tree(AceToml::default(), AceToml::default(), AceToml::default()),
+        );
         let out = render_table(&s, false);
         assert_eq!(out, "NAME\tTIER\tSTATUS\tREASON\n");
     }

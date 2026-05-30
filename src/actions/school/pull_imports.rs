@@ -3,9 +3,7 @@ use std::path::Path;
 
 use crate::ace::Ace;
 use crate::config;
-use crate::resolver::{
-    DiscoveryBySource, ImportVerdict, ImportsResolution, resolve_imports,
-};
+use crate::resolver::{DiscoveryBySource, ImportVerdict, ImportsResolution, resolve_imports};
 use crate::skills::discover::{DiscoveredSkill, discover_skills};
 use crate::skills::{Discovered, Skills};
 
@@ -23,6 +21,8 @@ pub enum PullImportsError {
     Git(#[from] crate::git::GitError),
     #[error("import decl #{index} for `{decl_source}` has no `skills` or `skill` field")]
     InvalidDecl { decl_source: String, index: usize },
+    #[error("skipped {count} inadmissible imported skill(s)")]
+    RejectedImports { count: usize },
 }
 
 pub enum PullImportsResult {
@@ -32,7 +32,6 @@ pub enum PullImportsResult {
         count: usize,
     },
 }
-
 
 impl PullImports<'_> {
     pub fn run(&self, ace: &mut Ace) -> Result<PullImportsResult, PullImportsError> {
@@ -95,11 +94,24 @@ impl PullImports<'_> {
         // its source's discovered record so we keep the full SKILL.md
         // payload, tier, etc.
         let mut accumulator: Skills<Discovered> = Skills::default();
+        let mut rejected_count = 0;
         for resolved in resolution.included() {
             let Some(disc) = discovery.get(&resolved.source) else {
                 continue;
             };
             if let Some(d) = disc.iter().find(|d| d.id.as_str() == resolved.identity) {
+                if let Err(reason) = crate::skills::name::admissible_skill(
+                    d.id.as_str(),
+                    d.frontmatter_name.as_deref(),
+                ) {
+                    rejected_count += 1;
+                    ace.warn(&format!(
+                        "skipping inadmissible skill `{}` from {}: {reason}",
+                        crate::skills::name::render(d.id.as_str()),
+                        resolved.source,
+                    ));
+                    continue;
+                }
                 let batch = Skills::<Discovered>::from_discovered_with_source(
                     std::slice::from_ref(d),
                     &resolved.source,
@@ -114,10 +126,14 @@ impl PullImports<'_> {
 
         let count = changes.len();
         ace.done(&crate::skills::format_pull_summary(&changes));
+        if rejected_count > 0 {
+            return Err(PullImportsError::RejectedImports {
+                count: rejected_count,
+            });
+        }
         Ok(PullImportsResult::Updated { count })
     }
 }
-
 
 /// Emit per-resolver warnings into the user-visible surface. Collision
 /// messages attribute the problem to the school per

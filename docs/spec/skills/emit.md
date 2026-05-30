@@ -21,9 +21,9 @@ the **identity path** — already prefix-stripped at the source side, so no
 
 ### Writes are additive / overwriting
 
-`ace school pull` only adds or overwrites under `<school>/skills/`. ACE never
-deletes anything. Stale imports (skills dropped from `[[imports]]` resolution) persist in
-the working tree until the school author cleans them up manually (`git rm`, `rm -rf`). No
+`ace school pull` only adds or overwrites under `<school>/skills/`. ACE never deletes
+anything. Stale imports (skills dropped from `[[imports]]` resolution) persist in the
+working tree until the school author cleans them up manually (`git rm`, `rm -rf`). No
 manifest, no scan-and-diff, intentionally dumb.
 
 Rationale, two prongs:
@@ -77,21 +77,22 @@ if (features & FEATURE_NESTED_SKILLS) && segments(identity) <= MAX_SKILL_DEPTH:
     write to <backend>/skills/<identity>/        # verbatim, no flatten, no collision check
 else:
     # flatten emit
-    skillName = sanitize(skill.name || basename(skill.identity))
+    skillName = skill.name || basename(skill.identity)
+    structural_check(skillName)
     write to <backend>/skills/<skillName>/
 ```
 
-Sanitize still applies to every emitted path segment regardless of branch — that's a
-filesystem/render concern, not a flatten concern.
+Structural validation applies to every emitted path segment regardless of branch — that's
+a filesystem concern, not a flatten concern. Character admission already happened during
+discovery / resolution.
 
-On the flatten branch, after sanitize the resolved `skillName` is additionally rejected
-(warn-and-drop) when it would escape the skills dir, shadow a dotfile, or exceed
-filesystem limits:
+On the flatten branch, the resolved `skillName` is rejected (warn-and-drop) when it would
+escape the skills dir, shadow a dotfile, or exceed filesystem limits:
 
 - contains `/` (would synthesize a fake nested layout on a flat backend) or `\` (path
   separator on Windows)
 - equals `.` or `..` (refers to the skills dir or its parent)
-- starts with `.` (would shadow a real dotfile like `.gitignore`/`.env`)
+- starts with `.` (would shadow a real dotfile like `.gitignore` /`.env`)
 - exceeds 255 bytes (per-component filesystem cap)
 
 Imported skills aren't user-controlled, so ACE handles hostile frontmatter at the emit
@@ -153,21 +154,23 @@ read the skill, adapt, and resolve compatibility gaps themselves"):
   frontmatter; no gating, no warnings, no inspection. LLMs read it and adapt; ACE stays
   out.
 
-## Sanitization at write boundaries
+## Admission at write boundaries
 
-Per [model.md § Sanitization](model.md#sanitization), the boundary policy is:
+Per [model.md § Name Admission](model.md#name-admission), the boundary policy is:
 
 - **School-storage writes** (`ace school pull`) — preserve verbatim.
-- **Backend-emit writes** — sanitize the link name. ACE emits per-skill symlinks rather
-  than materialized SKILL.md copies (see [sync.md § Symlinks over copies](sync.md#symlinks-over-copies)),
-  so the only string ACE synthesizes at the backend boundary is the directory name of
-  each symlink. That name passes through the Unicode-class filter; SKILL.md content is
-  the school's, preserved verbatim from upstream.
-- **ACE's own display** — sanitize on render.
+- **Backend-emit writes** — structurally validate the link name. ACE emits per-skill
+  symlinks rather than materialized SKILL.md copies (see
+  [sync.md § Symlinks over copies](sync.md#symlinks-over-copies)), so the only string ACE
+  synthesizes at the backend boundary is the directory name of each symlink. Discovery has
+  already rejected inadmissible character content; emit keeps only the filesystem
+  backstop.
+- **ACE's own display** — render untrusted text through `SanitizedString`.
 
-The Unicode-class whitelist (allow `L*`, `M*`, `N*`, `P*`, `S*`, `Zs`; drop `C*` plus
-bidi-override) applies at the link-name boundary. Path components are imported as-is
-with a warning; identity is a path, and post-hoc segment rewriting would break refs.
+The Unicode-class whitelist (allow `L*`, `M*`, `N*`, `P*`, `S*`, `Zs`; reject `C*`, `Zl`,
+and `Zp`) applies at discovery admission. Emit does not mutate characters. It only rejects
+structurally unsafe path components (slash on the flatten branch, backslash, dot-segments,
+leading-dot names, NUL, and overlong components).
 
 ### Type-safety invariant
 
@@ -175,14 +178,13 @@ Writes under `<school>/skills/…` and link names under `<backend>/skills/…` a
 
 - Validated identities (from the discovery layer per
   [model.md](model.md#type-safety-invariant)), and
-- Sanitized strings (carrying the sanitization marker per
-  [model.md](model.md#type-safety-invariant-1)) for any value ACE synthesizes at the
-  backend boundary — currently the link directory name. School storage takes raw bytes
-  by design (passthrough preserves the school author's responsibility and protects ACE
-  consumers downstream).
+- Structurally checked path components for any value ACE synthesizes at the backend
+  boundary — currently the link directory name. School storage takes raw bytes by design
+  (passthrough preserves the school author's responsibility and protects ACE consumers
+  downstream through discovery admission).
 
-The boundary type carries the proof. Code cannot write an unverified path or an
-unsanitized link name to the backend by construction.
+The boundary type carries the proof. Code cannot write an unverified path or a
+structurally unsafe link name to the backend by construction.
 
 ## Out of scope
 

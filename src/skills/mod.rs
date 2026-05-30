@@ -11,13 +11,13 @@ use std::path::{Path, PathBuf};
 
 pub mod discover;
 pub mod identity;
-pub mod sanitize;
+pub mod name;
 
 #[allow(unused_imports)]
 pub use identity::{MatchHandle, SkillId};
 
-use crate::config::tree::Tree;
 use crate::config::ConfigError;
+use crate::config::tree::Tree;
 use crate::resolver;
 use crate::school::SchoolError;
 
@@ -62,7 +62,6 @@ pub struct SkillChange {
     pub kind: ChangeKind,
 }
 
-
 /// Render a pull summary. Both `ace pull` and `ace school pull` emit through
 /// this helper so the user-visible shape stays identical:
 ///
@@ -106,7 +105,8 @@ pub struct Skill<S> {
     pub internal: bool,
     /// Frontmatter `name:` value, when present. Used at the backend emit
     /// boundary: link name = `frontmatter_name || basename(identity)`,
-    /// sanitized. See `docs/spec/skills/emit.md` § Backend emit rule.
+    /// structurally checked. Character admission happens during resolution.
+    /// See `docs/spec/skills/emit.md` § Backend emit rule.
     pub frontmatter_name: Option<String>,
     /// Origin label (`owner/repo`) when the skill was pulled from an import
     /// source. `None` for skills discovered directly from a school's own
@@ -133,7 +133,9 @@ impl Skills<Discovered> {
     /// Walk the school's `skills/` tree. See `discover::discover_skills` for
     /// the tier priority order.
     pub fn discover(school_root: &Path) -> io::Result<Self> {
-        Ok(Self::from_discovered(&discover::discover_skills(school_root)?))
+        Ok(Self::from_discovered(&discover::discover_skills(
+            school_root,
+        )?))
     }
 
     pub fn from_discovered(discovered: &[DiscoveredSkill]) -> Self {
@@ -160,7 +162,10 @@ impl Skills<Discovered> {
                 state: Discovered,
             })
             .collect();
-        Self { items, diagnostics: Diagnostics::default() }
+        Self {
+            items,
+            diagnostics: Diagnostics::default(),
+        }
     }
 
     /// Fold `other` into `self`, last-wins. Skills in `other` whose name
@@ -200,24 +205,40 @@ impl Skills<Discovered> {
         let mut by_name: HashMap<String, Carry> = self
             .items
             .into_iter()
-            .map(|s| (
-                s.name,
-                Carry {
-                    path: s.path,
-                    tier: s.tier,
-                    internal: s.internal,
-                    frontmatter_name: s.frontmatter_name,
-                    source: s.source,
-                },
-            ))
+            .map(|s| {
+                (
+                    s.name,
+                    Carry {
+                        path: s.path,
+                        tier: s.tier,
+                        internal: s.internal,
+                        frontmatter_name: s.frontmatter_name,
+                        source: s.source,
+                    },
+                )
+            })
             .collect();
 
         let items = resolution
             .skills
             .into_iter()
             .filter_map(|r| {
-                let Carry { path, tier, internal, frontmatter_name, source } =
-                    by_name.remove(&r.name)?;
+                let Carry {
+                    path,
+                    tier,
+                    internal,
+                    frontmatter_name,
+                    source,
+                } = by_name.remove(&r.name)?;
+                let decision = match crate::skills::name::admissible_skill(
+                    &r.name,
+                    frontmatter_name.as_deref(),
+                ) {
+                    Ok(()) => r.decision,
+                    Err(reason) => Decision::Rejected {
+                        reason: reason.to_string(),
+                    },
+                };
                 Some(Skill {
                     name: r.name,
                     path,
@@ -226,7 +247,7 @@ impl Skills<Discovered> {
                     frontmatter_name,
                     source,
                     state: Decided {
-                        decision: r.decision,
+                        decision,
                         trace: r.trace,
                     },
                 })
@@ -267,7 +288,10 @@ impl Skills<Discovered> {
             };
 
             crate::fsutil::copy_dir_recursive(&skill.path, &dest)?;
-            changes.push(SkillChange { name: name.to_string(), kind });
+            changes.push(SkillChange {
+                name: name.to_string(),
+                kind,
+            });
         }
         Ok(changes)
     }
@@ -287,7 +311,7 @@ impl Skills<Decided> {
     pub fn included(&self) -> impl Iterator<Item = &Skill<Decided>> {
         self.items
             .iter()
-            .filter(|s| s.state.decision == Decision::Included)
+            .filter(|s| matches!(s.state.decision, Decision::Included))
     }
 
     /// Skills that exist in the school but were filtered out by the resolved
@@ -295,7 +319,13 @@ impl Skills<Decided> {
     pub fn excluded(&self) -> impl Iterator<Item = &Skill<Decided>> {
         self.items
             .iter()
-            .filter(|s| s.state.decision == Decision::Excluded)
+            .filter(|s| matches!(s.state.decision, Decision::Excluded))
+    }
+
+    pub fn rejected(&self) -> impl Iterator<Item = &Skill<Decided>> {
+        self.items
+            .iter()
+            .filter(|s| matches!(s.state.decision, Decision::Rejected { .. }))
     }
 
     pub fn diagnostics(&self) -> &Diagnostics {
@@ -317,15 +347,21 @@ mod tests {
     #[test]
     fn pull_summary_with_changes() {
         let changes = [
-            SkillChange { name: "added".to_string(), kind: ChangeKind::Added },
-            SkillChange { name: "edit".to_string(), kind: ChangeKind::Modified },
-            SkillChange { name: "gone".to_string(), kind: ChangeKind::Removed },
+            SkillChange {
+                name: "added".to_string(),
+                kind: ChangeKind::Added,
+            },
+            SkillChange {
+                name: "edit".to_string(),
+                kind: ChangeKind::Modified,
+            },
+            SkillChange {
+                name: "gone".to_string(),
+                kind: ChangeKind::Removed,
+            },
         ];
         let summary = format_pull_summary(&changes);
-        assert_eq!(
-            summary,
-            "School updated\n  +added\n  ~edit\n  -gone",
-        );
+        assert_eq!(summary, "School updated\n  +added\n  ~edit\n  -gone",);
     }
 
     fn ace(skills: &[&str], inc: &[&str], exc: &[&str]) -> AceToml {
@@ -372,6 +408,35 @@ mod tests {
 
         let b = resolved.find("b").expect("b");
         assert_eq!(b.tier, Tier::Experimental);
+    }
+
+    #[test]
+    fn resolve_rejects_bad_identity_even_when_included_by_default() {
+        let s = Skills::<Discovered>::from_discovered(&[
+            discovered("safe", Tier::Curated),
+            discovered("bad\u{202E}name", Tier::Curated),
+        ]);
+        let resolved = s.resolve(&tree(AceToml::default()));
+
+        let rejected = resolved.find("bad\u{202E}name").expect("bad skill present");
+        assert!(matches!(rejected.state.decision, Decision::Rejected { .. },));
+
+        let included: Vec<&str> = resolved.included().map(|s| s.name.as_str()).collect();
+        assert_eq!(included, vec!["safe"]);
+        assert_eq!(resolved.rejected().count(), 1);
+    }
+
+    #[test]
+    fn resolve_rejects_bad_frontmatter_name() {
+        let mut bad = discovered("safe", Tier::Curated);
+        bad.frontmatter_name = Some("bad/name".to_string());
+        let s = Skills::<Discovered>::from_discovered(&[bad]);
+        let resolved = s.resolve(&tree(AceToml::default()));
+
+        let rejected = resolved.find("safe").expect("skill present");
+        assert!(matches!(rejected.state.decision, Decision::Rejected { .. },));
+        assert_eq!(resolved.rejected().count(), 1);
+        assert_eq!(resolved.included().count(), 0);
     }
 
     fn excluded_names(resolved: &Skills<Decided>) -> Vec<String> {
@@ -553,5 +618,4 @@ mod tests {
             }
         }
     }
-
 }

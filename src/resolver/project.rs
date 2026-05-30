@@ -53,17 +53,19 @@ pub struct Collision {
     pub source: Source,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Decision {
     Included,
     Excluded,
+    Rejected { reason: String },
 }
 
 impl Decision {
-    pub fn label(self) -> &'static str {
+    pub fn label(&self) -> &'static str {
         match self {
             Decision::Included => "active",
             Decision::Excluded => "excluded",
+            Decision::Rejected { .. } => "rejected",
         }
     }
 }
@@ -241,14 +243,16 @@ impl Phase {
     }
 
     fn op_for(self, skill: &ResolvedSkill) -> Option<Op> {
-        match (self, skill.decision) {
+        match (self, &skill.decision) {
             (Phase::Exclude, Decision::Excluded) => None,
             (Phase::Exclude, Decision::Included) => Some(Op::Removed),
+            (Phase::Exclude, Decision::Rejected { .. }) => None,
             (Phase::Include, Decision::Included) => Some(Op::Added),
             (Phase::Include, Decision::Excluded) => {
                 let was_removed = skill.trace.iter().any(|e| e.op == Op::Removed);
                 Some(if was_removed { Op::ReAdded } else { Op::Added })
             }
+            (Phase::Include, Decision::Rejected { .. }) => None,
         }
     }
 }
@@ -336,7 +340,7 @@ mod tests {
     fn included(r: &Resolution) -> Vec<&str> {
         r.skills
             .iter()
-            .filter(|s| s.decision == Decision::Included)
+            .filter(|s| matches!(s.decision, Decision::Included))
             .map(|s| s.name.as_str())
             .collect()
     }
@@ -344,7 +348,7 @@ mod tests {
     fn excluded(r: &Resolution) -> Vec<&str> {
         r.skills
             .iter()
-            .filter(|s| s.decision == Decision::Excluded)
+            .filter(|s| matches!(s.decision, Decision::Excluded))
             .map(|s| s.name.as_str())
             .collect()
     }
@@ -358,8 +362,16 @@ mod tests {
 
     #[test]
     fn all_empty_includes_everything_with_default_base() {
-        let r = resolve_skills(&names(), &AceToml::default(), &AceToml::default(), &AceToml::default());
-        assert_eq!(included(&r), vec!["a", "b", "issue-tracker", "rust-coding", "rust-fmt"]);
+        let r = resolve_skills(
+            &names(),
+            &AceToml::default(),
+            &AceToml::default(),
+            &AceToml::default(),
+        );
+        assert_eq!(
+            included(&r),
+            vec!["a", "b", "issue-tracker", "rust-coding", "rust-fmt"]
+        );
         assert!(excluded(&r).is_empty());
         let s = find(&r, "a");
         assert_eq!(s.trace.len(), 1);
@@ -407,7 +419,10 @@ mod tests {
             &ace(&["rust-*"], &[], &[]),
             &AceToml::default(),
         );
-        assert_eq!(included(&r), vec!["issue-tracker", "rust-coding", "rust-fmt"]);
+        assert_eq!(
+            included(&r),
+            vec!["issue-tracker", "rust-coding", "rust-fmt"]
+        );
         let it = find(&r, "issue-tracker");
         assert_eq!(it.trace.len(), 1);
         assert_eq!(it.trace[0].source, Source::User);
@@ -504,7 +519,12 @@ mod tests {
 
     #[test]
     fn output_sorted_by_name() {
-        let r = resolve_skills(&names(), &AceToml::default(), &AceToml::default(), &AceToml::default());
+        let r = resolve_skills(
+            &names(),
+            &AceToml::default(),
+            &AceToml::default(),
+            &AceToml::default(),
+        );
         let names: Vec<&str> = r.skills.iter().map(|s| s.name.as_str()).collect();
         let mut sorted = names.clone();
         sorted.sort();

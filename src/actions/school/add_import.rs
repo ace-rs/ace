@@ -24,6 +24,8 @@ pub enum AddImportError {
     Io(#[from] std::io::Error),
     #[error("{0}")]
     Config(#[from] config::ConfigError),
+    #[error("skipped {count} inadmissible skill(s)")]
+    RejectedImports { count: usize },
 }
 
 /// Result of a successful import — or a request for the caller to pick a skill.
@@ -53,21 +55,35 @@ impl AddImport<'_> {
         }
 
         let selected = match self.skill {
-            Some(name) => skills.iter().find(|s| s.id == name)
+            Some(name) => skills
+                .iter()
+                .find(|s| s.id == name)
                 .ok_or_else(|| AddImportError::SkillNotFound(name.to_string()))?,
             None if skills.len() == 1 => &skills[0],
             None => return Ok(AddImportResult::NeedsSelection(skills)),
         };
 
+        if !warn_if_rejected(selected, ace) {
+            return Err(AddImportError::RejectedImports { count: 1 });
+        }
         self.install_skill(selected)?;
 
         ace.done(&format!("Imported skill: {}", selected.id));
-        Ok(AddImportResult::Done { skill: selected.id.to_string() })
+        Ok(AddImportResult::Done {
+            skill: selected.id.to_string(),
+        })
     }
 
     /// Install a specific discovered skill after selection.
-    pub fn install_selected(&self, skill: &DiscoveredSkill, ace: &mut Ace) -> Result<(), AddImportError> {
+    pub fn install_selected(
+        &self,
+        skill: &DiscoveredSkill,
+        ace: &mut Ace,
+    ) -> Result<(), AddImportError> {
         ace.progress(&format!("Installing {}", skill.id));
+        if !warn_if_rejected(skill, ace) {
+            return Err(AddImportError::RejectedImports { count: 1 });
+        }
         self.install_skill(skill)?;
         ace.done(&format!("Imported skill: {}", skill.id));
         Ok(())
@@ -103,5 +119,21 @@ impl AddImport<'_> {
 
         config::school_toml::save(&toml_path, &school)?;
         Ok(())
+    }
+}
+
+fn warn_if_rejected(skill: &DiscoveredSkill, ace: &mut Ace) -> bool {
+    match crate::skills::name::admissible_skill(
+        skill.id.as_str(),
+        skill.frontmatter_name.as_deref(),
+    ) {
+        Ok(()) => true,
+        Err(reason) => {
+            ace.warn(&format!(
+                "skipping inadmissible skill `{}`: {reason}",
+                crate::skills::name::render(skill.id.as_str()),
+            ));
+            false
+        }
     }
 }

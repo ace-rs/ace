@@ -1,7 +1,7 @@
 use crate::ace::Ace;
+use crate::actions::school::{AddImport, AddImportError, AddImportResult};
 use crate::config::school_toml::{self, ImportDecl};
 use crate::git;
-use crate::actions::school::{AddImport, AddImportError, AddImportResult};
 
 use super::CmdError;
 
@@ -13,7 +13,14 @@ pub fn run(
     include_experimental: bool,
     include_system: bool,
 ) {
-    let result = run_inner(ace, source, skill, all, include_experimental, include_system);
+    let result = run_inner(
+        ace,
+        source,
+        skill,
+        all,
+        include_experimental,
+        include_system,
+    );
     super::exit_on_err(ace, result);
 }
 
@@ -43,8 +50,12 @@ fn run_inner(
         && crate::glob::is_glob(pattern)
     {
         return add_glob_import(
-            ace, &school_root, &normalized, pattern,
-            include_experimental, include_system,
+            ace,
+            &school_root,
+            &normalized,
+            pattern,
+            include_experimental,
+            include_system,
         );
     }
 
@@ -61,7 +72,9 @@ fn run_inner(
             let names: Vec<String> = skills.iter().map(|s| s.id.to_string()).collect();
             let selected = ace.prompt_select("Multiple skills found, pick one:", names)?;
 
-            let skill = skills.iter().find(|s| s.id == selected.as_str())
+            let skill = skills
+                .iter()
+                .find(|s| s.id == selected.as_str())
                 .ok_or_else(|| AddImportError::SkillNotFound(selected.to_string()))?;
 
             AddImport {
@@ -88,7 +101,9 @@ fn add_glob_import(
     let toml_path = school_root.join("school.toml");
     let mut school = school_toml::load(&toml_path)?;
 
-    let entry = school.imports.iter_mut()
+    let entry = school
+        .imports
+        .iter_mut()
         .find(|i| i.patterns() == vec![pattern] && i.source == source);
 
     if entry.is_some() {

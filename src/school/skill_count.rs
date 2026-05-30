@@ -1,7 +1,7 @@
 //! Skill-count helper for the `ace learn` auto-trigger.
 //!
 //! When the school exposes more skills than a project realistically needs,
-//! `ace setup`, `ace school pull-imports`, and `ace` startup all offer to
+//! `ace setup`, `ace school pull`, and `ace` startup all offer to
 //! run `ace learn` to narrow the `skills` filter. The threshold is a
 //! hardcoded constant — convention over configuration.
 
@@ -54,7 +54,7 @@ fn has_explicit_skills_decision(project_dir: &Path) -> bool {
         || has_explicit_skills_key(&project_dir.join("ace.local.toml"))
 }
 
-/// Inline y/N prompt — common shape used by setup, pull-imports, and ace
+/// Inline y/N prompt — common shape used by setup, school pull, and ace
 /// startup. Skips silently in non-Human (porcelain) mode and when the
 /// user already pinned `skills` in ace.toml.
 ///

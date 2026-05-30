@@ -25,7 +25,12 @@ fn import_clone_failure_invalid_source() {
 
     // Source that cannot be cloned — redirected to a local nonexistent path.
     env.ace()
-        .args(["import", "nonexistent-owner-xxxxx/nonexistent-repo-xxxxx", "--skill", "my-skill"])
+        .args([
+            "import",
+            "nonexistent-owner-xxxxx/nonexistent-repo-xxxxx",
+            "--skill",
+            "my-skill",
+        ])
         .assert()
         .failure()
         .stderr(predicates::str::contains("git clone"));
@@ -38,10 +43,7 @@ fn import_requires_source_argument() {
     env.write_file("school.toml", "name = \"test-school\"\n");
 
     // Missing required <source> argument.
-    env.ace()
-        .args(["import"])
-        .assert()
-        .failure();
+    env.ace().args(["import"]).assert().failure();
 }
 
 #[test]
@@ -91,7 +93,12 @@ fn import_no_git_repo_with_school_toml() {
     // Import should still work to find school context (school.toml check
     // doesn't require git), but clone will fail on the remote source.
     env.ace()
-        .args(["import", "nonexistent-owner-xxxxx/nonexistent-repo-xxxxx", "--skill", "x"])
+        .args([
+            "import",
+            "nonexistent-owner-xxxxx/nonexistent-repo-xxxxx",
+            "--skill",
+            "x",
+        ])
         .assert()
         .failure()
         .stderr(predicates::str::contains("git clone"));
@@ -129,7 +136,12 @@ source = "some-owner/some-repo"
     // Importing a new skill from an invalid source fails at clone.
     // Verifies that having existing imports doesn't break the import flow.
     env.ace()
-        .args(["import", "nonexistent-owner-xxxxx/nonexistent-repo-xxxxx", "--skill", "new-skill"])
+        .args([
+            "import",
+            "nonexistent-owner-xxxxx/nonexistent-repo-xxxxx",
+            "--skill",
+            "new-skill",
+        ])
         .assert()
         .failure()
         .stderr(predicates::str::contains("git clone"));
@@ -147,12 +159,20 @@ fn import_all_adds_wildcard_entry() {
         .args(["import", "company/school", "--all"])
         .assert()
         .success()
-        .stderr(predicates::str::contains("Added import: * from company/school"));
+        .stderr(predicates::str::contains(
+            "Added import: * from company/school",
+        ));
 
     let toml = env.read_file("school.toml");
     // Canonical form per docs/spec/skills/selection.md is the plural `skills` array.
-    assert!(toml.contains("skills = [\"*\"]"), "should have wildcard skills entry: {toml}");
-    assert!(toml.contains("source = \"company/school\""), "should have source");
+    assert!(
+        toml.contains("skills = [\"*\"]"),
+        "should have wildcard skills entry: {toml}"
+    );
+    assert!(
+        toml.contains("source = \"company/school\""),
+        "should have source"
+    );
 }
 
 #[test]
@@ -166,10 +186,15 @@ fn import_glob_pattern_adds_entry() {
         .args(["import", "company/school", "--skill", "*-coding"])
         .assert()
         .success()
-        .stderr(predicates::str::contains("Added import: *-coding from company/school"));
+        .stderr(predicates::str::contains(
+            "Added import: *-coding from company/school",
+        ));
 
     let toml = env.read_file("school.toml");
-    assert!(toml.contains("skills = [\"*-coding\"]"), "should have glob pattern: {toml}");
+    assert!(
+        toml.contains("skills = [\"*-coding\"]"),
+        "should have glob pattern: {toml}"
+    );
 }
 
 #[test]
@@ -231,7 +256,13 @@ fn import_include_with_explicit_skill_errors() {
     env.mkdir("skills");
 
     env.ace()
-        .args(["import", "owner/repo", "--skill", "foo", "--include-experimental"])
+        .args([
+            "import",
+            "owner/repo",
+            "--skill",
+            "foo",
+            "--include-experimental",
+        ])
         .assert()
         .failure()
         .stderr(predicates::str::contains("--all"));
@@ -245,13 +276,24 @@ fn import_all_include_experimental_persists_flag() {
     env.mkdir("skills");
 
     env.ace()
-        .args(["import", "company/school", "--all", "--include-experimental"])
+        .args([
+            "import",
+            "company/school",
+            "--all",
+            "--include-experimental",
+        ])
         .assert()
         .success();
 
     let toml = env.read_file("school.toml");
-    assert!(toml.contains("include_experimental = true"), "missing flag in {toml}");
-    assert!(!toml.contains("include_system"), "include_system should not be written: {toml}");
+    assert!(
+        toml.contains("include_experimental = true"),
+        "missing flag in {toml}"
+    );
+    assert!(
+        !toml.contains("include_system"),
+        "include_system should not be written: {toml}"
+    );
 }
 
 #[test]
@@ -262,13 +304,25 @@ fn import_all_include_both_flags_persists_both() {
     env.mkdir("skills");
 
     env.ace()
-        .args(["import", "company/school", "--all", "--include-experimental", "--include-system"])
+        .args([
+            "import",
+            "company/school",
+            "--all",
+            "--include-experimental",
+            "--include-system",
+        ])
         .assert()
         .success();
 
     let toml = env.read_file("school.toml");
-    assert!(toml.contains("include_experimental = true"), "missing experimental flag: {toml}");
-    assert!(toml.contains("include_system = true"), "missing system flag: {toml}");
+    assert!(
+        toml.contains("include_experimental = true"),
+        "missing experimental flag: {toml}"
+    );
+    assert!(
+        toml.contains("include_system = true"),
+        "missing system flag: {toml}"
+    );
 }
 
 // -- end-to-end import with real git (PROD9-75) --
@@ -282,10 +336,10 @@ fn import_explicit_skill_resolves_from_experimental_tier() {
     env.write_dogfood_school("name = \"test-school\"\n");
     env.mkdir("skills");
 
-    env.setup_tiered_origin("dot/skills", &[
-        "skills/.experimental/shell",
-        "skills/.curated/react",
-    ]);
+    env.setup_tiered_origin(
+        "dot/skills",
+        &["skills/.experimental/shell", "skills/.curated/react"],
+    );
 
     env.ace()
         .args(["import", "dot/skills", "--skill", "shell"])
@@ -298,17 +352,42 @@ fn import_explicit_skill_resolves_from_experimental_tier() {
 }
 
 #[test]
+fn import_explicit_inadmissible_skill_skips_and_fails() {
+    let env = TestEnv::new();
+    env.git_init();
+    env.write_dogfood_school("name = \"test-school\"\n");
+    env.mkdir("skills");
+
+    env.setup_tiered_origin("bad/skills", &["skills/bad\u{202E}name"]);
+
+    // Matches `ace school pull`: skip the bad skill, warn, exit non-zero with
+    // the same RejectedImports code. See decision § Resolved Follow-Ups.
+    env.ace()
+        .args(["import", "bad/skills", "--skill", "bad\u{202E}name"])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("skipping inadmissible skill"))
+        .stderr(predicates::str::contains("skipped 1 inadmissible skill"));
+
+    env.assert_not_exists("skills/bad\u{202E}name/SKILL.md");
+    env.assert_not_contains("school.toml", "bad\u{202E}name");
+}
+
+#[test]
 fn import_all_defaults_to_curated_tier_only() {
     let env = TestEnv::new();
     env.git_init();
     env.write_dogfood_school("name = \"test-school\"\n");
     env.mkdir("skills");
 
-    env.setup_tiered_origin("dot/skills", &[
-        "skills/.curated/react",
-        "skills/.experimental/shell",
-        "skills/.system/skill-creator",
-    ]);
+    env.setup_tiered_origin(
+        "dot/skills",
+        &[
+            "skills/.curated/react",
+            "skills/.experimental/shell",
+            "skills/.system/skill-creator",
+        ],
+    );
 
     // --all without --include-* flags should record a wildcard entry only.
     env.ace()
@@ -317,10 +396,7 @@ fn import_all_defaults_to_curated_tier_only() {
         .success();
 
     // The actual expansion happens on school update.
-    env.ace()
-        .args(["school", "update"])
-        .assert()
-        .success();
+    env.ace().args(["school", "update"]).assert().success();
 
     env.assert_exists("skills/react/SKILL.md");
     env.assert_not_exists("skills/shell/SKILL.md");
@@ -334,21 +410,21 @@ fn import_all_with_include_experimental_pulls_that_tier() {
     env.write_dogfood_school("name = \"test-school\"\n");
     env.mkdir("skills");
 
-    env.setup_tiered_origin("dot/skills", &[
-        "skills/.curated/react",
-        "skills/.experimental/shell",
-        "skills/.system/skill-creator",
-    ]);
+    env.setup_tiered_origin(
+        "dot/skills",
+        &[
+            "skills/.curated/react",
+            "skills/.experimental/shell",
+            "skills/.system/skill-creator",
+        ],
+    );
 
     env.ace()
         .args(["import", "dot/skills", "--all", "--include-experimental"])
         .assert()
         .success();
 
-    env.ace()
-        .args(["school", "update"])
-        .assert()
-        .success();
+    env.ace().args(["school", "update"]).assert().success();
 
     env.assert_exists("skills/react/SKILL.md");
     env.assert_exists("skills/shell/SKILL.md");
@@ -364,10 +440,7 @@ fn import_populates_persistent_source_cache() {
     env.write_dogfood_school("name = \"test-school\"\n");
     env.mkdir("skills");
 
-    env.setup_tiered_origin("cached/source", &[
-        "skills/foo",
-        "skills/bar",
-    ]);
+    env.setup_tiered_origin("cached/source", &["skills/foo", "skills/bar"]);
 
     env.ace()
         .args(["import", "cached/source", "--skill", "foo"])
@@ -393,13 +466,14 @@ fn pull_imports_overlapping_sources_last_wins_silently() {
     let env = TestEnv::new();
     env.git_init();
 
-    env.setup_tiered_origin("anthropics/skills", &[
-        "skills/.system/skill-creator",
-    ]);
-    env.setup_tiered_origin("ace-rs/school", &[
-        "skills/.system/skill-creator",
-        "skills/.curated/other-skill",
-    ]);
+    env.setup_tiered_origin("anthropics/skills", &["skills/.system/skill-creator"]);
+    env.setup_tiered_origin(
+        "ace-rs/school",
+        &[
+            "skills/.system/skill-creator",
+            "skills/.curated/other-skill",
+        ],
+    );
 
     // Both sources expose skill-creator. Last-wins: ace-rs/school's version
     // silently replaces anthropics/skills'. No shadow warning.
@@ -426,8 +500,8 @@ include_system = true
     let combined = format!("{stdout}{stderr}");
 
     // One summary line per skill — no duplicate ~skill-creator.
-    let summary_dupes = combined.matches("~skill-creator").count()
-        + combined.matches("+skill-creator").count();
+    let summary_dupes =
+        combined.matches("~skill-creator").count() + combined.matches("+skill-creator").count();
     assert_eq!(
         summary_dupes, 1,
         "skill-creator appears {summary_dupes} times in summary; expected exactly 1: {combined}"
@@ -453,10 +527,10 @@ fn pull_imports_with_nested_source_layout_writes_nested_identity() {
     let env = TestEnv::new();
     env.git_init();
 
-    env.setup_tiered_origin("nested/upstream", &[
-        "skills/typescript/coding",
-        "skills/rust/coding",
-    ]);
+    env.setup_tiered_origin(
+        "nested/upstream",
+        &["skills/typescript/coding", "skills/rust/coding"],
+    );
 
     env.write_dogfood_school(
         r#"name = "test-school"
@@ -473,6 +547,38 @@ skills = ["*"]
     // Identity is preserved through the school's storage layer.
     env.assert_exists("skills/typescript/coding/SKILL.md");
     env.assert_exists("skills/rust/coding/SKILL.md");
+}
+
+#[test]
+fn pull_imports_skips_inadmissible_skill_and_fails() {
+    let env = TestEnv::new();
+    env.git_init();
+
+    env.setup_tiered_origin(
+        "mixed/upstream",
+        &["skills/good-skill", "skills/bad\u{202E}name"],
+    );
+
+    env.write_dogfood_school(
+        r#"name = "test-school"
+
+[[imports]]
+source = "mixed/upstream"
+skills = ["*"]
+"#,
+    );
+    env.mkdir("skills");
+
+    env.ace()
+        .args(["school", "update"])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "skipped 1 inadmissible imported skill",
+        ));
+
+    env.assert_exists("skills/good-skill/SKILL.md");
+    env.assert_not_exists("skills/bad\u{202E}name/SKILL.md");
 }
 
 // Spec: docs/spec/skills/selection.md § Cross-source merge.
@@ -521,10 +627,7 @@ fn import_reuses_source_cache_on_second_call() {
     env.write_dogfood_school("name = \"test-school\"\n");
     env.mkdir("skills");
 
-    env.setup_tiered_origin("cached/source", &[
-        "skills/foo",
-        "skills/bar",
-    ]);
+    env.setup_tiered_origin("cached/source", &["skills/foo", "skills/bar"]);
 
     env.ace()
         .args(["import", "cached/source", "--skill", "foo"])

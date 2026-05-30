@@ -4,19 +4,37 @@
 //! reference to the matching `Skill<Decided>` (caller renders) or an
 //! `ExplainError::NotFound` carrying near-match suggestions.
 
-use crate::skills::{Entry, Decided, Skill, Skills, Source};
+use crate::skills::{Decided, Entry, Skill, Skills, Source};
 
-#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ExplainError {
-    #[error("unknown skill `{name}`{}", format_near(near))]
     NotFound { name: String, near: Vec<String> },
 }
+
+impl std::fmt::Display for ExplainError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ExplainError::NotFound { name, near } => write!(
+                f,
+                "unknown skill `{}`{}",
+                crate::skills::name::render(name),
+                format_near(near),
+            ),
+        }
+    }
+}
+
+impl std::error::Error for ExplainError {}
 
 fn format_near(near: &[String]) -> String {
     if near.is_empty() {
         String::new()
     } else {
-        format!(" — did you mean: {}", near.join(", "))
+        let rendered: Vec<String> = near
+            .iter()
+            .map(|name| crate::skills::name::render(name).to_string())
+            .collect();
+        format!(" — did you mean: {}", rendered.join(", "))
     }
 }
 
@@ -37,7 +55,7 @@ pub fn find_or_suggest<'a>(
 pub fn render(skill: &Skill<Decided>) -> String {
     let mut s = format!(
         "{} ({})\n  status: {}\n  trace:\n",
-        skill.name,
+        crate::skills::name::render(&skill.name),
         skill.tier.label(),
         skill.state.decision.label(),
     );
@@ -61,7 +79,7 @@ fn format_trace_line(e: &Entry) -> String {
         e.op.label(),
         source_label,
         e.field.label(),
-        e.pattern,
+        crate::skills::name::render(&e.pattern),
     )
 }
 
@@ -79,7 +97,11 @@ fn near_matches(query: &str, skills: &Skills<Decided>) -> Vec<String> {
         })
         .collect();
     scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(b.1)));
-    scored.into_iter().take(5).map(|(_, n)| n.to_string()).collect()
+    scored
+        .into_iter()
+        .take(5)
+        .map(|(_, n)| n.to_string())
+        .collect()
 }
 
 /// Length of longest contiguous substring of `q` appearing in `name`.
@@ -143,7 +165,8 @@ mod tests {
     }
 
     fn resolve(names: &[&str], t: &Tree) -> Skills<Decided> {
-        let disc: Vec<DiscoveredSkill> = names.iter().map(|n| discovered(n, Tier::Curated)).collect();
+        let disc: Vec<DiscoveredSkill> =
+            names.iter().map(|n| discovered(n, Tier::Curated)).collect();
         Skills::<Discovered>::from_discovered(&disc).resolve(t)
     }
 
@@ -169,7 +192,11 @@ mod tests {
     fn renders_excluded_skill() {
         let s = resolve(
             &["rust-fmt"],
-            &tree(AceToml::default(), ace(&[], &[], &["rust-fmt"]), AceToml::default()),
+            &tree(
+                AceToml::default(),
+                ace(&[], &[], &["rust-fmt"]),
+                AceToml::default(),
+            ),
         );
         let skill = find_or_suggest(&s, "rust-fmt").expect("known");
         assert_eq!(skill.state.decision, Decision::Excluded);
