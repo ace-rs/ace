@@ -176,6 +176,15 @@ ACE-owned layer (dynamic, ACE-controlled, present every session) vs. stay on dis
 (persistent, editable, survives outside ACE). The school `session_prompt` field is a
 third option but is school-author-controlled, not ACE-controlled.
 
+## In-scope for this refactor
+
+- **`tpl_school_readme.md`** — the Structure block predated nested skills; the N3 pass
+  added a nested example, but the readme should be revisited wholesale alongside
+  `tpl_school_instructions.md` so both describe the nested-layout model consistently
+  (school storage at `skills/<identity-path>/SKILL.md`, flat-vs-nested emit per backend
+  capability). The instruction file is the comprehensive catalog; the readme is the
+  human-facing front door — they should agree.
+
 ## Pointers
 
 - Templates: `src/templates/builtins/tpl_school_instructions.md`,

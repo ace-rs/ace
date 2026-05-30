@@ -20,6 +20,8 @@ your AI coding session. Run `ace` to start.
 school.toml       # School configuration
 skills/           # Skill directories (each has a SKILL.md)
   ace-school/     # Imported from ace-rs/school
+  typescript/
+    coding/       # Skills may nest under an identity path
 CLAUDE.md         # AI session instructions (or AGENTS.md for Codex/OpenCode)
 ```
 
