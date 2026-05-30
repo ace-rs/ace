@@ -116,6 +116,9 @@ ace school update                     # refresh everything
 
 ## Development
 
+Start with [`docs/spec/architecture.md`](docs/spec/architecture.md) for the layer model,
+skills pipeline, and dependency direction.
+
 ```sh
 cargo test              # unit tests + integration tests (no network required)
 cargo test --test setup_test  # run a single test file
