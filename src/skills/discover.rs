@@ -104,15 +104,11 @@ impl DiscoveredSkill {
     }
 }
 
-
 /// Discover skills under `root` per the 2-stage cascade. See module docs.
 pub fn discover_skills(root: &Path) -> Result<Vec<DiscoveredSkill>, std::io::Error> {
     // Stage 1: direct skill at root.
     if root.join("SKILL.md").is_file() {
-        let basename = root
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("skill");
+        let basename = root.file_name().and_then(|n| n.to_str()).unwrap_or("skill");
         let (internal, frontmatter_name) = read_frontmatter_flags(&root.join("SKILL.md"));
         return Ok(vec![DiscoveredSkill {
             id: SkillId::from_basename(basename),
@@ -129,15 +125,22 @@ pub fn discover_skills(root: &Path) -> Result<Vec<DiscoveredSkill>, std::io::Err
     // Stage 2 canonical entries. `skills/` walk excludes tier subdirs to
     // avoid double-counting with the dedicated tier entries.
     let canonical: &[(PathBuf, Tier, bool)] = &[
-        (root.join("skills/.curated"),      Tier::Curated,      false),
-        (root.join("skills"),               Tier::Curated,      true),
+        (root.join("skills/.curated"), Tier::Curated, false),
+        (root.join("skills"), Tier::Curated, true),
         (root.join("skills/.experimental"), Tier::Experimental, false),
-        (root.join("skills/.system"),       Tier::System,       false),
+        (root.join("skills/.system"), Tier::System, false),
     ];
 
     for (dir, tier, exclude_tier_subdirs) in canonical {
         if dir.is_dir() {
-            walk_priority_dir(dir, dir, *tier, *exclude_tier_subdirs, &mut skills, &mut seen)?;
+            walk_priority_dir(
+                dir,
+                dir,
+                *tier,
+                *exclude_tier_subdirs,
+                &mut skills,
+                &mut seen,
+            )?;
         }
     }
 
@@ -316,7 +319,10 @@ mod tests {
         // The `skills/SKILL.md` at the top of the priority dir is stage-1
         // territory for the `skills/` root, but we deliberately ignore an
         // empty identity (priority root itself). Result: no skills.
-        assert!(skills.is_empty(), "files in skills/ should not be treated as skills");
+        assert!(
+            skills.is_empty(),
+            "files in skills/ should not be treated as skills"
+        );
     }
 
     #[test]
@@ -393,7 +399,10 @@ mod tests {
 
         let skills = discover_skills(tmp.path()).expect("discover_skills");
         assert_eq!(skills.len(), 1);
-        assert_eq!(skills[0].path, curated, ".curated should win over top-level");
+        assert_eq!(
+            skills[0].path, curated,
+            ".curated should win over top-level"
+        );
         assert_eq!(skills[0].tier, Tier::Curated);
     }
 
@@ -405,7 +414,10 @@ mod tests {
 
         let skills = discover_skills(tmp.path()).expect("discover_skills");
         assert_eq!(skills.len(), 1);
-        assert_eq!(skills[0].path, curated, ".curated should win over .experimental");
+        assert_eq!(
+            skills[0].path, curated,
+            ".curated should win over .experimental"
+        );
         assert_eq!(skills[0].tier, Tier::Curated);
     }
 
@@ -417,7 +429,10 @@ mod tests {
 
         let skills = discover_skills(tmp.path()).expect("discover_skills");
         assert_eq!(skills.len(), 1);
-        assert_eq!(skills[0].path, experimental, ".experimental should win over .system");
+        assert_eq!(
+            skills[0].path, experimental,
+            ".experimental should win over .system"
+        );
         assert_eq!(skills[0].tier, Tier::Experimental);
     }
 
@@ -548,7 +563,11 @@ mod tests {
         make_skill_at(tmp.path(), ".claude/skills/foo");
 
         let skills = discover_skills(tmp.path()).expect("discover");
-        assert_eq!(skills.len(), 1, "fallback must be silenced when canonical yields skills");
+        assert_eq!(
+            skills.len(),
+            1,
+            "fallback must be silenced when canonical yields skills"
+        );
         assert_eq!(skills[0].path, canonical);
     }
 

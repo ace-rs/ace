@@ -16,8 +16,8 @@ pub mod name;
 #[allow(unused_imports)]
 pub use identity::{MatchHandle, SkillId};
 
-use crate::config::ConfigError;
 use crate::config::tree::Tree;
+use crate::config::ConfigError;
 use crate::resolver;
 use crate::school::SchoolError;
 
@@ -124,16 +124,37 @@ impl<S> Skill<S> {
     }
 }
 
+/// Effective status of a resolved skill — the product of the two orthogonal
+/// axes (admission × selection) collapsed into one verdict. Inadmissibility
+/// dominates: a name-rejected skill is [`Status::Rejected`] regardless of what
+/// selection decided. Every consumer (`included`/`excluded`/`rejected`
+/// iterators, the `ace skills` listing, `ace explain`) reads this rather than
+/// recombining the axes inline.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Status {
+    Active,
+    Excluded,
+    Rejected,
+}
+
+impl Status {
+    pub fn label(self) -> &'static str {
+        match self {
+            Status::Active => "active",
+            Status::Excluded => "excluded",
+            Status::Rejected => "rejected",
+        }
+    }
+}
+
 impl Skill<Decided> {
-    /// Single source for the display status: an inadmissible skill reads
-    /// `rejected` regardless of its selection verdict; otherwise the selection
-    /// label (`active`/`excluded`). Shared by the `ace skills` listing and
-    /// `ace explain`.
-    pub fn status_label(&self) -> &'static str {
+    pub fn status(&self) -> Status {
         if self.admission().is_err() {
-            "rejected"
-        } else {
-            self.state.decision.label()
+            return Status::Rejected;
+        }
+        match self.state.decision {
+            Decision::Included => Status::Active,
+            Decision::Excluded => Status::Excluded,
         }
     }
 }
@@ -325,23 +346,24 @@ impl Skills<Decided> {
     /// Admissible skills the resolver selected. Inadmissible skills are
     /// excluded here even when selection picked them — see [`Self::rejected`].
     pub fn included(&self) -> impl Iterator<Item = &Skill<Decided>> {
-        self.items
-            .iter()
-            .filter(|s| matches!(s.state.decision, Decision::Included) && s.admission().is_ok())
+        self.with_status(Status::Active)
     }
 
     /// Admissible skills that exist in the school but were filtered out by the
     /// resolved `include_skills` / `exclude_skills` rules.
     pub fn excluded(&self) -> impl Iterator<Item = &Skill<Decided>> {
-        self.items
-            .iter()
-            .filter(|s| matches!(s.state.decision, Decision::Excluded) && s.admission().is_ok())
+        self.with_status(Status::Excluded)
     }
 
     /// Inadmissible skills — rejected by the name gate regardless of selection.
-    /// Mutually exclusive with `included`/`excluded`.
+    /// The three status partitions are mutually exclusive and exhaustive by
+    /// construction (one [`Status`] per skill).
     pub fn rejected(&self) -> impl Iterator<Item = &Skill<Decided>> {
-        self.items.iter().filter(|s| s.admission().is_err())
+        self.with_status(Status::Rejected)
+    }
+
+    fn with_status(&self, status: Status) -> impl Iterator<Item = &Skill<Decided>> {
+        self.items.iter().filter(move |s| s.status() == status)
     }
 
     pub fn diagnostics(&self) -> &Diagnostics {

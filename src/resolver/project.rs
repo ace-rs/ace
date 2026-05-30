@@ -62,15 +62,6 @@ pub enum Decision {
     Excluded,
 }
 
-impl Decision {
-    pub fn label(self) -> &'static str {
-        match self {
-            Decision::Included => "active",
-            Decision::Excluded => "excluded",
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Op {
     SetBase,

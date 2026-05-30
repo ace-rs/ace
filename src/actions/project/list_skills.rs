@@ -17,7 +17,7 @@ pub fn render_table(skills: &Skills<Decided>, show_excluded: bool) -> String {
             "{}\t{}\t{}\t{}",
             crate::skills::name::render(&skill.name),
             skill.tier.label(),
-            skill.status_label(),
+            skill.status().label(),
             reason_for(skill),
         );
     }
@@ -37,11 +37,9 @@ pub fn render_names(skills: &Skills<Decided>, show_excluded: bool) -> String {
 fn visible(skills: &Skills<Decided>, show_excluded: bool) -> impl Iterator<Item = &Skill<Decided>> {
     // Default view shows only admissible, selected skills. `show_excluded`
     // widens to everything else — both config-excluded and name-rejected.
-    skills.iter().filter(move |s| {
-        show_excluded
-            || (matches!(s.state.decision, crate::skills::Decision::Included)
-                && s.admission().is_ok())
-    })
+    skills
+        .iter()
+        .filter(move |s| show_excluded || s.status() == crate::skills::Status::Active)
 }
 
 /// Human-readable summary of the last trace contribution. Used in the REASON
@@ -71,8 +69,8 @@ mod tests {
     use super::*;
     use crate::config::ace_toml::AceToml;
     use crate::config::tree::Tree;
-    use crate::skills::Discovered;
     use crate::skills::discover::{DiscoveredSkill, Tier};
+    use crate::skills::Discovered;
     use std::path::PathBuf;
 
     fn ace(skills: &[&str], inc: &[&str], exc: &[&str]) -> AceToml {

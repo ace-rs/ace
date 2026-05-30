@@ -57,7 +57,7 @@ pub fn render(skill: &Skill<Decided>) -> String {
         "{} ({})\n  status: {}\n  trace:\n",
         crate::skills::name::render(&skill.name),
         skill.tier.label(),
-        skill.status_label(),
+        skill.status().label(),
     );
     for entry in &skill.state.trace {
         s.push_str("    ");

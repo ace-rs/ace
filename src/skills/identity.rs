@@ -342,7 +342,10 @@ mod tests {
     fn bare_name_leaf_match_under_nested_path() {
         let h = MatchHandle::new("rust-coding").unwrap();
         let nested = SkillId::from_relative_path(&PathBuf::from("typescript").join("rust-coding"));
-        assert!(h.matches(&nested), "bare name should match the leaf segment");
+        assert!(
+            h.matches(&nested),
+            "bare name should match the leaf segment"
+        );
     }
 
     #[test]
@@ -364,8 +367,7 @@ mod tests {
         // `typescript/coding` matches exactly `typescript/coding`, not just
         // anything ending in `/coding`.
         let h = MatchHandle::new("typescript/coding").unwrap();
-        let nested =
-            SkillId::from_relative_path(&PathBuf::from("typescript").join("coding"));
+        let nested = SkillId::from_relative_path(&PathBuf::from("typescript").join("coding"));
         assert!(h.matches(&nested));
 
         let other = SkillId::from_relative_path(&PathBuf::from("python").join("coding"));
@@ -392,8 +394,7 @@ mod tests {
         // `*/coding` matches identities like `typescript/coding` —
         // the glob version of "any path ending in /coding".
         let h = MatchHandle::new("*/coding").unwrap();
-        let nested =
-            SkillId::from_relative_path(&PathBuf::from("typescript").join("coding"));
+        let nested = SkillId::from_relative_path(&PathBuf::from("typescript").join("coding"));
         assert!(h.matches(&nested));
         // The flat `coding` skill matches too, because glob `*/coding`
         // wildcards the `*` even to empty (per glob_match semantics).
