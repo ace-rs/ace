@@ -47,7 +47,7 @@ Confirm semantics by mode:
 - **Porcelain / non-TTY** — explicit `ace learn` invocation IS consent. Run directly, no
   prompt.
 
-Contrast with auto-trigger callers (setup, pull-imports, `ace` startup): the user's intent
+Contrast with auto-trigger callers (setup, school pull, `ace` startup): the user's intent
 there is setup/pull/startup, not learn. Spending tokens must be opt-in via the inline
 offer prompt — and that prompt only fires in Human mode, so auto-trigger never spends in
 porcelain. See "Auto-trigger" below.

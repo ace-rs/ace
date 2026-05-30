@@ -21,7 +21,7 @@ the **identity path** — already prefix-stripped at the source side, so no
 
 ### Writes are additive / overwriting
 
-`ace school pull-imports` only adds or overwrites under `<school>/skills/`. ACE never
+`ace school pull` only adds or overwrites under `<school>/skills/`. ACE never
 deletes anything. Stale imports (skills dropped from `[[imports]]` resolution) persist in
 the working tree until the school author cleans them up manually (`git rm`, `rm -rf`). No
 manifest, no scan-and-diff, intentionally dumb.
@@ -157,7 +157,7 @@ read the skill, adapt, and resolve compatibility gaps themselves"):
 
 Per [model.md § Sanitization](model.md#sanitization), the boundary policy is:
 
-- **School-storage writes** (`ace school pull-imports`) — preserve verbatim.
+- **School-storage writes** (`ace school pull`) — preserve verbatim.
 - **Backend-emit writes** — sanitize the link name. ACE emits per-skill symlinks rather
   than materialized SKILL.md copies (see [sync.md § Symlinks over copies](sync.md#symlinks-over-copies)),
   so the only string ACE synthesizes at the backend boundary is the directory name of

@@ -194,7 +194,7 @@ choosing where to land each skill.
 
 Warnings fire at two surfaces:
 
-1. **`ace school pull-imports`** — school maintainer's machine, during their own
+1. **`ace school pull`** — school maintainer's machine, during their own
    materialization.
 2. **Consumer discovery** (`ace pull` / `ace setup` of a downstream project) — only
    if the school maintainer ignored their own warnings.

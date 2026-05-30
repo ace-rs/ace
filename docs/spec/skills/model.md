@@ -161,7 +161,7 @@ backend SKILL.md — compromises whatever consumes that surface.
 | Boundary                                              | Action                              |
 | ----------------------------------------------------- | ----------------------------------- |
 | ACE's own display (prompts, listings, warnings)       | Sanitize on render                  |
-| School storage write (`ace school pull-imports`)      | Preserve verbatim (school author's responsibility; ACE consumers are protected at consumer-side emit) |
+| School storage write (`ace school pull`)              | Preserve verbatim (school author's responsibility; ACE consumers are protected at consumer-side emit) |
 | Backend emit write (SKILL.md to `<backend>/skills/…`) | Sanitize into written frontmatter   |
 | Internal in-memory model                              | Raw, preserved (doctor checks need to see violations; debugging needs truth) |
 

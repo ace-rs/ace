@@ -15,6 +15,8 @@ instructions file under the name your backend expects (`CLAUDE.md` for Claude,
 ## school.toml Sections
 
 - **`name`** — school display name
+- **`session_prompt`** — instructions injected into every session (see
+  [Session Prompt](#session-prompt))
 - **`[env]`** — shared environment variables (endpoints, feature flags — not secrets)
 - **`[[mcp]]`** — remote MCP server endpoints (name, url). The backend handles OAuth.
 - **`[[projects]]`** — project catalog (name, repo, description, optional per-project env)
@@ -83,5 +85,7 @@ What we want instead:
 ## Useful Commands
 
 - `ace school pull` — re-fetch all imported skills from their sources
+- `ace school skills` — list skills in the school
+- `ace school validate` — typo-check `{{ ... }}` placeholders in `school.toml`
 - `ace diff` — show uncommitted changes in the school clone
 - `ace import <source>` — import a skill from an external repo
