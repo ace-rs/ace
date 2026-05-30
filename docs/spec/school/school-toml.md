@@ -190,10 +190,9 @@ always emits the canonical plural form, so the whole file normalizes on the
 next save — incremental modernization for free as authors continue using their
 school.
 
-`ace school fix` is the explicit one-shot — see
-[school-commands.md → `ace school fix`](school-commands.md#ace-school-fix).
-Schema-only re-serialize: read `school.toml`, write it back in canonical form.
-No network, no import resolution. Idempotent.
+`ace fmt` is the explicit one-shot: read `school.toml`, write it back in
+canonical form. No network, no import resolution. Idempotent. (It also formats
+`ace.toml` when present, which a school repo dogfooding itself will have.)
 
 ACE may emit a non-blocking hint when it reads singular keys, so the author
 knows the next write will normalize.

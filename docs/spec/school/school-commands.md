@@ -224,17 +224,6 @@ validated — see `docs/decisions/2026-05-09-school-validate-scope.md` for ratio
 `ace school validate` is not auto-run by `ace school pull` or `ace setup`; users invoke it
 explicitly.
 
-## `ace school fix`
-
-Re-serialize `school.toml` in canonical form. Load the file, apply the canonical
-schema (plural `skills` in `[[imports]]`; drop any deprecated shapes), save it
-back. No network, no import resolution. Idempotent — safe to run repeatedly.
-
-Scope: schema only. Does not pull upstream, does not delete stale imports, does
-not change behavior. Used to migrate legacy `skill = "..."` entries to
-`skills = [...]` and to clean up any other shape-level drift after a spec
-change. See [school-toml.md → Migration](school-toml.md#migration).
-
 ## `ace diff`
 
 Show uncommitted changes in the school clone, including untracked files.

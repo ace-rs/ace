@@ -106,11 +106,10 @@ import surface, `ace school skills`/`validate`, `ace diff`, and the out-of-scope
 Verified against the live CLI — these spec entries describe things that **do not
 exist** in the binary:
 
-- **`ace school fix`** — fully documented (school-commands.md:227, school-toml.md:193)
-  but **absent from the `school::Command` enum** (only Init/Pull/Skills/Validate).
-  Either implement it or delete the spec. Memory wrongly recorded it as "landed"
-  (corrected — see below). Note: singular-key normalization already happens on any
-  write, so no `fix` command is strictly required for migration.
+- **`ace school fix`** — was fully documented but **absent from the
+  `school::Command` enum**. Resolved 2026-05-30: deleted from spec, not
+  implemented. `ace fmt` already round-trips `school.toml` (singular→plural fold
+  included), so a dedicated `school` subcommand added no capability.
 - **`ace school add-import`** — referenced as a writer (school-toml.md:187); not a
   real subcommand.
 - **`ace import --include-internal`** — spec'd as a flag (school-commands.md:81); not
@@ -124,7 +123,7 @@ exist** in the binary:
 
 1. **Channel design** — catalog-names-features (defer flags to `--help`/skill) vs.
    fully self-contained instruction file. + confirm PROD9-13 closes as superseded.
-2. **Phantom `ace school fix`** — delete from spec, or implement (track separately)?
+2. **Phantom `ace school fix`** — resolved: deleted from spec (superseded by `ace fmt`).
 3. **Spec-drift cleanup scope** — fix remaining drift in this work (one commit), or
    sweep separately, or just-the-blockers.
 
