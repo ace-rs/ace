@@ -57,10 +57,7 @@ fn setup_links_all_four_folders() {
         env.write_file(&format!("{folder}/example/SKILL.md"), "# Example\n");
     }
 
-    env.ace()
-        .args(["setup", "."])
-        .assert()
-        .success();
+    env.ace().args(["setup", "."]).assert().success();
 
     // skills is a real dir with per-skill symlinks; the others are whole-dir symlinks.
     env.assert_skills_dir_is_real(".claude/skills");
@@ -82,10 +79,7 @@ fn setup_links_partial_folders() {
     env.mkdir("commands/my-cmd");
     env.write_file("commands/my-cmd/SKILL.md", "# Cmd\n");
 
-    env.ace()
-        .args(["setup", "."])
-        .assert()
-        .success();
+    env.ace().args(["setup", "."]).assert().success();
 
     env.assert_skills_dir_is_real(".claude/skills");
     env.assert_symlink(".claude/skills/my-skill", "skills/my-skill");
@@ -109,10 +103,7 @@ fn setup_preserves_user_skill_alongside_school_skill() {
     env.mkdir(".claude/skills/my-local-skill");
     env.write_file(".claude/skills/my-local-skill/SKILL.md", "# Local\n");
 
-    env.ace()
-        .args(["setup", "."])
-        .assert()
-        .success();
+    env.ace().args(["setup", "."]).assert().success();
 
     // User's skill survives in place — no rename, no warning (no name collision).
     env.assert_exists(".claude/skills/my-local-skill/SKILL.md");
@@ -135,10 +126,7 @@ fn setup_idempotent_relink() {
     std::fs::remove_file(env.path("ace.toml")).expect("remove ace.toml");
 
     // Re-setup — link should still be correct.
-    env.ace()
-        .args(["setup", "."])
-        .assert()
-        .success();
+    env.ace().args(["setup", "."]).assert().success();
 
     env.assert_symlink(".claude/skills/maverick", "skills/maverick");
 }
@@ -163,10 +151,7 @@ fn setup_embedded_with_subpath() {
     env.mkdir("school/skills/sub-skill");
     env.write_file("school/skills/sub-skill/SKILL.md", "# Sub\n");
 
-    env.ace()
-        .args(["setup", ".:school"])
-        .assert()
-        .success();
+    env.ace().args(["setup", ".:school"]).assert().success();
 
     env.assert_exists("ace.toml");
     env.assert_contains("ace.toml", ".:school");
@@ -185,10 +170,7 @@ fn setup_gitignore_ignores_symlinks() {
     // Commit school files first so they're tracked.
     env.git_commit("school files");
 
-    env.ace()
-        .args(["setup", "."])
-        .assert()
-        .success();
+    env.ace().args(["setup", "."]).assert().success();
 
     // After setup, .claude/skills is a new symlink. The .gitignore should
     // prevent it from appearing as untracked in git status.
@@ -206,17 +188,11 @@ fn setup_codex_backend() {
     let env = TestEnv::new();
     env.git_init();
 
-    env.write_file(
-        "school.toml",
-        "name = \"slider\"\nbackend = \"codex\"\n",
-    );
+    env.write_file("school.toml", "name = \"slider\"\nbackend = \"codex\"\n");
     env.mkdir("skills/test-skill");
     env.write_file("skills/test-skill/SKILL.md", "# Test\n");
 
-    env.ace()
-        .args(["setup", "."])
-        .assert()
-        .success();
+    env.ace().args(["setup", "."]).assert().success();
 
     env.assert_skills_dir_is_real(".agents/skills");
     env.assert_symlink(".agents/skills/test-skill", "skills/test-skill");
@@ -256,10 +232,7 @@ fn setup_codex_warns_unsupported_folders() {
     env.mkdir("rules/my-rule");
     env.write_file("rules/my-rule/SKILL.md", "# Rule\n");
 
-    let output = env.ace()
-        .args(["setup", "."])
-        .output()
-        .expect("ace setup");
+    let output = env.ace().args(["setup", "."]).output().expect("ace setup");
 
     assert!(output.status.success());
 
@@ -270,4 +243,44 @@ fn setup_codex_warns_unsupported_folders() {
     );
     // rules/ still gets linked for forward compatibility.
     env.assert_symlink(".agents/rules", "rules");
+}
+
+#[test]
+fn setup_codex_nested_skill_preserves_path() {
+    // Codex advertises FEATURE_NESTED_SKILLS, so a nested school skill emits
+    // verbatim at its identity path — no flatten. E2E through `ace setup .`
+    // exercises discovery → capability branch → nested reconcile (parent-dir
+    // creation), which the build_desired unit tests can't reach.
+    let env = TestEnv::new();
+    env.git_init();
+
+    env.write_file("school.toml", "name = \"merlin\"\nbackend = \"codex\"\n");
+    env.mkdir("skills/typescript/coding");
+    env.write_file("skills/typescript/coding/SKILL.md", "# Coding\n");
+
+    env.ace().args(["setup", "."]).assert().success();
+
+    env.assert_skills_dir_is_real(".agents/skills");
+    env.assert_symlink(
+        ".agents/skills/typescript/coding",
+        "skills/typescript/coding",
+    );
+}
+
+#[test]
+fn setup_claude_flattens_nested_skill() {
+    // Claude is flat-only (no FEATURE_NESTED_SKILLS), so the same nested skill
+    // flattens to its basename — no synthesized nesting under the skills dir.
+    let env = TestEnv::new();
+    env.git_init();
+
+    env.write_file("school.toml", "name = \"iceman\"\n");
+    env.mkdir("skills/typescript/coding");
+    env.write_file("skills/typescript/coding/SKILL.md", "# Coding\n");
+
+    env.ace().args(["setup", "."]).assert().success();
+
+    env.assert_skills_dir_is_real(".claude/skills");
+    env.assert_symlink(".claude/skills/coding", "skills/typescript/coding");
+    env.assert_not_exists(".claude/skills/typescript");
 }
