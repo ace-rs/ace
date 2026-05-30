@@ -114,6 +114,14 @@ decision coexist. Name logic is scattered across `skills::sanitize`,
 - `SkillId` adoption completion (deferred — abstraction #5).
 - Body-scanning + LLM-audit (other PROD9-226 facets).
 - **Vet exit codes across the codebase** — candidate Linear ticket.
+- **Align tabular CLI output.** `list_skills` / `explain_skill` / `pull` emit raw
+  `\t`-separated columns (`NAME\tTIER\tSTATUS\tREASON`) that don't visually align.
+  No table lib in tree — only `console` (0.16, has `measure_text_width` for
+  unicode-correct widths) and `inquire` (prompts only); the CLAUDE.md `term_ui::Tui`
+  is aspirational, doesn't exist. Either compute column widths via
+  `console::measure_text_width` (no new dep, must account for `SanitizedString`
+  render width) or add a table crate (`tabled`/`comfy-table`). Candidate Linear
+  ticket. Tests assert on `\t`-split — they'd need updating.
 
 ## Confirm next session before coding
 
