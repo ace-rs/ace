@@ -95,9 +95,9 @@ pub struct DiscoveredSkill {
 impl DiscoveredSkill {
     /// Character + structural admissibility of this skill's identity and
     /// frontmatter name. Discovery is the gate of record (model.md § Name
-    /// Admission): the verdict is derived here once, and every consumer reads
-    /// it rather than re-running the predicate. Orthogonal to config
-    /// selection — an inadmissible skill is rejected regardless of whether
+    /// Admission): every consumer calls this single predicate rather than
+    /// reimplementing the check. Orthogonal to config selection — an
+    /// inadmissible skill is rejected regardless of whether
     /// `skills`/`include`/`exclude` would have picked it.
     pub fn admission(&self) -> Result<(), super::name::RejectReason> {
         super::name::admissible_skill(self.id.as_str(), self.frontmatter_name.as_deref())
