@@ -17,7 +17,7 @@ pub fn render_table(skills: &Skills<Decided>, show_excluded: bool) -> String {
             "{}\t{}\t{}\t{}",
             crate::skills::name::render(&skill.name),
             skill.tier.label(),
-            skill.state.decision.label(),
+            skill.status_label(),
             reason_for(skill),
         );
     }
@@ -35,8 +35,12 @@ pub fn render_names(skills: &Skills<Decided>, show_excluded: bool) -> String {
 }
 
 fn visible(skills: &Skills<Decided>, show_excluded: bool) -> impl Iterator<Item = &Skill<Decided>> {
+    // Default view shows only admissible, selected skills. `show_excluded`
+    // widens to everything else — both config-excluded and name-rejected.
     skills.iter().filter(move |s| {
-        show_excluded || matches!(s.state.decision, crate::skills::Decision::Included)
+        show_excluded
+            || (matches!(s.state.decision, crate::skills::Decision::Included)
+                && s.admission().is_ok())
     })
 }
 

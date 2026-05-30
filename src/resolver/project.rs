@@ -53,19 +53,20 @@ pub struct Collision {
     pub source: Source,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Config-selection verdict — purely whether the `skills`/`include`/`exclude`
+/// rules picked this skill. Name admissibility is an orthogonal axis carried
+/// on the skill itself (see `DiscoveredSkill::admission`), not a variant here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Decision {
     Included,
     Excluded,
-    Rejected { reason: String },
 }
 
 impl Decision {
-    pub fn label(&self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             Decision::Included => "active",
             Decision::Excluded => "excluded",
-            Decision::Rejected { .. } => "rejected",
         }
     }
 }
@@ -243,16 +244,14 @@ impl Phase {
     }
 
     fn op_for(self, skill: &ResolvedSkill) -> Option<Op> {
-        match (self, &skill.decision) {
+        match (self, skill.decision) {
             (Phase::Exclude, Decision::Excluded) => None,
             (Phase::Exclude, Decision::Included) => Some(Op::Removed),
-            (Phase::Exclude, Decision::Rejected { .. }) => None,
             (Phase::Include, Decision::Included) => Some(Op::Added),
             (Phase::Include, Decision::Excluded) => {
                 let was_removed = skill.trace.iter().any(|e| e.op == Op::Removed);
                 Some(if was_removed { Op::ReAdded } else { Op::Added })
             }
-            (Phase::Include, Decision::Rejected { .. }) => None,
         }
     }
 }

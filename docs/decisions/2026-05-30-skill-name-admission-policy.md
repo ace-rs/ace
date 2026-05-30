@@ -131,9 +131,13 @@ displays).
 - **Admission is classification, not construction.** `SkillId` may continue to hold raw
   identities so rejected skills can be represented and reported. Admissibility is a
   separate verdict over identity plus frontmatter name.
-- **Rejected skills are resolver decisions.** The project resolver gains
-  `Decision::Rejected { reason }`. `included()` naturally excludes rejected skills, and a
-  separate `rejected()` view exposes them for warnings and diagnostics.
+- **Admission is orthogonal to selection, settled at discovery.** The verdict is derived
+  once at the discovery boundary (`DiscoveredSkill::admission`) and carried on the skill,
+  not folded into the resolver. The project resolver's `Decision` stays pure selection
+  (`Included`/`Excluded`) — there is no `Decision::Rejected` variant. `included()` /
+  `excluded()` require admissibility; a separate `rejected()` view derives from the
+  admission verdict and exposes inadmissible skills for warnings and diagnostics. This
+  keeps the `skills/` layer from reaching into and overwriting the resolver's verdict.
 - **Display enforcement is bounded.** Untrusted skill frontmatter display accessors and
   rejection diagnostics return `SanitizedString`. `Ace::warn` / `hint` / `error` keep
   `&str` because developer literals are trusted.

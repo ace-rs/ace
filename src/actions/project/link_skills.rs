@@ -384,7 +384,7 @@ pub fn emit_warnings(ace: &mut Ace, prepared: &PreparedSkills, link_result: &Lin
         ace.warn(warning);
     }
     for skill in prepared.skills.rejected() {
-        if let crate::skills::Decision::Rejected { reason } = &skill.state.decision {
+        if let Err(reason) = skill.admission() {
             ace.warn(&format!(
                 "skill `{}` rejected: {reason}",
                 crate::skills::name::render(&skill.name)

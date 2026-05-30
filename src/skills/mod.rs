@@ -115,6 +115,29 @@ pub struct Skill<S> {
     pub state: S,
 }
 
+impl<S> Skill<S> {
+    /// Name admissibility verdict — see [`discover::DiscoveredSkill::admission`].
+    /// Orthogonal to the resolver's selection [`Decision`]; carried unchanged
+    /// across the resolve typestate.
+    pub fn admission(&self) -> Result<(), name::RejectReason> {
+        name::admissible_skill(&self.name, self.frontmatter_name.as_deref())
+    }
+}
+
+impl Skill<Decided> {
+    /// Single source for the display status: an inadmissible skill reads
+    /// `rejected` regardless of its selection verdict; otherwise the selection
+    /// label (`active`/`excluded`). Shared by the `ace skills` listing and
+    /// `ace explain`.
+    pub fn status_label(&self) -> &'static str {
+        if self.admission().is_err() {
+            "rejected"
+        } else {
+            self.state.decision.label()
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct Skills<S> {
     items: Vec<Skill<S>>,
@@ -230,15 +253,6 @@ impl Skills<Discovered> {
                     frontmatter_name,
                     source,
                 } = by_name.remove(&r.name)?;
-                let decision = match crate::skills::name::admissible_skill(
-                    &r.name,
-                    frontmatter_name.as_deref(),
-                ) {
-                    Ok(()) => r.decision,
-                    Err(reason) => Decision::Rejected {
-                        reason: reason.to_string(),
-                    },
-                };
                 Some(Skill {
                     name: r.name,
                     path,
@@ -247,7 +261,7 @@ impl Skills<Discovered> {
                     frontmatter_name,
                     source,
                     state: Decided {
-                        decision,
+                        decision: r.decision,
                         trace: r.trace,
                     },
                 })
@@ -308,24 +322,26 @@ impl Skills<Decided> {
         self.items.iter()
     }
 
+    /// Admissible skills the resolver selected. Inadmissible skills are
+    /// excluded here even when selection picked them — see [`Self::rejected`].
     pub fn included(&self) -> impl Iterator<Item = &Skill<Decided>> {
         self.items
             .iter()
-            .filter(|s| matches!(s.state.decision, Decision::Included))
+            .filter(|s| matches!(s.state.decision, Decision::Included) && s.admission().is_ok())
     }
 
-    /// Skills that exist in the school but were filtered out by the resolved
-    /// `include_skills` / `exclude_skills` rules.
+    /// Admissible skills that exist in the school but were filtered out by the
+    /// resolved `include_skills` / `exclude_skills` rules.
     pub fn excluded(&self) -> impl Iterator<Item = &Skill<Decided>> {
         self.items
             .iter()
-            .filter(|s| matches!(s.state.decision, Decision::Excluded))
+            .filter(|s| matches!(s.state.decision, Decision::Excluded) && s.admission().is_ok())
     }
 
+    /// Inadmissible skills — rejected by the name gate regardless of selection.
+    /// Mutually exclusive with `included`/`excluded`.
     pub fn rejected(&self) -> impl Iterator<Item = &Skill<Decided>> {
-        self.items
-            .iter()
-            .filter(|s| matches!(s.state.decision, Decision::Rejected { .. }))
+        self.items.iter().filter(|s| s.admission().is_err())
     }
 
     pub fn diagnostics(&self) -> &Diagnostics {
@@ -419,7 +435,7 @@ mod tests {
         let resolved = s.resolve(&tree(AceToml::default()));
 
         let rejected = resolved.find("bad\u{202E}name").expect("bad skill present");
-        assert!(matches!(rejected.state.decision, Decision::Rejected { .. },));
+        assert!(rejected.admission().is_err());
 
         let included: Vec<&str> = resolved.included().map(|s| s.name.as_str()).collect();
         assert_eq!(included, vec!["safe"]);
@@ -434,7 +450,7 @@ mod tests {
         let resolved = s.resolve(&tree(AceToml::default()));
 
         let rejected = resolved.find("safe").expect("skill present");
-        assert!(matches!(rejected.state.decision, Decision::Rejected { .. },));
+        assert!(rejected.admission().is_err());
         assert_eq!(resolved.rejected().count(), 1);
         assert_eq!(resolved.included().count(), 0);
     }

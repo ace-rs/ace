@@ -123,10 +123,7 @@ impl AddImport<'_> {
 }
 
 fn warn_if_rejected(skill: &DiscoveredSkill, ace: &mut Ace) -> bool {
-    match crate::skills::name::admissible_skill(
-        skill.id.as_str(),
-        skill.frontmatter_name.as_deref(),
-    ) {
+    match skill.admission() {
         Ok(()) => true,
         Err(reason) => {
             ace.warn(&format!(

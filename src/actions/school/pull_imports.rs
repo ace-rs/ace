@@ -100,10 +100,7 @@ impl PullImports<'_> {
                 continue;
             };
             if let Some(d) = disc.iter().find(|d| d.id.as_str() == resolved.identity) {
-                if let Err(reason) = crate::skills::name::admissible_skill(
-                    d.id.as_str(),
-                    d.frontmatter_name.as_deref(),
-                ) {
+                if let Err(reason) = d.admission() {
                     rejected_count += 1;
                     ace.warn(&format!(
                         "skipping inadmissible skill `{}` from {}: {reason}",

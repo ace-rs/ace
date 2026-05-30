@@ -165,7 +165,7 @@ backend-specific materializations outlive later rule tightening.
 | ACE's own display (prompts, listings, warnings) | Transform on render                                    |
 | Emit / symlink name                             | Structural validation only (traversal / NUL / length)  |
 | Backend file content                            | Nothing — symlink target content remains byte-for-byte |
-| Internal model                                  | Raw preserved plus rejected decision for diagnostics   |
+| Internal model                                  | Raw preserved; admission verdict carried for diagnostics |
 
 ### Approach
 
@@ -182,9 +182,10 @@ must fail closed until ACE's committed Unicode table is regenerated.
 
 Admission checks every identity segment and the frontmatter `name` when present. A bad
 character in any identity segment rejects the whole skill; the old "import as-is + warn"
-tolerance for foreign path segments is superseded. Rejected skills remain on disk and in
-the resolved model as `Decision::Rejected { reason }`, but they are never included or
-emitted.
+tolerance for foreign path segments is superseded. Admission is a separate axis from
+config selection, settled at discovery: rejected skills remain on disk and in the resolved
+model, carrying their rejection reason, but are never included or emitted regardless of
+what the `skills`/`include`/`exclude` rules would have picked.
 
 ### Display transform
 
