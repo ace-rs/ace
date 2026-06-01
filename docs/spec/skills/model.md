@@ -101,8 +101,10 @@ what frontmatter `name` *means*:
 - Other backends ignore it or treat it as display-only.
 
 Using `name` as identity would couple ACE's internal model to whichever backend's
-semantics it picked. ACE keys off the path and lets `name` serve per-backend purposes
-(display label, emit-time naming — see [emit.md](emit.md#backend-emit-rule)).
+semantics it picked. ACE keys off the path, and the emitted directory name is
+`basename(identity)` too (see [emit.md](emit.md#backend-emit-rule)) — so `name` is **never
+an emit or match key**. It is display metadata, passed through verbatim for whatever
+per-backend purpose the backend assigns it (e.g. Claude's slash-command token).
 
 ### Type-safety invariant
 

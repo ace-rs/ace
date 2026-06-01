@@ -146,7 +146,8 @@ divergence warning cover them when a future import uses them.
 - Resolves sub-decision #1 of [emit & match](2026-05-26-skill-emit-and-match.md); builds on
   [discovery & identity](2026-05-26-skill-discovery-identity-storage.md) and
   [name admission](2026-05-30-skill-name-admission-policy.md).
-- Specs to update: `docs/spec/skills/{model,selection,emit}.md` (drop the `frontmatter.name ||`
-  emit rule; record the warning set and the path-as-name boundary).
+- Specs: `emit.md` + `model.md` updated alongside this decision — the `frontmatter.name ||`
+  emit rule is dropped and the path-as-name boundary recorded. The warning-set wording lands
+  with the `ace school validate` task.
 - Memory: supersedes `project_pending_collision_spoof` (its namespaced-storage framing is
   rejected here).

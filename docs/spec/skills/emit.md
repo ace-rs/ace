@@ -77,7 +77,7 @@ if (features & FEATURE_NESTED_SKILLS) && segments(identity) <= MAX_SKILL_DEPTH:
     write to <backend>/skills/<identity>/        # verbatim, no flatten, no collision check
 else:
     # flatten emit
-    skillName = skill.name || basename(skill.identity)
+    skillName = basename(skill.identity)             # path is the only naming axis
     structural_check(skillName)
     write to <backend>/skills/<skillName>/
 ```
@@ -99,10 +99,14 @@ Imported skills aren't user-controlled, so ACE handles hostile frontmatter at th
 boundary rather than asking for an upstream rename. Identity-path slashes are legitimate
 on the nested branch and never reach this check.
 
-The `skillName` rule for the flatten branch matches `vercel-labs/skills`
-`src/installer.ts:247`. The collision policy below applies only on the flatten branch;
-nested emit cannot collide because identity paths are unique by construction in school
-storage.
+On the flatten branch the emitted name is `basename(identity)` — the leaf segment of the
+path. ACE **deliberately diverges** from `vercel-labs/skills` `src/installer.ts:247`, which
+names the dir from `frontmatter.name || basename`: the path is ACE's only naming axis, so
+`frontmatter.name` never names anything and a source cannot rename its emitted dir through
+frontmatter (see
+[name = path decision](../../decisions/2026-06-01-skill-name-is-path.md)). The collision
+policy below applies only on the flatten branch; nested emit cannot collide because identity
+paths are unique by construction in school storage.
 
 ### Loser-drop on collision (flatten branch only)
 
