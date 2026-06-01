@@ -23,10 +23,9 @@ means "compat with skills.sh's looser predicate."
 Companion notes capturing the full analysis:
 
 - `docs/notes/2026-05-25-skills-sh-spec-reference.md` — frozen upstream spec snapshot.
-- `docs/notes/2026-06-01-supply-chain-skill-shadowing.md` — consolidated the original
-  collision analysis, the import-questions list, and the session checkpoint (2026-06-01);
-  those three notes were removed once their rulings landed here, in the companion emit
-  decision, and in shipped code.
+- `docs/decisions/2026-06-01-skill-name-is-path.md` — resolves the shadowing / collision
+  thread (name = path; shadowing is source-trust). It consolidated and replaced the earlier
+  research note, which was removed once its rulings landed in that decision.
 
 ## Decision
 

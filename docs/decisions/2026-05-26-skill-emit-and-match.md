@@ -35,6 +35,12 @@ does ACE do with them when emitting to non-Claude backends?
 
 ### Backend emit rule
 
+> **Superseded 2026-06-01** by
+> [skill name is path](2026-06-01-skill-name-is-path.md): the `skill.name ||` term is dropped —
+> the emit name is `basename(identity)` always, and `frontmatter.name` is display-only (never
+> an emit or identity key). This resolves sub-decision #1 below toward basename-always. The
+> sanitization, collision-handling, and passthrough rules in this decision still stand.
+
 For each discovered skill at backend emit time:
 
 ```
