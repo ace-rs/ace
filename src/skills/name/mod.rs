@@ -138,7 +138,6 @@ impl fmt::Display for RejectReason {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NameContext {
     IdentitySegment,
-    FrontmatterName,
     BackendLinkName,
 }
 
@@ -146,7 +145,6 @@ impl NameContext {
     pub fn label(self) -> &'static str {
         match self {
             NameContext::IdentitySegment => "identity segment",
-            NameContext::FrontmatterName => "frontmatter name",
             NameContext::BackendLinkName => "backend link name",
         }
     }
@@ -236,15 +234,15 @@ pub fn admissible_component(name: &str, context: NameContext) -> Result<(), Reje
     Ok(())
 }
 
-pub fn admissible_skill(
-    identity: &str,
-    frontmatter_name: Option<&str>,
-) -> Result<(), RejectReason> {
+/// Admissibility of a skill's identity. Identity is the path ACE owns and
+/// emits from (name = `basename(identity)`); every segment must clear the
+/// whitelist. Frontmatter `name` is deliberately *not* checked: ACE passes it
+/// through verbatim and never emits or matches on it, so it is the backend's
+/// domain — hostile chars there are neutralized only when ACE renders them
+/// (see [`render`]). Boundary: `docs/decisions/2026-06-01-skill-name-is-path.md`.
+pub fn admissible_skill(identity: &str) -> Result<(), RejectReason> {
     for segment in identity.split('/') {
         admissible_component(segment, NameContext::IdentitySegment)?;
-    }
-    if let Some(name) = frontmatter_name {
-        admissible_component(name, NameContext::FrontmatterName)?;
     }
     Ok(())
 }
@@ -307,10 +305,10 @@ mod tests {
     }
 
     #[test]
-    fn admission_checks_identity_segments_and_frontmatter_name() {
-        assert!(admissible_skill("typescript/coding", Some("ts-coding")).is_ok());
+    fn admission_checks_every_identity_segment() {
+        assert!(admissible_skill("typescript/coding").is_ok());
 
-        let identity_err = admissible_skill("type\u{202E}script/coding", None)
+        let identity_err = admissible_skill("type\u{202E}script/coding")
             .expect_err("identity segment should reject bidi override");
         assert!(matches!(
             identity_err,
@@ -321,21 +319,18 @@ mod tests {
                 ..
             }
         ));
+    }
 
-        let frontmatter_err = admissible_skill("typescript/coding", Some("bad/name"))
-            .expect_err("frontmatter slash should reject");
-        assert!(matches!(
-            frontmatter_err,
-            RejectReason::Slash {
-                context: NameContext::FrontmatterName,
-                ..
-            }
-        ));
+    #[test]
+    fn admission_ignores_frontmatter_name() {
+        // Frontmatter is the backend's domain; a hostile `name:` does not
+        // reject a skill whose identity path is clean.
+        assert!(admissible_skill("typescript/coding").is_ok());
     }
 
     #[test]
     fn reject_reason_display_sanitizes_untrusted_name() {
-        let err = admissible_skill("bad\u{202E}name", None).expect_err("reject");
+        let err = admissible_skill("bad\u{202E}name").expect_err("reject");
         let rendered = err.to_string();
         assert!(rendered.contains("bad\u{FFFD}name"));
         assert!(rendered.contains("U+202E"));

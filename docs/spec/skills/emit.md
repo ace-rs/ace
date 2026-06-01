@@ -114,9 +114,10 @@ When two skills on the flatten branch resolve to the same `skillName`:
 
 - **Tiebreaker** — alphabetical by source path. Winner emits.
 - **Loser** — omitted from the backend entirely.
-- **Warning** — identifies both source paths and provides remediation hints:
-  - Rename frontmatter `name` upstream to disambiguate (or `basename` if no explicit
-    name).
+- **Warning** — identifies both source paths and provides remediation hints. Since the
+  name is `basename(identity)`, the collision is two identity paths sharing a leaf on a
+  flat backend (a *flat collapse*); frontmatter cannot disambiguate it:
+  - Restructure the skill paths so their leaves differ.
   - Use `[[imports]]` `exclude_skills` to express disjoint sets per source.
 
 No path-prefix disambiguation. No segment expansion. No separator design. ACE applies the

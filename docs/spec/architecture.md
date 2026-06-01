@@ -173,8 +173,8 @@ link code branch on feature bits. `FEATURE_NESTED_SKILLS` is the one that matter
   layouts (Codex, OpenCode). ACE emits verbatim at the identity path. Nested emit cannot
   collide: identity paths are unique by construction.
 - **Clear** — the loader sees only the top level (Claude Code). ACE *flattens*: the emit
-  name is `frontmatter_name || basename(identity)`, structurally checked, with
-  **loser-drop on collision** (alphabetical-by-source tiebreaker, warn, drop the loser).
+  name is `basename(identity)` (the path is the only naming axis), structurally checked,
+  with **loser-drop on collision** (alphabetical-by-source tiebreaker, warn, drop the loser).
 
 A global `MAX_SKILL_DEPTH` cap routes over-deep skills to the flatten branch even on
 nested-capable backends. Custom `[[backends]]` entries inherit their kind's features, so a

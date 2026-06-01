@@ -55,6 +55,17 @@ ACE controls the key for the path/dir-keyed surfaces (Codex, Claude load). The
 frontmatter-keyed surfaces (skills.sh, OpenCode, Claude's slash token) are the backend's
 domain.
 
+**Consequence for admission.** This narrows the [name admission policy](2026-05-30-skill-name-admission-policy.md),
+whose predicate was "a verdict over identity *plus frontmatter name*." Admission now keys on
+**identity segments only**. Frontmatter `name` is not an admission axis: ACE never emits or
+matches on it, so a hostile char there is the backend's domain, neutralized solely by the
+display transform (`render` / `SanitizedString`) when ACE itself prints the field. Checking
+it at admission would have ACE fail-closed on — and drop a selected skill because of — a
+field it deliberately does not touch, which is a boundary violation, not defense in depth.
+The whitelist/fail-closed posture is undiminished: it still governs the identity path, the
+one name ACE owns. Implemented as `name::admissible_skill(identity)` (single arg); the
+`NameContext::FrontmatterName` admission context is removed.
+
 ### 3. Shadowing is source-trust, not a name defense
 
 The name is a **label, not a capability**: the model reads the skill's *content* and adapts;

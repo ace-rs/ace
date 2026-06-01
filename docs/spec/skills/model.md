@@ -180,14 +180,18 @@ characters, and `Co` private-use characters. `Zl` and `Zp` are rejected too.
 This is a whitelist, not an equivalent-looking denylist. Unknown future Unicode characters
 must fail closed until ACE's committed Unicode table is regenerated.
 
-### Identity and frontmatter coverage
+### Identity coverage
 
-Admission checks every identity segment and the frontmatter `name` when present. A bad
-character in any identity segment rejects the whole skill; the old "import as-is + warn"
-tolerance for foreign path segments is superseded. Admission is a separate axis from
-config selection, settled at discovery: rejected skills remain on disk and in the resolved
-model, carrying their rejection reason, but are never included or emitted regardless of
-what the `skills`/`include`/`exclude` rules would have picked.
+Admission checks every identity segment. A bad character in any segment rejects the whole
+skill; the old "import as-is + warn" tolerance for foreign path segments is superseded.
+Identity is the path ACE owns and emits from (name = `basename(identity)`), so it is the
+only admission axis. Frontmatter `name` is **not** checked: ACE passes it through verbatim
+and never emits or matches on it, so it is the backend's domain — hostile characters there
+are neutralized only when ACE itself renders the field (see Display transform). See
+[name = path decision](../../decisions/2026-06-01-skill-name-is-path.md). Admission is a
+separate axis from config selection, settled at discovery: rejected skills remain on disk
+and in the resolved model, carrying their rejection reason, but are never included or
+emitted regardless of what the `skills`/`include`/`exclude` rules would have picked.
 
 ### Display transform
 

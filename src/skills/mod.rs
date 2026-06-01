@@ -103,10 +103,10 @@ pub struct Skill<S> {
     /// resolver to gate skills behind explicit-name matches or the
     /// `include_internal` flag (mirrors skills.sh).
     pub internal: bool,
-    /// Frontmatter `name:` value, when present. Used at the backend emit
-    /// boundary: link name = `frontmatter_name || basename(identity)`,
-    /// structurally checked. Character admission happens during resolution.
-    /// See `docs/spec/skills/emit.md` § Backend emit rule.
+    /// Frontmatter `name:` value, when present. Display/diagnostic only —
+    /// the emit name is `basename(identity)`, never this field, and ACE never
+    /// matches on it (`docs/decisions/2026-06-01-skill-name-is-path.md`). The
+    /// imports resolver reads it to flag cross-source `name` mismatches.
     pub frontmatter_name: Option<String>,
     /// Origin label (`owner/repo`) when the skill was pulled from an import
     /// source. `None` for skills discovered directly from a school's own
@@ -120,7 +120,7 @@ impl<S> Skill<S> {
     /// Orthogonal to the resolver's selection [`Decision`]; carried unchanged
     /// across the resolve typestate.
     pub fn admission(&self) -> Result<(), name::RejectReason> {
-        name::admissible_skill(&self.name, self.frontmatter_name.as_deref())
+        name::admissible_skill(&self.name)
     }
 }
 
@@ -465,16 +465,18 @@ mod tests {
     }
 
     #[test]
-    fn resolve_rejects_bad_frontmatter_name() {
-        let mut bad = discovered("safe", Tier::Curated);
-        bad.frontmatter_name = Some("bad/name".to_string());
-        let s = Skills::<Discovered>::from_discovered(&[bad]);
+    fn frontmatter_name_does_not_gate_admission() {
+        // Identity path is clean; frontmatter `name:` is the backend's domain
+        // and never rejects the skill (name = basename(identity)).
+        let mut skill = discovered("safe", Tier::Curated);
+        skill.frontmatter_name = Some("bad\u{202E}name".to_string());
+        let s = Skills::<Discovered>::from_discovered(&[skill]);
         let resolved = s.resolve(&tree(AceToml::default()));
 
-        let rejected = resolved.find("safe").expect("skill present");
-        assert!(rejected.admission().is_err());
-        assert_eq!(resolved.rejected().count(), 1);
-        assert_eq!(resolved.included().count(), 0);
+        let admitted = resolved.find("safe").expect("skill present");
+        assert!(admitted.admission().is_ok());
+        assert_eq!(resolved.rejected().count(), 0);
+        assert_eq!(resolved.included().count(), 1);
     }
 
     fn excluded_names(resolved: &Skills<Decided>) -> Vec<String> {

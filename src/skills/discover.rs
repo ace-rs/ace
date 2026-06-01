@@ -85,22 +85,23 @@ pub struct DiscoveredSkill {
     /// flag; filtering (against explicit-name imports, etc.) is the
     /// caller's job. Default false when not present in frontmatter.
     pub internal: bool,
-    /// Frontmatter `name:` value, when present. Used by the imports
-    /// resolver to detect cross-source mismatches at colliding
+    /// Frontmatter `name:` value, when present. Display/diagnostic only —
+    /// never an emit or match key (name = `basename(identity)`). Used by the
+    /// imports resolver to flag cross-source mismatches at colliding
     /// identities. `None` when the SKILL.md has no parseable name.
     #[allow(dead_code)] // consumed by imports resolver
     pub frontmatter_name: Option<String>,
 }
 
 impl DiscoveredSkill {
-    /// Character + structural admissibility of this skill's identity and
-    /// frontmatter name. Discovery is the gate of record (model.md § Name
-    /// Admission): every consumer calls this single predicate rather than
-    /// reimplementing the check. Orthogonal to config selection — an
-    /// inadmissible skill is rejected regardless of whether
-    /// `skills`/`include`/`exclude` would have picked it.
+    /// Character + structural admissibility of this skill's identity path.
+    /// Discovery is the gate of record (model.md § Name Admission): every
+    /// consumer calls this single predicate rather than reimplementing the
+    /// check. Orthogonal to config selection — an inadmissible skill is
+    /// rejected regardless of whether `skills`/`include`/`exclude` would have
+    /// picked it.
     pub fn admission(&self) -> Result<(), super::name::RejectReason> {
-        super::name::admissible_skill(self.id.as_str(), self.frontmatter_name.as_deref())
+        super::name::admissible_skill(self.id.as_str())
     }
 }
 

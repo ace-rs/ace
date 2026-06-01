@@ -149,7 +149,8 @@ pub enum ClassifyInput {
 /// Walks the school's `skills/` tree, resolves against the three config
 /// layers, and emits one `DesiredLink` per included skill. The link
 /// name follows the backend-emit rule from `docs/spec/skills/emit.md`:
-/// `frontmatter.name || basename(identity)`, structurally checked at the boundary.
+/// `basename(identity)`, structurally checked at the boundary. The path is the
+/// only naming axis (`docs/decisions/2026-06-01-skill-name-is-path.md`).
 ///
 /// When two included skills produce the same backend dirname, the
 /// loser is dropped per spec § Loser-drop on collision (alphabetical
@@ -174,9 +175,8 @@ pub fn prepare(
 /// - Nested-capable backend (`FEATURE_NESTED_SKILLS` set) AND identity
 ///   depth ≤ `MAX_SKILL_DEPTH` → emit verbatim at the identity path, no
 ///   collision check (paths are unique in school storage).
-/// - Otherwise → flatten branch: `skillName = frontmatter.name || basename(identity)`,
-///   structural check, alphabetical-by-source-path tiebreak, loser-drop + warn on
-///   collision.
+/// - Otherwise → flatten branch: `skillName = basename(identity)`, structural
+///   check, alphabetical-by-source-path tiebreak, loser-drop + warn on collision.
 ///
 /// See `docs/spec/skills/emit.md` § Backend emit rule.
 fn build_desired<'a, I>(included: I, backend_features: u32) -> (Vec<DesiredLink>, Vec<String>)
@@ -216,11 +216,7 @@ where
     let mut candidates: Vec<(String, &Path, &str)> = to_flatten
         .iter()
         .map(|s| {
-            let raw_name = s
-                .frontmatter_name
-                .as_deref()
-                .unwrap_or_else(|| basename_of(&s.name));
-            let link_name = raw_name.to_string();
+            let link_name = basename_of(&s.name).to_string();
             (link_name, s.path.as_path(), s.name.as_str())
         })
         .collect();
@@ -244,7 +240,8 @@ where
             warnings.push(format!(
                 "backend-name collision at `{link_name}`: `{winner_identity}` wins over \
                  `{identity}` (alphabetical-by-source-path). Loser is dropped from the backend. \
-                 Fix upstream: rename frontmatter `name:` or use `[[imports]]` `exclude_skills`.",
+                 Two identities share a leaf on a flat backend — restructure the skill paths or \
+                 use `[[imports]]` `exclude_skills` to express disjoint sets.",
             ));
             continue;
         }
@@ -740,17 +737,13 @@ mod tests {
     use crate::skills::discover::Tier;
     use crate::skills::{Decided, Decision};
 
-    fn included_skill(
-        identity: &str,
-        path: &str,
-        frontmatter_name: Option<&str>,
-    ) -> Skill<Decided> {
+    fn included_skill(identity: &str, path: &str) -> Skill<Decided> {
         Skill {
             name: identity.to_string(),
             path: PathBuf::from(path),
             tier: Tier::Curated,
             internal: false,
-            frontmatter_name: frontmatter_name.map(String::from),
+            frontmatter_name: None,
             source: None,
             state: Decided {
                 decision: Decision::Included,
@@ -761,7 +754,7 @@ mod tests {
 
     #[test]
     fn flat_identity_link_name_equals_basename() {
-        let skills = [included_skill("rust-coding", "/s/rust-coding", None)];
+        let skills = [included_skill("rust-coding", "/s/rust-coding")];
         let (desired, warnings) = build_desired(skills.iter(), 0);
         assert_eq!(desired.len(), 1);
         assert_eq!(desired[0].name, "rust-coding");
@@ -771,24 +764,9 @@ mod tests {
     #[test]
     fn nested_identity_link_name_uses_leaf() {
         // <school>/skills/typescript/coding/ → backend link `coding`.
-        let skills = [included_skill(
-            "typescript/coding",
-            "/s/typescript/coding",
-            None,
-        )];
+        let skills = [included_skill("typescript/coding", "/s/typescript/coding")];
         let (desired, _) = build_desired(skills.iter(), 0);
         assert_eq!(desired[0].name, "coding");
-    }
-
-    #[test]
-    fn frontmatter_name_overrides_basename() {
-        let skills = [included_skill(
-            "typescript/coding",
-            "/s/typescript/coding",
-            Some("ts-coding"),
-        )];
-        let (desired, _) = build_desired(skills.iter(), 0);
-        assert_eq!(desired[0].name, "ts-coding");
     }
 
     #[test]
@@ -796,8 +774,8 @@ mod tests {
         // Two nested skills produce the same leaf `coding`. Alphabetical
         // by source path: `python/coding` wins over `typescript/coding`.
         let skills = [
-            included_skill("typescript/coding", "/s/typescript/coding", None),
-            included_skill("python/coding", "/s/python/coding", None),
+            included_skill("typescript/coding", "/s/typescript/coding"),
+            included_skill("python/coding", "/s/python/coding"),
         ];
         let (desired, warnings) = build_desired(skills.iter(), 0);
         assert_eq!(desired.len(), 1);
@@ -807,45 +785,6 @@ mod tests {
         assert!(warnings[0].contains("collision"));
         assert!(warnings[0].contains("python/coding"));
         assert!(warnings[0].contains("typescript/coding"));
-    }
-
-    #[test]
-    fn frontmatter_name_can_resolve_a_collision() {
-        // typescript/coding has frontmatter `ts-coding`; collision
-        // averted because the link names differ.
-        let skills = [
-            included_skill(
-                "typescript/coding",
-                "/s/typescript/coding",
-                Some("ts-coding"),
-            ),
-            included_skill("python/coding", "/s/python/coding", None),
-        ];
-        let (mut desired, warnings) = build_desired(skills.iter(), 0);
-        desired.sort_by(|a, b| a.name.cmp(&b.name));
-        assert_eq!(desired.len(), 2);
-        assert_eq!(desired[0].name, "coding");
-        assert_eq!(desired[1].name, "ts-coding");
-        assert!(warnings.is_empty());
-    }
-
-    #[test]
-    fn emit_does_not_mutate_bidi_chars() {
-        // Character admission happens during discovery/resolution. Emit is a
-        // structural backstop only, so this pure helper does not mutate
-        // Unicode content if a caller bypasses admission.
-        let skills = [included_skill("foo", "/s/foo", Some("good\u{202E}.exe"))];
-        let (desired, _) = build_desired(skills.iter(), 0);
-        assert_eq!(desired[0].name, "good\u{202E}.exe");
-    }
-
-    #[test]
-    fn nul_frontmatter_name_warns_and_drops() {
-        let skills = [included_skill("foo", "/s/foo", Some("foo\0bar"))];
-        let (desired, warnings) = build_desired(skills.iter(), 0);
-        assert!(desired.is_empty());
-        assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].contains("NUL"));
     }
 
     #[test]
@@ -885,11 +824,7 @@ mod tests {
     fn nested_capable_emits_verbatim() {
         // FEATURE_NESTED_SKILLS set: identity path preserved as link name,
         // no flatten.
-        let skills = [included_skill(
-            "typescript/coding",
-            "/s/typescript/coding",
-            None,
-        )];
+        let skills = [included_skill("typescript/coding", "/s/typescript/coding")];
         let (desired, warnings) = build_desired(skills.iter(), FEATURE_NESTED_SKILLS);
         assert_eq!(desired.len(), 1);
         assert_eq!(desired[0].name, "typescript/coding");
@@ -899,11 +834,7 @@ mod tests {
     #[test]
     fn flat_backend_flattens_identity() {
         // features=0: existing behavior — leaf name only.
-        let skills = [included_skill(
-            "typescript/coding",
-            "/s/typescript/coding",
-            None,
-        )];
+        let skills = [included_skill("typescript/coding", "/s/typescript/coding")];
         let (desired, _) = build_desired(skills.iter(), 0);
         assert_eq!(desired[0].name, "coding");
     }
@@ -912,7 +843,7 @@ mod tests {
     fn depth_cap_falls_through_to_flatten() {
         // 6-segment identity exceeds MAX_SKILL_DEPTH=5 → flatten branch
         // even with FEATURE_NESTED_SKILLS set.
-        let skills = [included_skill("a/b/c/d/e/f", "/s/a/b/c/d/e/f", None)];
+        let skills = [included_skill("a/b/c/d/e/f", "/s/a/b/c/d/e/f")];
         let (desired, _) = build_desired(skills.iter(), FEATURE_NESTED_SKILLS);
         assert_eq!(desired[0].name, "f");
     }
@@ -922,8 +853,8 @@ mod tests {
         // Two skills share a leaf `foo` at different identity paths. On a
         // nested-capable backend both emit verbatim — no collision, no warning.
         let skills = [
-            included_skill("a/foo", "/s/a/foo", None),
-            included_skill("b/foo", "/s/b/foo", None),
+            included_skill("a/foo", "/s/a/foo"),
+            included_skill("b/foo", "/s/b/foo"),
         ];
         let (mut desired, warnings) = build_desired(skills.iter(), FEATURE_NESTED_SKILLS);
         desired.sort_by(|a, b| a.name.cmp(&b.name));
@@ -938,8 +869,8 @@ mod tests {
         // Depth 3 (≤ MAX_SKILL_DEPTH) emits nested; depth 6 falls through
         // to flatten as leaf — same emit, per-skill router.
         let skills = [
-            included_skill("a/b/c", "/s/a/b/c", None),
-            included_skill("a/b/c/d/e/f", "/s/a/b/c/d/e/f", None),
+            included_skill("a/b/c", "/s/a/b/c"),
+            included_skill("a/b/c/d/e/f", "/s/a/b/c/d/e/f"),
         ];
         let (mut desired, _) = build_desired(skills.iter(), FEATURE_NESTED_SKILLS);
         desired.sort_by(|a, b| a.name.cmp(&b.name));
@@ -950,39 +881,42 @@ mod tests {
         assert_eq!(desired[1].target, PathBuf::from("/s/a/b/c/d/e/f"));
     }
 
+    // -- emit structural backstop (spec: emit.md § Backend-emit writes) --
+    //
+    // The emit name is `basename(identity)` — a single path segment by
+    // construction, so slash / multi-level traversal threats are neutralized
+    // by the basename split, not by a check. What survives is a leaf that is
+    // itself structurally unsafe (leading dot, bare dot-segment, NUL, length,
+    // backslash). Character admission is discovery's job; emit re-checks
+    // structure only, as a filesystem-edge backstop independent of admission.
+
     #[test]
-    fn slash_in_frontmatter_name_on_flatten_warns_and_drops() {
-        // Third-party skill frontmatter `name: "foo/bar"` would synthesize a
-        // fake nested layout on a flat backend. We can't ask users to edit
-        // imported skills, so warn-and-drop at the emit boundary.
-        let skills = [included_skill("foo", "/s/foo", Some("foo/bar"))];
+    fn emit_does_not_mutate_chars() {
+        // Emit is a structural backstop, not a character gate — it never
+        // rewrites Unicode content. A bidi char in the leaf passes structure
+        // and emits verbatim; rejecting it is discovery-admission's job.
+        let skills = [included_skill("good\u{202E}coding", "/s/good\u{202E}coding")];
         let (desired, warnings) = build_desired(skills.iter(), 0);
-        assert!(
-            desired.is_empty(),
-            "skill should be dropped on flatten branch"
-        );
-        assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].contains("foo"));
-        assert!(warnings[0].contains('/'));
+        assert_eq!(desired[0].name, "good\u{202E}coding");
+        assert!(warnings.is_empty());
     }
 
     #[test]
-    fn path_traversal_in_frontmatter_name_dropped() {
-        // Classic ../.. escape attempt via imported skill frontmatter.
-        // Caught by the slash check; pinned here against future refactors.
-        let skills = [included_skill("foo", "/s/foo", Some("../../etc/passwd"))];
+    fn nul_in_leaf_warns_and_drops() {
+        let skills = [included_skill("foo\0bar", "/s/foo")];
         let (desired, warnings) = build_desired(skills.iter(), 0);
         assert!(desired.is_empty());
         assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].contains("foo"));
+        assert!(warnings[0].contains("NUL"));
     }
 
     #[test]
-    fn dot_segment_frontmatter_name_dropped() {
-        // Bare `.` and `..` bypass the slash check but still traverse:
-        // `<skills>/.` is the dir itself; `<skills>/..` is the parent.
+    fn dot_segment_leaf_warns_and_drops() {
+        // A leaf that is bare `.` or `..` traverses: `<skills>/.` is the dir
+        // itself; `<skills>/..` is the parent. Chars pass admission; structure
+        // does not.
         for spoof in [".", ".."] {
-            let skills = [included_skill("foo", "/s/foo", Some(spoof))];
+            let skills = [included_skill(spoof, "/s/foo")];
             let (desired, warnings) = build_desired(skills.iter(), 0);
             assert!(desired.is_empty(), "{spoof:?} should be dropped");
             assert_eq!(warnings.len(), 1);
@@ -995,21 +929,11 @@ mod tests {
     }
 
     #[test]
-    fn absolute_path_frontmatter_name_dropped() {
-        // Leading-slash absolute path → caught by slash check, but pin it
-        // explicitly so the intent survives if checks are reordered.
-        let skills = [included_skill("foo", "/s/foo", Some("/etc/passwd"))];
-        let (desired, warnings) = build_desired(skills.iter(), 0);
-        assert!(desired.is_empty());
-        assert!(warnings[0].contains("/etc/passwd"));
-    }
-
-    #[test]
-    fn leading_dot_frontmatter_name_dropped() {
+    fn leading_dot_leaf_warns_and_drops() {
         // `.gitignore`, `.env`, etc. — would shadow real dotfiles in the
         // backend skills dir. Drop defensively.
         for spoof in [".gitignore", ".env", ".ssh", ".hidden"] {
-            let skills = [included_skill("foo", "/s/foo", Some(spoof))];
+            let skills = [included_skill(spoof, "/s/foo")];
             let (desired, warnings) = build_desired(skills.iter(), 0);
             assert!(desired.is_empty(), "{spoof:?} should be dropped");
             assert!(
@@ -1021,21 +945,21 @@ mod tests {
     }
 
     #[test]
-    fn oversized_frontmatter_name_dropped() {
+    fn oversized_leaf_warns_and_drops() {
         // Filesystem per-component cap is 255 bytes; reject earlier.
         let huge = "a".repeat(300);
-        let skills = [included_skill("foo", "/s/foo", Some(&huge))];
+        let skills = [included_skill(&huge, "/s/foo")];
         let (desired, warnings) = build_desired(skills.iter(), 0);
         assert!(desired.is_empty());
         assert!(warnings[0].contains("255"), "warning was: {}", warnings[0]);
     }
 
     #[test]
-    fn backslash_in_frontmatter_name_dropped() {
+    fn backslash_in_leaf_warns_and_drops() {
         // Backslash is a legal filename char on unix but a path separator
         // on Windows. Reject defensively — symbol with no legitimate use
         // in a flat-backend skill name.
-        let skills = [included_skill("foo", "/s/foo", Some("foo\\bar"))];
+        let skills = [included_skill("foo\\bar", "/s/foo")];
         let (desired, warnings) = build_desired(skills.iter(), 0);
         assert!(desired.is_empty());
         assert!(
@@ -1047,30 +971,13 @@ mod tests {
 
     #[test]
     fn slash_in_identity_on_nested_branch_is_legitimate() {
-        // Identity-path `/` is the whole point of the nested branch; only
-        // frontmatter-driven slash on the flatten branch is the threat.
-        let skills = [included_skill(
-            "typescript/coding",
-            "/s/typescript/coding",
-            None,
-        )];
+        // Identity-path `/` is the whole point of the nested branch — it
+        // emits verbatim, slashes intact.
+        let skills = [included_skill("typescript/coding", "/s/typescript/coding")];
         let (desired, warnings) = build_desired(skills.iter(), FEATURE_NESTED_SKILLS);
         assert_eq!(desired.len(), 1);
         assert_eq!(desired[0].name, "typescript/coding");
         assert!(warnings.is_empty());
-    }
-
-    #[test]
-    fn frontmatter_name_ignored_on_nested_branch() {
-        // The nested branch emits at identity path; frontmatter `name`
-        // only matters on the flatten branch.
-        let skills = [included_skill(
-            "typescript/coding",
-            "/s/typescript/coding",
-            Some("ts-coding"),
-        )];
-        let (desired, _) = build_desired(skills.iter(), FEATURE_NESTED_SKILLS);
-        assert_eq!(desired[0].name, "typescript/coding");
     }
 
     // -- capability-driven emit: reconcile (nested layout) --

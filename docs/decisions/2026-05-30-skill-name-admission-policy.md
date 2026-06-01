@@ -4,6 +4,12 @@
 - **PR:** manual
 - **Status:** accepted
 
+> **Partially superseded (2026-06-01)** by
+> [name = path](2026-06-01-skill-name-is-path.md): admission now keys on the **identity
+> path only**. The "verdict over identity *plus frontmatter name*" below is narrowed —
+> frontmatter `name` is the backend's domain (verbatim passthrough), neutralized only by
+> the display transform, never an admission axis. Everything else here stands.
+
 > **Supersedes** the *Sanitization (Q9)* section of
 > [`2026-05-26-skill-emit-and-match.md`](2026-05-26-skill-emit-and-match.md) and corrects
 > the corrupted *§ Approach* / boundary table in
