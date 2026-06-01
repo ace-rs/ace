@@ -22,10 +22,11 @@ means "compat with skills.sh's looser predicate."
 
 Companion notes capturing the full analysis:
 
-- `docs/notes/2026-05-25-skills-sh-spec-reference.md`
-- `docs/notes/2026-05-25-skills-sh-import-questions.md`
-- `docs/notes/2026-05-26-skill-collision-analysis.md`
-- `docs/notes/2026-05-26-skill-refactor-session-state.md`
+- `docs/notes/2026-05-25-skills-sh-spec-reference.md` — frozen upstream spec snapshot.
+- `docs/notes/2026-06-01-supply-chain-skill-shadowing.md` — consolidated the original
+  collision analysis, the import-questions list, and the session checkpoint (2026-06-01);
+  those three notes were removed once their rulings landed here, in the companion emit
+  decision, and in shipped code.
 
 ## Decision
 
