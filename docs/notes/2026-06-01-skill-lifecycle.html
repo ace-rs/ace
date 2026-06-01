@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ACE skill lifecycle — design summary</title>
+<style>
+  :root{
+    --fg:#2c2c2a; --fg2:#5f5e5a; --bg:#fff; --card:#fff; --line:#e2e0d8; --line2:#cfccc2;
+    --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --gray-bg:#f1efe8; --gray-bd:#888780; --gray-tx:#2c2c2a;
+    --amber-bg:#faeeda; --amber-bd:#ba7517; --amber-tx:#633806;
+    --coral-bg:#faece7; --coral-bd:#d85a30; --coral-tx:#712b13;
+    --ace-bg:#e6f1fb; --ace-tx:#185fa5;
+    --be-bg:#faeeda; --be-tx:#854f0b;
+    --info-bd:#378add;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{--fg:#ece9e0;--fg2:#b4b2a9;--bg:#1c1c1a;--card:#262624;--line:#3a3a37;--line2:#4a4a46;}
+  }
+  *{box-sizing:border-box}
+  body{font-family:var(--sans);color:var(--fg);background:var(--bg);line-height:1.5;
+       max-width:860px;margin:0 auto;padding:40px 24px 80px}
+  h1{font-size:24px;font-weight:600;margin:0 0 4px}
+  h2{font-size:17px;font-weight:600;margin:36px 0 12px}
+  .sub{color:var(--fg2);font-size:14px;margin:0 0 8px}
+  code{font-family:var(--mono);font-size:.88em}
+  p{font-size:14px}
+  .stage{display:flex;gap:14px;align-items:flex-start;margin:0 0 10px;
+         border:.5px solid var(--line);border-left-width:4px;border-radius:8px;
+         padding:12px 16px;background:var(--card)}
+  .stage .n{font-weight:600;font-size:13px;color:var(--fg2);min-width:18px}
+  .stage .ttl{font-weight:600;font-size:14px;margin:0}
+  .stage .meta{font-size:12.5px;color:var(--fg2);font-family:var(--mono);margin:2px 0 0}
+  .stage .risk{font-size:12.5px;color:var(--fg2);margin:6px 0 0}
+  .gray{border-left-color:var(--gray-bd)}
+  .amber{border-left-color:var(--amber-bd)}
+  .coral{border-left-color:var(--coral-bd)}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
+  th{text-align:left;padding:8px 10px;color:var(--fg2);font-weight:600;
+     border-bottom:.5px solid var(--line2)}
+  td{padding:10px;vertical-align:top;border-bottom:.5px solid var(--line)}
+  .pill{display:inline-block;padding:2px 9px;border-radius:8px;font-size:11px;
+        font-weight:600;white-space:nowrap}
+  .ace{background:var(--ace-bg);color:var(--ace-tx)}
+  .be{background:var(--be-bg);color:var(--be-tx)}
+  .decision{border:2px solid var(--info-bd);border-radius:12px;padding:16px 20px;
+            background:var(--card);margin:6px 0 16px}
+  .decision .tag{display:inline-block;background:var(--ace-bg);color:var(--ace-tx);
+                 font-size:11px;font-weight:600;padding:3px 10px;border-radius:8px;margin-bottom:10px}
+  .decision .hd{font-size:15px;font-weight:600;margin:0 0 4px}
+  .decision p{color:var(--fg2);margin:0;font-size:13.5px}
+  .rej{border:.5px solid var(--line);border-radius:12px;padding:4px 20px 14px;background:var(--card)}
+  .rej-row{display:grid;grid-template-columns:180px minmax(0,1fr);gap:14px;
+           padding:11px 0;border-top:.5px solid var(--line)}
+  .rej-row .k{font-weight:600;font-size:13.5px}
+  .rej-row .v{font-size:13.5px;color:var(--fg2)}
+  .boundary{margin-top:28px;padding:14px 18px;border-radius:10px;background:var(--gray-bg);
+            color:var(--gray-tx);font-size:14px}
+  .legend{font-size:12.5px;color:var(--fg2);margin:10px 0 0}
+  .sw{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:middle;margin:0 4px 0 12px}
+</style>
+</head>
+<body>
+
+<h1>ACE skill lifecycle — design summary</h1>
+<p class="sub">Status: design draft, 2026-06-01. Consolidates the supply-chain / shadowing
+thread into the decided direction: <strong>name = path</strong>.</p>
+<p class="sub">Companions: <code>docs/notes/2026-06-01-supply-chain-skill-shadowing.md</code>,
+the two 2026-05-26 skill decisions, and <code>docs/spec/skills/{model,selection,emit,sync}.md</code>.</p>
+
+<h2>1 &middot; The lifecycle</h2>
+
+<div class="stage gray">
+  <span class="n">1</span>
+  <div>
+    <p class="ttl">Source repo</p>
+    <p class="meta">skills/foo &middot; skills/typescript/coding</p>
+    <p class="risk">Inert. A skill is a <code>SKILL.md</code> dir, flat or nested. No ACE involvement yet.</p>
+  </div>
+</div>
+
+<div class="stage amber">
+  <span class="n">2</span>
+  <div>
+    <p class="ttl">Import + select (ACE)</p>
+    <p class="meta">discovery &middot; admission &middot; [[imports]]</p>
+    <p class="risk">Identity = post-strip path. Conflicts: bad-char names (reject), dead
+      selectors that match nothing, a selected skill that admission rejected.</p>
+  </div>
+</div>
+
+<div class="stage amber">
+  <span class="n">3</span>
+  <div>
+    <p class="ttl">Save to school <code>skills/</code></p>
+    <p class="meta">writes &lt;school&gt;/skills/&lt;identity&gt;</p>
+    <p class="risk">The "dup path" case: two sources resolving to the <em>same</em> identity
+      path. First-declared wins; it lands as a literal file clash in the author's git tree.</p>
+  </div>
+</div>
+
+<div class="stage gray">
+  <span class="n">4</span>
+  <div>
+    <p class="ttl">Consumer pull / setup</p>
+    <p class="meta">symlinks into the project</p>
+    <p class="risk">Mostly inert. Minor: dead <code>ace.toml</code> selectors; a foreign file
+      whose name collides with a managed symlink (skip + warn).</p>
+  </div>
+</div>
+
+<div class="stage coral">
+  <span class="n">5</span>
+  <div>
+    <p class="ttl">Backend emit</p>
+    <p class="meta">nested verbatim, or flat collapse</p>
+    <p class="risk">Nested-capable backends (Codex, OpenCode) emit the full path. Flat-only
+      backends (Claude) emit <code>basename(identity)</code> = the leaf, so distinct nested
+      paths sharing a leaf <em>collapse</em> onto one dir &mdash; the only emit-time collision.</p>
+  </div>
+</div>
+
+<p class="legend">
+  <span class="sw" style="background:var(--gray-bd)"></span>inert / minor
+  <span class="sw" style="background:var(--amber-bd)"></span>author-side conflict (ACE warns)
+  <span class="sw" style="background:var(--coral-bd)"></span>emit-time collision (flat-only)
+</p>
+
+<h2>2 &middot; What warns, and where</h2>
+
+<table>
+  <thead><tr>
+    <th style="width:30%">Conflict / collision</th>
+    <th style="width:26%">Surfaces at</th>
+    <th style="width:28%">Action</th>
+    <th style="width:16%">Domain</th>
+  </tr></thead>
+  <tbody>
+    <tr><td>Bad-char name (bidi / control)</td><td>discovery, every command; import</td><td>reject + warn; import hard-refuses</td><td><span class="pill ace">ACE</span></td></tr>
+    <tr><td>Dead selector &mdash; <code>skills</code>/<code>exclude_skills</code> matches nothing</td><td><code>school validate</code>, <code>pull</code></td><td>informational</td><td><span class="pill ace">ACE</span></td></tr>
+    <tr><td>Selected skill was admission-rejected</td><td><code>validate</code> / <code>pull</code></td><td>warn (asked for, refused)</td><td><span class="pill ace">ACE</span></td></tr>
+    <tr><td>Same identity path from two sources</td><td>school tree at <code>pull</code> (git-diff)</td><td>first-declared wins + warn</td><td><span class="pill ace">ACE</span></td></tr>
+    <tr><td><strong>Claude collapse</strong> &mdash; distinct nested paths share a leaf on a flat-only backend</td><td>flat-emit sim at <code>validate</code>/<code>pull</code>; emit</td><td>warn + drop loser</td><td><span class="pill ace">ACE</span></td></tr>
+    <tr><td><code>frontmatter.name</code> &ne; <code>basename(identity)</code></td><td><code>school validate</code></td><td>warn &mdash; spec hygiene, not security</td><td><span class="pill ace">ACE</span></td></tr>
+    <tr><td>Backend keys / invokes on <code>frontmatter.name</code> (OpenCode, skills.sh, Claude slash)</td><td>&mdash;</td><td>none &mdash; verbatim passthrough</td><td><span class="pill be">Backend</span></td></tr>
+    <tr><td>Folder unsupported (e.g. <code>rules/</code> on Codex)</td><td>emit / sync</td><td>informational</td><td><span class="pill ace">ACE</span></td></tr>
+  </tbody>
+</table>
+
+<p class="risk" style="color:var(--fg2);font-size:13px;margin-top:12px">
+  The Claude-collapse row can't be a git-diff fact &mdash; the colliding paths are distinct on
+  disk. ACE computes it by simulating flat emit over the identity set ("do any two identities
+  share a leaf?") and warns at <code>validate</code>/<code>pull</code> &mdash; shifted left from
+  the consumer's emit, so the author who can fix it actually sees it.</p>
+
+<p class="risk" style="color:var(--fg2);font-size:13px">
+  <strong>Warning principle:</strong> ACE <em>warns</em> only on what it decides silently and
+  automatically &mdash; admission rejecting a name, or a requested skill dropped by that
+  rejection. Anything the author typed explicitly (including a selector that happens to match
+  nothing) is at most <em>informational</em>: they said it; a vacuous match is their business.</p>
+
+<h2>3 &middot; The decision, and what it kills</h2>
+
+<div class="decision">
+  <span class="tag">Decision</span>
+  <p class="hd">Emit name = <code>basename(identity)</code>, always</p>
+  <p>Drop the <code>frontmatter.name ||</code> channel. Identity is the path; the path is the
+     only naming axis. Frontmatter is display-only &mdash; the backend's to interpret. A name
+     takeover can then only be a <em>path</em> collision, which is visible in the author's own
+     git tree. Settles the shadowing note's open sub-decision #1 toward basename-always.</p>
+</div>
+
+<div class="rej">
+  <div class="rej-row"><span class="k">Namespaced storage</span><span class="v">Defends the name as a trust boundary &mdash; it isn't one (the model reads content; the name is a label). Heavy machinery for a non-threat.</span></div>
+  <div class="rej-row"><span class="k">Authored / source wins</span><span class="v">Same non-boundary, and needs provenance to survive to emit &mdash; which it doesn't.</span></div>
+  <div class="rej-row"><span class="k">TOFU / change-detect</span><span class="v">Re-introduces the pinning that no-version rejected; content changing on every pull is expected and trusted.</span></div>
+  <div class="rej-row"><span class="k">Strict agentskills storage</span><span class="v">Backends read ACE's emit, not <code>&lt;school&gt;/skills/</code>; storage format is decoupled from compat. Buys nothing, costs third-party intake.</span></div>
+  <div class="rej-row"><span class="k">Honor frontmatter at emit</span><span class="v">The forgeable second channel &mdash; the source of the shadow vector and the divergence convolution. Byte-identical for compliant skills anyway.</span></div>
+</div>
+
+<div class="boundary">
+  <strong>The boundary:</strong> ACE owns the path and warns on every path-level conflict at
+  author time; the backend owns the frontmatter. Shadowing collapses into source-trust (the
+  trusted-distro model ACE already accepts), so nothing structural gets built &mdash; the
+  machinery is git plus a handful of <code>validate</code> / <code>pull</code> warnings.
+</div>
+
+</body>
+</html>
