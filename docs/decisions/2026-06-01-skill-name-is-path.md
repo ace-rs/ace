@@ -63,8 +63,12 @@ display transform (`render` / `SanitizedString`) when ACE itself prints the fiel
 it at admission would have ACE fail-closed on — and drop a selected skill because of — a
 field it deliberately does not touch, which is a boundary violation, not defense in depth.
 The whitelist/fail-closed posture is undiminished: it still governs the identity path, the
-one name ACE owns. Implemented as `name::admissible_skill(identity)` (single arg); the
-`NameContext::FrontmatterName` admission context is removed.
+one name ACE owns. Implemented as `name::admissible_skill(identity)` (single arg).
+Admission no longer drops a skill for its frontmatter, but the hygiene signal is not lost:
+the two authoring boundaries (`ace import`, `ace school pull`) emit a non-fatal
+`warn` + `hint` — `DiscoveredSkill::frontmatter_warning` — when an admitted skill carries a
+spoofable frontmatter `name`. `NameContext::FrontmatterName` survives solely to phrase that
+warning; it is no longer an admission axis.
 
 ### 3. Shadowing is source-trust, not a name defense
 
@@ -85,7 +89,8 @@ mechanism, and it is already there.
 
 | Conflict / collision                                          | Surfaces at                 | Action                          | Domain  |
 | ------------------------------------------------------------- | --------------------------- | ------------------------------- | ------- |
-| Bad-char name (bidi / control)                                | discovery (every cmd); import | reject + warn; import hard-refuses | ACE  |
+| Bad-char **identity** segment (bidi / control)                | discovery (every cmd); import | reject + warn; import hard-refuses | ACE  |
+| Spoofable **frontmatter** `name` (bad char / non-token)       | `import`, `school pull`     | warn + hint, still admitted     | ACE     |
 | Dead selector — `skills`/`exclude_skills` matches nothing     | `school validate`, `pull`   | informational                   | ACE     |
 | Selected skill was admission-rejected                         | `validate` / `pull`         | warn (asked for, refused)       | ACE     |
 | Same identity path from two sources                           | school tree at `pull` (git) | first-declared wins + warn      | ACE     |

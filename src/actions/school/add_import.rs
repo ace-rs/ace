@@ -123,14 +123,16 @@ impl AddImport<'_> {
 }
 
 fn warn_if_rejected(skill: &DiscoveredSkill, ace: &mut Ace) -> bool {
-    match skill.admission() {
-        Ok(()) => true,
-        Err(reason) => {
-            ace.warn(&format!(
-                "skipping inadmissible skill `{}`: {reason}",
-                crate::skills::name::render(skill.id.as_str()),
-            ));
-            false
-        }
+    if let Err(reason) = skill.admission() {
+        ace.warn(&format!(
+            "skipping inadmissible skill `{}`: {reason}",
+            crate::skills::name::render(skill.id.as_str()),
+        ));
+        return false;
     }
+    if let Some(warning) = skill.frontmatter_warning() {
+        ace.warn(&warning);
+        ace.hint(crate::skills::discover::FRONTMATTER_WARNING_HINT);
+    }
+    true
 }

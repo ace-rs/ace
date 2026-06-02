@@ -109,6 +109,10 @@ impl PullImports<'_> {
                     ));
                     continue;
                 }
+                if let Some(warning) = d.frontmatter_warning() {
+                    ace.warn(&warning);
+                    ace.hint(crate::skills::discover::FRONTMATTER_WARNING_HINT);
+                }
                 let batch = Skills::<Discovered>::from_discovered_with_source(
                     std::slice::from_ref(d),
                     &resolved.source,

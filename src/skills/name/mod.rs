@@ -138,6 +138,10 @@ impl fmt::Display for RejectReason {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NameContext {
     IdentitySegment,
+    /// Frontmatter `name:`. Not an admission axis (ACE never emits or matches
+    /// on it) — used only to phrase the display-hygiene *warning* raised when
+    /// an admitted skill carries a spoofable frontmatter name.
+    FrontmatterName,
     BackendLinkName,
 }
 
@@ -145,6 +149,7 @@ impl NameContext {
     pub fn label(self) -> &'static str {
         match self {
             NameContext::IdentitySegment => "identity segment",
+            NameContext::FrontmatterName => "frontmatter name",
             NameContext::BackendLinkName => "backend link name",
         }
     }

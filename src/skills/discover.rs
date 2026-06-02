@@ -103,7 +103,30 @@ impl DiscoveredSkill {
     pub fn admission(&self) -> Result<(), super::name::RejectReason> {
         super::name::admissible_skill(self.id.as_str())
     }
+
+    /// Display-hygiene warning for an admitted skill whose frontmatter `name:`
+    /// carries spoofable characters (bidi/control) or a non-token shape. The
+    /// skill is *not* rejected — frontmatter is display-only, never emitted or
+    /// matched ([`admission`](Self::admission) ignores it) — but the author who
+    /// imported it should know. `None` when the name is absent or clean.
+    /// Surfaced only at authoring boundaries (`ace import`, `ace school pull`).
+    pub fn frontmatter_warning(&self) -> Option<String> {
+        let name = self.frontmatter_name.as_deref()?;
+        let reason =
+            super::name::admissible_component(name, super::name::NameContext::FrontmatterName)
+                .err()?;
+        Some(format!(
+            "skill `{}` admitted with an unsafe frontmatter `name:` — {reason}",
+            super::name::render(self.id.as_str()),
+        ))
+    }
 }
+
+/// Hint paired with [`DiscoveredSkill::frontmatter_warning`]. The name is
+/// display-only, so the fix is upstream or selection-side, never an ACE edit.
+pub const FRONTMATTER_WARNING_HINT: &str =
+    "ACE emits the path basename and renders the name sanitized, but the backend reads \
+     the frontmatter raw — verify the source or drop the skill via `exclude_skills`";
 
 /// Discover skills under `root` per the 2-stage cascade. See module docs.
 pub fn discover_skills(root: &Path) -> Result<Vec<DiscoveredSkill>, std::io::Error> {
@@ -645,5 +668,39 @@ mod tests {
         let mut names: Vec<_> = skills.iter().map(|s| s.id.as_str()).collect();
         names.sort();
         assert_eq!(names, vec!["python/coding", "rust/coding"]);
+    }
+
+    fn discovered_with_name(id: &str, frontmatter_name: Option<&str>) -> DiscoveredSkill {
+        DiscoveredSkill {
+            id: SkillId::from_basename(id),
+            path: PathBuf::from(format!("/s/{id}")),
+            tier: Tier::Curated,
+            internal: false,
+            frontmatter_name: frontmatter_name.map(String::from),
+        }
+    }
+
+    #[test]
+    fn frontmatter_warning_flags_spoofable_name_without_rejecting() {
+        // Clean identity, hostile frontmatter `name:` — admitted, but warned.
+        let skill = discovered_with_name("coding", Some("evil\u{202E}exe"));
+        assert!(skill.admission().is_ok());
+        let warning = skill.frontmatter_warning().expect("warning expected");
+        assert!(warning.contains("coding"));
+        assert!(warning.contains("U+202E"));
+    }
+
+    #[test]
+    fn frontmatter_warning_silent_on_clean_or_absent_name() {
+        assert!(
+            discovered_with_name("coding", Some("ts-coding"))
+                .frontmatter_warning()
+                .is_none()
+        );
+        assert!(
+            discovered_with_name("coding", None)
+                .frontmatter_warning()
+                .is_none()
+        );
     }
 }
