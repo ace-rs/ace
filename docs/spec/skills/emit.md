@@ -181,8 +181,8 @@ leading-dot names, NUL, and overlong components).
 
 Writes under `<school>/skills/…` and link names under `<backend>/skills/…` accept only:
 
-- Validated identities (from the discovery layer per
-  [model.md](model.md#type-safety-invariant)), and
+- Identities — constructed by the discovery layer, gated by validation (per
+  [model.md](model.md#type-safety-invariant)) — and
 - Structurally checked path components for any value ACE synthesizes at the backend
   boundary — currently the link directory name. School storage takes raw bytes by design
   (passthrough preserves the school author's responsibility and protects ACE consumers

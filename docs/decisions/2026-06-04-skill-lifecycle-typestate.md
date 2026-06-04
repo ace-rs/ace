@@ -9,7 +9,8 @@
 > trait name stands; the identity type is **`Locator`** (field `locator`), replacing
 > `SkillId` / `id`, and the `Skill.name` field is **dropped** (callsites resolve to `locator`
 > or `frontmatter_name`). Names updated throughout; substance unchanged. Rationale in
-> § Open / downstream, fork 4.
+> § Open / downstream, fork 4. **Forks 2 (`MatchHandle`) and 3 (package placement) also
+> resolved 2026-06-05** — see § Open / downstream.
 
 ## Decision
 
@@ -25,8 +26,8 @@ This supersedes the *in-memory mechanism* of
 [name admission policy](2026-05-30-skill-name-admission-policy.md) (select-over-everything
 + `rejected()` as a view); the admission predicate and its discovery-gate placement are
 unchanged. Resolves fork 1 (metadata placement) of
-[the rearchitect note](../notes/2026-06-02-skill-model-rearchitect.md); fork 4 (naming)
-resolved 2026-06-05 (§ Open / downstream); forks 2–3 (MatchHandle, packages) stay open.
+[the rearchitect note](../notes/2026-06-02-skill-model-rearchitect.md); forks 2 (MatchHandle),
+3 (packages), and 4 (naming) resolved 2026-06-05 (§ Open / downstream).
 
 ## Context
 
@@ -183,14 +184,22 @@ philosophy reinforce rather than duplicate each other.
 
 ## Open / downstream
 
-- **Fork 2 — `MatchHandle` keep/cut.** `select` is where user patterns meet identities; the
-  lattice implies a typed handle-vs-identity boundary there, but whether to thread
-  `MatchHandle` config→resolver or delete it for raw `pattern_matches` is a separate impl
-  decision.
-- **Fork 3 — package placement.** Who owns atom / collection / resolver across `skills/` and
-  `resolver/`. The de-stringified seam (resolver returns verdicts keyed by identity,
-  `Skills::resolve` stamps the atoms) collapses the current `Carry`/`by_name` round-trip, but
-  module relocation is undecided.
+- **Fork 2 — `MatchHandle`: cut. Resolved (2026-06-05).** Once `Locator` lands the identity
+  side of the handle/identity boundary is already typed (`pattern_matches(&str, &Locator)`),
+  so the newtype's justification collapses — and a pattern is selection *input*, never a
+  `Skill<S>` state. Replaced by: (1) moving the glob-validation that today runs only inside
+  the dead `MatchHandle::new` to the resolver seam as a **warn-diagnostic** (echo verbatim,
+  beside the unknown-pattern warning) so `resolve` stays infallible — not a hard error;
+  (2) expressing the pattern-`&str` vs `Locator` separation structurally in signatures, with
+  no new pattern newtype unless the seam later proves leaky.
+- **Fork 3 — package placement: dissolve `src/resolver/`. Resolved (2026-06-05).** Rule:
+  resolution lives with the typed data it reads and stamps. Skill resolution stamps
+  `Skill<S>` → moves to `src/skills/resolve/` (this removes the stringly `Carry`/`by_name`
+  round-trip — the seam ceases to exist, not merely de-stringifies). Config-merge reads only
+  `Tree` / `AceToml` → moves to `src/config/resolve/`; `Source` / `Sourced` go with it.
+  Recorded as [resolver dissolution](2026-06-05-resolver-dissolution.md), superseding
+  decision 007's module layout. 007's load-bearing constraint (`merge` stays infallible and
+  skills-free so `ace config show` survives without a school clone) is preserved.
 - **Fork 4 — naming. Resolved (2026-06-05).** Markers `Discovered → Validated → Decided`; the
   `Vetted` trait name stands. Identity is a typed **`Locator`** newtype (field `locator`),
   carried end-to-end, replacing `SkillId` / `id`; the `Skill.name` field is **dropped** —

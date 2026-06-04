@@ -63,11 +63,10 @@ See [`actions/project/pull.rs`](../../../src/actions/project/pull.rs) for the gu
 Per-repo skill selection runs through the three fields documented in
 [configuration.md § Skills Selection](../configuration.md#skills-selection): `skills`
 (whitelist, last-wins), `include_skills` (additive, union), and `exclude_skills`
-(subtractive, union). The resolver in `src/resolver/` produces a per-skill `Resolution`
-with provenance traces; only skills with `Decision::Included` get linked into
-`<backend>/skills/`.
+(subtractive, union). Selection resolution stamps each skill Included or Excluded with a
+provenance trace; only Included skills get linked into `<backend>/skills/`.
 
-When all three fields are unset across all scopes, every discovered skill is linked
+When all three fields are unset across all scopes, every validated skill is linked
 (implicit-all base). This is the default for fresh setups.
 
 `ace skills` lists the resolved set with provenance;

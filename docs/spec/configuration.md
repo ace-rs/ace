@@ -165,12 +165,12 @@ contributes nothing." Same for `include_skills` and `exclude_skills`.
 
 ### Warnings
 
-Detected during resolution against the discovered skill set:
+Detected during resolution against the validated skill set:
 
 - **Same-scope `include_skills` ∩ `exclude_skills` collision** — both fields in the same
   file end up matching the same resolved skill. Almost always a typo. Distinct from
   cross-scope collision (user includes, local excludes), which is the feature.
-- **Unknown skill patterns** — a pattern in any of the three fields matches no discovered
+- **Unknown skill patterns** — a pattern in any of the three fields matches no validated
   skill. Likely typo or stale config.
 - **`skills` filter active without project contribution** — effective `skills` base is
   non-empty but the project scope contributed nothing to it. User or local scope narrowed

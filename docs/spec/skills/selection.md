@@ -53,10 +53,11 @@ it.
 
 ### Type-safety invariant
 
-User-supplied match handles are a distinct kind from identities. The resolver cannot
-accept a raw user string in an identity slot, and cannot return an unresolved handle in
-a resolved slot. The match-and-resolve transition is the only path from one to the
-other; types make this the only thing you can compile.
+Identity and selection pattern live in distinct slots. Identity is a typed value
+constructed only by discovery; a selection pattern stays a plain string, validated at the
+resolver boundary. The resolver cannot accept a raw string where an identity is required,
+so a pattern can never be mistaken for — or minted into — an identity. The separation is
+structural (the signatures), not a dedicated handle newtype.
 
 ## `ace.toml` fields
 

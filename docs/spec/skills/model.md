@@ -116,14 +116,16 @@ operation cannot be written.
   the discovery layer, after the prefix-strip rule. Code outside discovery cannot synthesize
   an identity from a raw string, and that typed identity rides every stage unchanged rather
   than collapsing back to a string — the resolver and emit boundaries cannot accept a raw
-  user string in an identity slot. See
-  [selection.md → Match handle](selection.md#match-handle) for the dual: user-supplied match
-  handles are a distinct kind from identities.
+  user string in an identity slot. The dual holds for the other direction: a user-supplied
+  selection pattern stays a plain string — validated at the resolver boundary, never minted
+  into an identity (see [selection.md → Match handle](selection.md#match-handle)).
 - **Validation is a gate, not a flag.** Validation *partitions* the discovered set into the
   admissible and the rejected (see [Name Admission](#name-admission)); only the admissible
-  half advances. The persist and emit boundaries accept only a validated-or-later skill, so an
-  un-validated skill is **unrepresentable** at the moment of writing to disk or emitting to a
-  backend — "validate before you persist" is compiler-enforced, not a guard to remember.
+  half advances. The boundaries then accept narrower proofs: **persist** takes any
+  validated-or-later (vetted) skill, while **emit** takes only a *decided* one (it reads the
+  resolved inclusion). An un-validated skill is **unrepresentable** at the moment of writing
+  to disk, and an un-decided skill is unrepresentable at emit — "validate before you persist"
+  is compiler-enforced, not a guard to remember.
   Validation re-runs from scratch every process, so this proves in-process ordering and stores
   nothing.
 

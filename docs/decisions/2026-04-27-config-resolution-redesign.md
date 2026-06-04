@@ -218,6 +218,11 @@ Result: `--backend X`, `--trust auto`, `--no-resume`, `--env KEY=val`, `--sessio
 
 ## Module layout
 
+> **Superseded (2026-06-05):** this section's `src/resolver/` package — including the
+> `src/resolver/skills.rs` placement — is replaced by
+> [resolver dissolution](2026-06-05-resolver-dissolution.md): `config/resolve/` merge +
+> `skills/resolve/` stamping, no standalone resolver. The rest of 007 stands.
+
 - `src/config/` — `Tree`, `AceToml`, `SchoolToml`, `BackendDecl`, `ConfigError`. Disk
   parse.
 - `src/resolver/` — `Resolved`, `Sourced`, `Source`, merge engine. (Replaces today's
