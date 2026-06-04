@@ -10,6 +10,14 @@
 > frontmatter `name` is the backend's domain (verbatim passthrough), neutralized only by
 > the display transform, never an admission axis. Everything else here stands.
 
+> **Partially superseded (2026-06-04)** by
+> [skill lifecycle typestate](2026-06-04-skill-lifecycle-typestate.md): the in-memory
+> mechanism in *Abstraction Boundaries* — selection running over everything with
+> `rejected()` as a *view* on one collection — is replaced by a `validate` **partition**
+> that splits admissible from rejected before selection. The admission *predicate*, its
+> discovery-gate placement, and the "exclude, don't delete" stance are unchanged; only the
+> in-memory representation moves (partition vs. view).
+
 > **Supersedes** the *Sanitization (Q9)* section of
 > [`2026-05-26-skill-emit-and-match.md`](2026-05-26-skill-emit-and-match.md) and corrects
 > the corrupted *§ Approach* / boundary table in
