@@ -2,29 +2,37 @@
 
 - **Date:** 2026-06-04
 - **PR:** manual
-- **Status:** accepted
+- **Status:** revised
+
+> **Revised (2026-06-05):** fork-4 naming ratified. The provisional markers
+> `Raw → Validated → Judged` are now **`Discovered → Validated → Decided`**; the `Vetted`
+> trait name stands; the identity type is **`Locator`** (field `locator`), replacing
+> `SkillId` / `id`, and the `Skill.name` field is **dropped** (callsites resolve to `locator`
+> or `frontmatter_name`). Names updated throughout; substance unchanged. Rationale in
+> § Open / downstream, fork 4.
 
 ## Decision
 
 The skill model is a `(collection, action)` algebra over a three-state marker lattice
-**`Raw → Validated → Judged`**. A typestate marker proves **an action ran in this
+**`Discovered → Validated → Decided`**. A typestate marker proves **an action ran in this
 process's call graph** — it stores no verdict and persists nothing. `validate` is a
-**partition** (`Skills<Raw> → (Skills<Validated>, Vec<Rejected>)`), and a sealed `Vetted`
-capability trait — implemented by every state at or past `Validated`, never by `Raw` —
-gates the boundaries that must not see an un-vetted skill (disk write, backend emit).
+**partition** (`Skills<Discovered> → (Skills<Validated>, Vec<Rejected>)`), and a sealed
+`Vetted` capability trait — implemented by every state at or past `Validated`, never by
+`Discovered` — gates the boundaries that must not see an un-vetted skill (disk write, backend
+emit).
 
 This supersedes the *in-memory mechanism* of
 [name admission policy](2026-05-30-skill-name-admission-policy.md) (select-over-everything
 + `rejected()` as a view); the admission predicate and its discovery-gate placement are
 unchanged. Resolves fork 1 (metadata placement) of
-[the rearchitect note](../notes/2026-06-02-skill-model-rearchitect.md); forks 2–4
-(MatchHandle, packages, naming) stay open.
+[the rearchitect note](../notes/2026-06-02-skill-model-rearchitect.md); fork 4 (naming)
+resolved 2026-06-05 (§ Open / downstream); forks 2–3 (MatchHandle, packages) stay open.
 
 ## Context
 
 A type-audit (note above) found the skills subsystem running on raw `String` while a typed
-layer (`SkillId`, `MatchHandle`) floated unused — `SkillId` minted by discovery and
-discarded one hop later (`name: d.id.to_string()`), `MatchHandle` 100% dead, both resolvers
+layer (`SkillId`, `MatchHandle`) floated unused — `SkillId` minted by discovery and discarded
+one hop later (`name: d.id.to_string()`), `MatchHandle` 100% dead, both resolvers
 stringly-typed. The defect isn't "thread the existing types harder"; it's that the
 **lifecycle was never modelled**, so there was no structure to thread them through. This
 decision fixes the model; the type-threading falls out of it.
@@ -48,44 +56,46 @@ obligation that costs no storage and re-runs freely.
 ## The lattice
 
 ```
- discover            validate                  resolve
-   ∅ ─▶ Skills<Raw> ─▶ Skills<Validated> ─▶ Skills<Judged> ─▶ emit ─▶ links
-                       │  (+ Vec<Rejected>)          ▲
-                       └── import-resolve ─┐         │   persist<S: Vetted>
-                           (value-level)   ▼         │
-                                       copy_into ────┘
+discover  ∅ ──▶ Skills<Discovered>
+validate        ──▶ Skills<Validated>   (partition: also yields Vec<Rejected>)
+resolve         ──▶ Skills<Decided>
+emit            ──▶ Vec<DesiredLink>    (from Decided.included) ──▶ links
+
+persist<S: Vetted>        gates disk write — Validated and Decided impl Vetted; Discovered does not
+Compose: import-resolve ──▶ copy_into     value-level; re-enters the lattice through the Vetted gate
 ```
 
-Actions: `discover` (∅ → Raw), `validate` (Raw → Validated, splitting off Rejected),
-`resolve` (Validated → Judged), `emit` (Judged.included → links), and the Compose-side
-`import-resolve` + `merge` + `copy_into`. Each marker's job — a marker with no job gets cut:
+Actions: `discover` (∅ → Discovered), `validate` (Discovered → Validated, splitting off
+Rejected), `resolve` (Validated → Decided), `emit` (Decided.included → links), and the
+Compose-side `import-resolve` + `merge` + `copy_into`. Each marker's job — a marker with no
+job gets cut:
 
-| Marker      | Carries                                  | Job — the gate it powers                                                                                  |
-| ----------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `Raw`       | identity + intrinsic facts + provenance  | *Negative capability*: not `Vetted`, not `Judged`, so the compiler forbids persisting or emitting it. Input to `validate`. |
-| `Validated` | nothing (unit marker)                    | Only constructible via `validate`. `impl Vetted` → gates `persist`/`copy_into`. Precondition for the resolvers. |
-| `Judged`    | per-atom decision + trace                | `impl Vetted`. Gates `emit`. Carries the trace `ace explain` / `ace skills` read per skill.                |
+| Marker       | Carries                                 | Job — the gate it powers                                                                                                    |
+| ------------ | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `Discovered` | identity + intrinsic facts + provenance | *Negative capability*: not `Vetted`, not `Decided`, so the compiler forbids persisting or emitting it. Input to `validate`. |
+| `Validated`  | nothing (unit marker)                   | Only constructible via `validate`. `impl Vetted` → gates `persist`/`copy_into`. Precondition for the resolvers.             |
+| `Decided`    | per-atom decision + trace               | `impl Vetted`. Gates `emit`. Carries the trace `ace explain` / `ace skills` read per skill.                                 |
 
 ## The `Vetted` trait — the "or" as a bound, not a union
 
 A naïve encoding of two proof axes (validated, selected) as independent phantom params
 forces a 2-D product `Skill<V, S>` with mostly-dead corners, or a sum type for functions
-that accept "validated OR judged." Both are wrong. The functional answer is a **sealed
+that accept "validated OR decided." Both are wrong. The functional answer is a **sealed
 capability trait**:
 
 ```rust
 trait Vetted {}                  // sealed: external code cannot impl it
 impl Vetted for Validated {}
-impl Vetted for Judged {}
-// Raw deliberately does NOT impl Vetted
+impl Vetted for Decided {}
+// Discovered deliberately does NOT impl Vetted
 
 fn persist<S: Vetted>(skills: &Skills<S>) -> io::Result<()>;   // no un-vetted skill to disk
-fn emit(skills: &Skills<Judged>) -> Vec<DesiredLink>;          // only resolved skills emit
+fn emit(skills: &Skills<Decided>) -> Vec<DesiredLink>;          // only resolved skills emit
 ```
 
 `Vetted` *is* the "or" — "any state at or past `validate`" — without enumerating a union or
 multiplying type parameters. Markers are nodes; the trait is a gate that accepts a family of
-nodes. Sealing it keeps `Raw` (and any future pre-validate state) permanently out.
+nodes. Sealing it keeps `Discovered` (and any future pre-validate state) permanently out.
 
 ## `validate` partitions; it does not annotate
 
@@ -93,7 +103,7 @@ For `Vetted` to *mean* "contains only admissible skills," `validate` must **remo
 inadmissible ones, not tag them:
 
 ```rust
-fn validate(raw: Skills<Raw>) -> (Skills<Validated>, Vec<Rejected>);
+fn validate(discovered: Skills<Discovered>) -> (Skills<Validated>, Vec<Rejected>);
 ```
 
 The `Rejected` half carries each rejection reason and feeds warnings / doctor — so the
@@ -114,22 +124,22 @@ admissibility") better than its described mechanism did.
 
 Where each piece of per-skill data lives, and why:
 
-| Data                                                | Home                                       | Why                                                                                          |
-| --------------------------------------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------- |
-| identity, tier, `internal`, display name            | struct fields on `Skill<S>`, every stage   | intrinsic facts, present from discovery on                                                    |
-| provenance (own vs import source)                   | struct field on the atom (Raw onward)      | metadata some actions attach (`import`) and others ignore (`emit`); dead weight in Provision, fine |
-| admission verdict                                   | **nowhere — recomputed on demand**         | a cheap pure function of identity; carrying it risks staleness and buys nothing               |
-| selection decision + trace                          | the `Judged` marker payload (per atom)     | genuine new state: config-derived, set-relative, expensive; `ace explain` reads it per skill   |
-| set-level diagnostics (unknown patterns, collisions)| the `Skills<Judged>` collection            | no per-atom home; produced by the resolution run                                              |
+| Data                                                 | Home                                         | Why                                                                                                |
+| ---------------------------------------------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| identity, tier, `internal`, display name             | struct fields on `Skill<S>`, every stage     | intrinsic facts, present from discovery on                                                          |
+| provenance (own vs import source)                    | struct field on the atom (Discovered onward) | metadata some actions attach (`import`) and others ignore (`emit`); dead weight in Provision, fine  |
+| admission verdict                                    | **nowhere — recomputed on demand**           | a cheap pure function of identity; carrying it risks staleness and buys nothing                     |
+| selection decision + trace                           | the `Decided` marker payload (per atom)      | genuine new state: config-derived, set-relative, expensive; `ace explain` reads it per skill        |
+| set-level diagnostics (unknown patterns, collisions) | the `Skills<Decided>` collection             | no per-atom home; produced by the resolution run                                                    |
 
 **Admission is never carried.** It is a derived predicate over identity, recomputed wherever
 needed — like `leaf()` or `is_nested()`. Identity is the only durable state; admissibility
 falls out of it. This is both versioning-correct (nothing to go stale) and the honest shape
 (admission needs no config and no set context, unlike selection).
 
-The marker therefore lives **on the atom** for `Judged` (decision + trace is real per-skill
-payload, so `Skill<Raw>` has no decision and `Skill<Judged>` has one — a type fact, not an
-`Option`), and the collection rides the same parameter so `Skills<Judged>` can own the
+The marker therefore lives **on the atom** for `Decided` (decision + trace is real per-skill
+payload, so `Skill<Discovered>` has no decision and `Skill<Decided>` has one — a type fact, not
+an `Option`), and the collection rides the same parameter so `Skills<Decided>` can own the
 set-level diagnostics. `Validated` carries no atom payload — its proof is *set membership*
 (passed the partition), which is collection-level by construction.
 
@@ -145,31 +155,31 @@ validation's "payload" is membership, not a per-skill verdict.
 
 **Principle: a typestate is earned only where something downstream reads the carried payload
 *per atom*.** Provision's decision + trace feeds `ace explain` one skill at a time → earns
-`Judged`. Compose's import resolution feeds **aggregate** collision warnings plus a **path
+`Decided`. Compose's import resolution feeds **aggregate** collision warnings plus a **path
 list** for `copy_into` → no per-atom carrier, so it stays value-level (`ResolvedImport`
-records as diagnostics). There is no `ImportJudged` typestate. Import resolution consumes
+records as diagnostics). There is no `ImportDecided` typestate. Import resolution consumes
 `Skills<Validated>`, emits warnings + paths, and `copy_into` re-enters the lattice through
 the `Vetted` gate. One fewer marker, justified by the principle rather than convenience.
 
 ## Versioning and typestate compose with zero redundancy
 
 Because `validate` re-partitions from scratch every process, versioning-safety (self-healing
-on upgrade) is satisfied at the `validate` step. Within a run, a `Judged` skill is admissible
-*by lineage* (`Judged: Vetted`, and the sealed trait means nothing fabricates a `Judged` that
+on upgrade) is satisfied at the `validate` step. Within a run, a `Decided` skill is admissible
+*by lineage* (`Decided: Vetted`, and the sealed trait means nothing fabricates a `Decided` that
 skipped `validate`). So **emit needs no admission re-check** — the safety property falls out
 of construction, not a guard we must remember to write. The type model and the versioning
 philosophy reinforce rather than duplicate each other.
 
 ## Rejected alternatives
 
-| Approach                                          | Why not                                                                                          |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Carry the admission verdict on the skill          | Stale on rule-tightening; defeats self-healing. Admission is a pure function of identity — recompute. |
-| Product `Skill<Validated, Selected>`              | Two phantom params everywhere, mostly-dead corners; noisy for no precision gain.                  |
-| Sum / or-type for "validated or judged"           | A union where a sealed trait bound (`Vetted`) is the idiomatic, open answer.                       |
-| `validate` annotates instead of partitions        | Leaves inadmissible skills in `Skills<Validated>`; `persist` can't trust the type. Breaks the gate. |
-| `ImportJudged` typestate for Compose              | No per-atom consumer of the payload; verdict is aggregate diagnostics + a path list. Marker with no job. |
-| Re-check admission at emit (belt-and-suspenders)  | Redundant: per-run re-validate + sealed `Vetted` lineage already guarantee it.                    |
+| Approach                                         | Why not                                                                                               |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| Carry the admission verdict on the skill         | Stale on rule-tightening; defeats self-healing. Admission is a pure function of identity — recompute. |
+| Product `Skill<Validated, Selected>`             | Two phantom params everywhere, mostly-dead corners; noisy for no precision gain.                      |
+| Sum / or-type for "validated or decided"         | A union where a sealed trait bound (`Vetted`) is the idiomatic, open answer.                          |
+| `validate` annotates instead of partitions       | Leaves inadmissible skills in `Skills<Validated>`; `persist` can't trust the type. Breaks the gate.   |
+| `ImportDecided` typestate for Compose            | No per-atom consumer of the payload; verdict is aggregate diagnostics + a path list. Marker with no job. |
+| Re-check admission at emit (belt-and-suspenders) | Redundant: per-run re-validate + sealed `Vetted` lineage already guarantee it.                        |
 
 ## Open / downstream
 
@@ -181,8 +191,14 @@ philosophy reinforce rather than duplicate each other.
   `resolver/`. The de-stringified seam (resolver returns verdicts keyed by identity,
   `Skills::resolve` stamps the atoms) collapses the current `Carry`/`by_name` round-trip, but
   module relocation is undecided.
-- **Fork 4 — naming.** Marker names `Raw` / `Validated` / `Judged` and the `Vetted` trait are
-  **provisional**; the path-identity rename (away from `SkillId`/`id`) is unsettled.
+- **Fork 4 — naming. Resolved (2026-06-05).** Markers `Discovered → Validated → Decided`; the
+  `Vetted` trait name stands. Identity is a typed **`Locator`** newtype (field `locator`),
+  carried end-to-end, replacing `SkillId` / `id`; the `Skill.name` field is **dropped** —
+  callsites resolve to `locator` (the path-identity) or `frontmatter_name` (display-only).
+  Why: `Decided` mirrors its payload (`decision`) where `Resolved` would only name the action;
+  `Locator` matches the entrenched "identity" vocabulary while sidestepping a clash with the
+  filesystem `path` field; dropping `name` forces every callsite to declare which concept it
+  meant, and aligns with name = `basename(identity)`.
 
 ## References
 
@@ -194,4 +210,5 @@ philosophy reinforce rather than duplicate each other.
   keys on identity) and
   [discovery & identity](2026-05-26-skill-discovery-identity-storage.md).
 - Companion: [admission eviction is non-overridable](2026-06-04-admission-eviction-non-overridable.md).
-- Specs (`model.md`, `selection.md`, `emit.md`) updated in the following step.
+- Specs (`model.md`, `selection.md`, `emit.md`, `sync.md`) updated 2026-06-05 — partition
+  framing, the vetted-gate type-safety invariant, and the eviction-visibility surfaces.

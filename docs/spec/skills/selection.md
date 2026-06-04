@@ -82,6 +82,11 @@ Include is authoritative when an item appears in both: a skill explicitly named 
 `include_skills` will be loaded even if a matching pattern in `exclude_skills` would
 have removed it.
 
+Selection runs over the **validated** set. Validation partitions the discovered skills into
+admissible and rejected before any matching (see
+[model.md § Name Admission](model.md#name-admission)), so an inadmissible skill is never a
+selection candidate — `skills_base` is the admissible-and-discovered set.
+
 ## `[[imports]]` schema
 
 `[[imports]]` in `school.toml` declares which upstream sources the school pulls skills
@@ -243,7 +248,7 @@ with a trace. The two resolvers are **siblings, not the same resolver**:
 - **Imports resolver** merges across `[[imports]]` declarations within one
   `school.toml`. See this spec.
 
-They share infrastructure where the shapes line up: the discovered → decided
+They share infrastructure where the shapes line up: the discovered → validated → decided
 typestate progression, the trace-of-steps concept, the per-skill diagnostics
 bag, the glob and filter utilities. They diverge where the layers differ — the
 project resolver's scope taxonomy (user / project / local / school / override)

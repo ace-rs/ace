@@ -136,6 +136,27 @@ subdirs, symlinks pointing outside every managed root) is treated as user conten
 left alone — except when its name collides with a desired skill, in which case the link
 is skipped with a warning so the user can resolve the conflict.
 
+### Removal visibility (admission-evicted vs config-orphaned)
+
+A managed symlink is removed whenever its skill is absent from the resolved Included set — the
+reconciler works by *absence*, never by consulting a rejected list. Two distinct causes put a
+skill in that absence, and the summary names which:
+
+- **admission-evicted** — the skill was rejected by name admission this run (a newer ACE
+  tightened the Unicode table, or the skill's identity changed). Pruning its stale link is
+  **self-healing on upgrade**, not a regression, and there is no fail-open override — see
+  [admission eviction is non-overridable](../../decisions/2026-06-04-admission-eviction-non-overridable.md).
+- **config-orphaned** — the skill is admissible but the user's `skills` / `exclude_skills` no
+  longer select it.
+
+Two surfaces keep the removal legible rather than surprising:
+
+- **Dry-run / preview** — surface the pending removes (and the rejected set) *before* acting,
+  so the user can rename a bad path, regenerate the predicate, or step outside ACE first.
+- **Reconcile summary** — report completed removes split by cause: admission-evicted rows carry
+  their rejection reason, config-orphaned rows do not. Undifferentiated deletion reads as a
+  bug; a named eviction with its reason does not.
+
 ### First-time adoption (rules / commands / agents only)
 
 For `rules/`, `commands/`, and `agents/`, an existing real directory at the link path is

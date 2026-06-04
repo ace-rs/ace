@@ -3,30 +3,25 @@
 Status: **design decided (2026-06-04).** The model is now ruled in two decisions —
 [skill lifecycle typestate](../decisions/2026-06-04-skill-lifecycle-typestate.md) and
 [admission eviction is non-overridable](../decisions/2026-06-04-admission-eviction-non-overridable.md).
-This note is retained for the defect catalogue (§ Why) and the still-open forks (2–4); its
-lifecycle table and fork 1 are superseded by the decisions and annotated inline below. Spec
-edits + the implementation series are the remaining steps.
+This note is retained for the defect catalogue (§ Why) and the still-open forks (2–3); its
+lifecycle table and fork 1 are superseded by the decisions and annotated inline below. Fork 4
+(naming) was ratified and the specs written on 2026-06-05; the implementation series (forks
+2–3) is the remaining step.
 
-## Resume — next session (speccing)
+## Resume — implementation (forks 2–3)
 
-Cold-start order for the fresh speccing session:
+Naming (fork 4) ratified and specs written 2026-06-05; both decisions and the spec edits are
+committed. Specs touched: `model.md` (partition-not-carry in § Name Admission; lattice +
+vetted-gate § Type-safety invariant), `selection.md` (selection runs over the validated set;
+`discovered → validated → decided` progression), `sync.md` (eviction-visibility surfaces —
+dry-run + reconcile summary splitting *admission-evicted* vs *config-orphaned*). `emit.md` was
+already aligned (name = `basename(identity)`, included-only).
 
-1. **Ratify naming first (fork 4).** The decisions use provisional markers `Raw` /
-   `Validated` / `Judged` and the `Vetted` trait, plus the unresolved path-identity rename
-   (away from `SkillId` / `id`). Pin these before specs or impl hard-code them.
-2. **Specs.** Rewrite `spec/skills/model.md` § Type-safety invariant to describe the
-   `Raw → Validated → Judged` lattice + `Vetted` gate honestly — today it claims an
-   end-to-end-typed identity the code never delivered. Update `selection.md` and `emit.md`
-   for the `validate`-partition + `(collection, action)` framing, and add the
-   eviction-visibility surfaces (dry-run; reconcile summary splitting *admission-evicted*
-   vs *config-orphaned*) from the eviction decision. Keep `model.md` behavioral; concrete
-   type names stay in decisions/impl (house spec-voice).
-3. **Implementation series.** After specs, not piecemeal. Forks 2 (`MatchHandle` keep/cut)
-   and 3 (package placement) get decided during impl.
-
-**Uncommitted at save (2026-06-04):** the two new decisions, this note, and the 2026-05-30
-supersession edit are on disk but not committed — branch is 34 ahead of `gh/main`, unpushed.
-Commit/push in the resume session.
+Remaining: the implementation series — carry the typed `Locator` end-to-end, fold
+`DiscoveredSkill` into the discovered atom, make `validate` a real partition, add the `Vetted`
+gate, de-stringify the resolvers, drop `Skill.name`. Forks 2 (`MatchHandle` keep/cut) and 3
+(package placement) get decided during impl. Specs stay behavioral; the concrete names
+(`Discovered`/`Validated`/`Decided`, `Vetted`, `Locator`) live in the lifecycle decision.
 
 ## Why
 
@@ -117,10 +112,11 @@ Three mechanisms map onto this:
    decision picks one.
 3. **Package placement** — who owns atom / collection / resolver. Likely a rearrangement
    across `skills/` and `resolver/`.
-4. **Naming** — still open. Marker names `Raw` / `Validated` / `Judged` and the `Vetted`
-   trait are **provisional** (used by the decisions pending ratification); the path-identity
-   rename away from `SkillId`/`id` is unsettled. The atom (`Skill`) vs. collection (`Skills`)
-   names stand.
+4. **Naming** — **resolved (2026-06-05).** Markers `Discovered → Validated → Decided`; trait
+   `Vetted`; identity type `Locator` (field `locator`) replacing `SkillId`/`id`; `Skill.name`
+   dropped (callsites → `locator` / `frontmatter_name`). Rationale in the
+   [lifecycle decision § Open / downstream](../decisions/2026-06-04-skill-lifecycle-typestate.md).
+   The atom (`Skill`) vs. collection (`Skills`) names stand.
 
 ## Approach
 

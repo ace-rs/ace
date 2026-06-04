@@ -108,12 +108,27 @@ per-backend purpose the backend assigns it (e.g. Claude's slash-command token).
 
 ### Type-safety invariant
 
-Identity values are constructed **only** by the discovery layer, after the prefix-strip
-rule has been applied. Code outside discovery cannot synthesize an identity from a raw
-string, and the resolver / emit boundaries cannot accept a raw user string in an identity
-slot. The invariant is encoded in types so that violations cannot be expressed in code —
-see [selection.md → Match handle](selection.md#match-handle) for the dual: user-supplied
-match handles are a distinct kind from identities.
+A skill moves through three lifecycle stages — **discovered**, **validated**, and **decided**
+(its selection resolved) — and the type system encodes that ordering so a wrong-stage
+operation cannot be written.
+
+- **Identity is typed and carried end-to-end.** Identity values are constructed **only** by
+  the discovery layer, after the prefix-strip rule. Code outside discovery cannot synthesize
+  an identity from a raw string, and that typed identity rides every stage unchanged rather
+  than collapsing back to a string — the resolver and emit boundaries cannot accept a raw
+  user string in an identity slot. See
+  [selection.md → Match handle](selection.md#match-handle) for the dual: user-supplied match
+  handles are a distinct kind from identities.
+- **Validation is a gate, not a flag.** Validation *partitions* the discovered set into the
+  admissible and the rejected (see [Name Admission](#name-admission)); only the admissible
+  half advances. The persist and emit boundaries accept only a validated-or-later skill, so an
+  un-validated skill is **unrepresentable** at the moment of writing to disk or emitting to a
+  backend — "validate before you persist" is compiler-enforced, not a guard to remember.
+  Validation re-runs from scratch every process, so this proves in-process ordering and stores
+  nothing.
+
+Concrete marker, trait, and identity-type names live in the
+[lifecycle decision](../../decisions/2026-06-04-skill-lifecycle-typestate.md).
 
 ## Frontmatter
 
@@ -167,7 +182,7 @@ backend-specific materializations outlive later rule tightening.
 | ACE's own display (prompts, listings, warnings) | Transform on render                                    |
 | Emit / symlink name                             | Structural validation only (traversal / NUL / length)  |
 | Backend file content                            | Nothing — symlink target content remains byte-for-byte |
-| Internal model                                  | Raw preserved; admission verdict carried for diagnostics |
+| Internal model                                  | Validation partitions: admissible skills advance; rejects split off with their reason |
 
 ### Approach
 
@@ -191,9 +206,11 @@ characters there are neutralized when ACE itself renders the field (see Display 
 A spoofable frontmatter `name` does not reject the skill, but the authoring boundaries
 (`ace import`, `ace school pull`) raise a non-fatal `warn` + `hint` so the importer sees it.
 See [name = path decision](../../decisions/2026-06-01-skill-name-is-path.md). Admission is a
-separate axis from config selection, settled at discovery: rejected skills remain on disk
-and in the resolved model, carrying their rejection reason, but are never included or
-emitted regardless of what the `skills`/`include`/`exclude` rules would have picked.
+separate axis from config selection, settled at discovery: validation **partitions** the
+discovered set, so rejected skills never enter the set selection and emit operate on. They
+remain on disk (ACE deletes nothing) and surface as an explicit rejected set carrying each
+rejection reason for diagnostics, but cannot be included or emitted regardless of what the
+`skills`/`include`/`exclude` rules would have picked.
 
 ### Display transform
 
@@ -203,9 +220,10 @@ the offending codepoint and position. Backend SKILL.md content is not rewritten.
 
 ### Type-safety invariant
 
-Discovery constructs raw identities, then admission classifies them before resolution can
-include them. Strings that cross ACE display boundaries carry a `SanitizedString` marker
-built through the render transform. Internal model fields remain raw; rejection reasons
+Discovery constructs identities; validation then **partitions** them — the admissible advance
+to resolution, the rejected split off carrying their reason — so resolution and emit only ever
+see admissible skills. Strings that cross ACE display boundaries carry a `SanitizedString`
+marker built through the render transform. Internal model fields remain raw; rejection reasons
 and display accessors sanitize internally before formatting untrusted content.
 
 ### Caveat
