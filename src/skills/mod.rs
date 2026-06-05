@@ -1,9 +1,12 @@
-//! Unified skills domain: typestate over discovery → resolution.
+//! Unified skills domain: typestate over discovery → validation → resolution.
 //!
 //! `Skill<S>` carries locator/path/tier from discovery onward; the marker `S`
-//! adds the resolver verdict + provenance trace once `resolve()` runs.
-//! `Skills<S>` is the collection plus, when resolved, the resolution-wide
-//! diagnostics (unknown patterns + collisions).
+//! advances `Discovered → Validated → Decided`. `validate` partitions the
+//! discovered set on name admissibility (admissible skills advance, the rest
+//! split off as [`Rejected`]); `resolve` then runs selection over the
+//! validated set, and the `Decided` marker adds the verdict + provenance
+//! trace. `Skills<S>` is the collection plus its resolution-wide diagnostics
+//! (unknown patterns + collisions) and the carried reject list.
 
 use std::collections::HashMap;
 use std::io;
@@ -89,10 +92,27 @@ pub fn format_pull_summary(changes: &[SkillChange]) -> String {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Discovered;
 
+/// Marker proving `validate` ran in this process — the skill's identity
+/// passed the admission gate. Carries no payload (the proof is set
+/// membership) and persists nothing; rebuilt from scratch every run.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Validated;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Decided {
     pub decision: Decision,
     pub trace: Vec<Entry>,
+}
+
+/// A skill dropped by `validate` because its identity is inadmissible.
+/// The partition's second output — carries the identity and reason so
+/// warnings and the `ace skills` listing can surface it, kept out of the
+/// admissible set so downstream boundaries can trust the type.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Rejected {
+    pub locator: Locator,
+    pub tier: Tier,
+    pub reason: name::RejectReason,
 }
 
 #[derive(Debug, Clone)]
@@ -124,18 +144,33 @@ pub struct Skill<S> {
 }
 
 impl<S> Skill<S> {
-    /// Character + structural admissibility of this skill's identity path.
-    /// Discovery is the gate of record (model.md § Name Admission): every
-    /// consumer calls this single predicate rather than reimplementing the
-    /// check. Orthogonal to the resolver's selection [`Decision`] — an
-    /// inadmissible skill is rejected regardless of what selection decided —
-    /// and carried unchanged across the resolve typestate.
-    pub fn admission(&self) -> Result<(), name::RejectReason> {
-        name::admissible_skill(self.locator.as_str())
+    /// Advance the atom to a new lifecycle state, preserving every intrinsic
+    /// field. The marker is the only thing that changes — used by `validate`
+    /// to move an admitted skill from `Discovered` to `Validated`.
+    fn with_state<T>(self, state: T) -> Skill<T> {
+        Skill {
+            locator: self.locator,
+            name: self.name,
+            path: self.path,
+            tier: self.tier,
+            internal: self.internal,
+            frontmatter_name: self.frontmatter_name,
+            source: self.source,
+            state,
+        }
     }
 }
 
 impl Skill<Discovered> {
+    /// Character + structural admissibility of this skill's identity path.
+    /// Recomputed at `validate` (the admission gate of record, model.md
+    /// § Name Admission) rather than carried — a pure function of identity,
+    /// so it never goes stale. Orthogonal to the resolver's selection
+    /// [`Decision`].
+    pub fn admission(&self) -> Result<(), name::RejectReason> {
+        name::admissible_skill(self.locator.as_str())
+    }
+
     /// Display-hygiene warning for an admitted skill whose frontmatter `name:`
     /// carries spoofable characters (bidi/control) or a non-token shape. The
     /// skill is *not* rejected — frontmatter is display-only, never emitted or
@@ -159,17 +194,14 @@ pub const FRONTMATTER_WARNING_HINT: &str =
     "ACE emits the path basename and renders the name sanitized, but the backend reads \
      the frontmatter raw — verify the source or drop the skill via `exclude_skills`";
 
-/// Effective status of a resolved skill — the product of the two orthogonal
-/// axes (admission × selection) collapsed into one verdict. Inadmissibility
-/// dominates: a name-rejected skill is [`Status::Rejected`] regardless of what
-/// selection decided. Every consumer (`included`/`excluded`/`rejected`
-/// iterators, the `ace skills` listing, `ace explain`) reads this rather than
-/// recombining the axes inline.
+/// Selection verdict of a *decided* skill. A `Skill<Decided>` is admissible
+/// by lineage (it came through `validate`), so rejection is no longer a
+/// status here — inadmissible skills are partitioned off as [`Rejected`]
+/// before resolution and never reach this type.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Status {
     Active,
     Excluded,
-    Rejected,
 }
 
 impl Status {
@@ -177,16 +209,12 @@ impl Status {
         match self {
             Status::Active => "active",
             Status::Excluded => "excluded",
-            Status::Rejected => "rejected",
         }
     }
 }
 
 impl Skill<Decided> {
     pub fn status(&self) -> Status {
-        if self.admission().is_err() {
-            return Status::Rejected;
-        }
         match self.state.decision {
             Decision::Included => Status::Active,
             Decision::Excluded => Status::Excluded,
@@ -198,6 +226,11 @@ impl Skill<Decided> {
 pub struct Skills<S> {
     items: Vec<Skill<S>>,
     diagnostics: Diagnostics,
+    /// Skills `validate` dropped as inadmissible. Populated on the resolved
+    /// collection (via [`Skills::with_rejected`]); empty at earlier stages.
+    /// Carried alongside the admissible set so warnings and the listing can
+    /// surface rejections without keeping them in `items`.
+    rejected: Vec<Rejected>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -239,6 +272,7 @@ impl Skills<Discovered> {
         Self {
             items,
             diagnostics: Diagnostics::default(),
+            rejected: Vec::new(),
         }
     }
 
@@ -256,8 +290,73 @@ impl Skills<Discovered> {
         }
     }
 
-    /// Run the three-layer resolver against the given config tree.
-    /// Consumes `self` — the typestate transition is one-way.
+    /// Partition the discovered set on name admissibility: admissible skills
+    /// advance to `Skills<Validated>`, inadmissible ones split off as
+    /// [`Rejected`]. This is the admission gate — `validate` *removes* rejects
+    /// rather than tagging them, so every later stage can trust that its skills
+    /// are admissible by construction. Re-runs from scratch each process, so it
+    /// self-heals when the admission rules tighten.
+    pub fn validate(self) -> (Skills<Validated>, Vec<Rejected>) {
+        let mut admitted = Vec::new();
+        let mut rejected = Vec::new();
+        for skill in self.items {
+            match skill.admission() {
+                Ok(()) => admitted.push(skill.with_state(Validated)),
+                Err(reason) => rejected.push(Rejected {
+                    locator: skill.locator,
+                    tier: skill.tier,
+                    reason,
+                }),
+            }
+        }
+        let validated = Skills {
+            items: admitted,
+            diagnostics: self.diagnostics,
+            rejected: Vec::new(),
+        };
+        (validated, rejected)
+    }
+
+    pub fn names(&self) -> impl Iterator<Item = &str> {
+        self.items.iter().map(|s| s.name.as_str())
+    }
+
+    /// Copy named skills into `dest_dir`. Each skill is classified Added
+    /// (didn't exist) or Modified (overwrote). Unknown names silently skipped.
+    pub fn copy_into(&self, dest_dir: &Path, names: &[&str]) -> io::Result<Vec<SkillChange>> {
+        let by_name: HashMap<&str, &Skill<Discovered>> =
+            self.items.iter().map(|s| (s.name.as_str(), s)).collect();
+
+        let mut changes = Vec::new();
+        for &name in names {
+            let Some(skill) = by_name.get(name) else {
+                continue;
+            };
+
+            let dest = dest_dir.join(name);
+            let kind = if dest.exists() {
+                std::fs::remove_dir_all(&dest)?;
+                ChangeKind::Modified
+            } else {
+                ChangeKind::Added
+            };
+
+            crate::fsutil::copy_dir_recursive(&skill.path, &dest)?;
+            changes.push(SkillChange {
+                name: name.to_string(),
+                kind,
+            });
+        }
+        Ok(changes)
+    }
+}
+
+// ---- Skills<Validated> ----
+
+impl Skills<Validated> {
+    /// Run the three-layer resolver against the given config tree. Consumes
+    /// `self` — the typestate transition is one-way. Selection runs over the
+    /// validated set; rejects were already partitioned out by `validate`.
     pub fn resolve(self, tree: &Tree) -> Skills<Decided> {
         let names: Vec<String> = self.items.iter().map(|s| s.name.clone()).collect();
         let default = crate::config::ace_toml::AceToml::default();
@@ -329,40 +428,8 @@ impl Skills<Discovered> {
                 unknown_patterns: resolution.unknown_patterns,
                 collisions: resolution.collisions,
             },
+            rejected: Vec::new(),
         }
-    }
-
-    pub fn names(&self) -> impl Iterator<Item = &str> {
-        self.items.iter().map(|s| s.name.as_str())
-    }
-
-    /// Copy named skills into `dest_dir`. Each skill is classified Added
-    /// (didn't exist) or Modified (overwrote). Unknown names silently skipped.
-    pub fn copy_into(&self, dest_dir: &Path, names: &[&str]) -> io::Result<Vec<SkillChange>> {
-        let by_name: HashMap<&str, &Skill<Discovered>> =
-            self.items.iter().map(|s| (s.name.as_str(), s)).collect();
-
-        let mut changes = Vec::new();
-        for &name in names {
-            let Some(skill) = by_name.get(name) else {
-                continue;
-            };
-
-            let dest = dest_dir.join(name);
-            let kind = if dest.exists() {
-                std::fs::remove_dir_all(&dest)?;
-                ChangeKind::Modified
-            } else {
-                ChangeKind::Added
-            };
-
-            crate::fsutil::copy_dir_recursive(&skill.path, &dest)?;
-            changes.push(SkillChange {
-                name: name.to_string(),
-                kind,
-            });
-        }
-        Ok(changes)
     }
 }
 
@@ -377,23 +444,16 @@ impl Skills<Decided> {
         self.items.iter()
     }
 
-    /// Admissible skills the resolver selected. Inadmissible skills are
-    /// excluded here even when selection picked them — see [`Self::rejected`].
+    /// Skills the resolver selected. All are admissible by lineage — rejects
+    /// were partitioned off at `validate`, see [`Self::rejected`].
     pub fn included(&self) -> impl Iterator<Item = &Skill<Decided>> {
         self.with_status(Status::Active)
     }
 
-    /// Admissible skills that exist in the school but were filtered out by the
-    /// resolved `include_skills` / `exclude_skills` rules.
+    /// Skills that exist in the school but were filtered out by the resolved
+    /// `include_skills` / `exclude_skills` rules.
     pub fn excluded(&self) -> impl Iterator<Item = &Skill<Decided>> {
         self.with_status(Status::Excluded)
-    }
-
-    /// Inadmissible skills — rejected by the name gate regardless of selection.
-    /// The three status partitions are mutually exclusive and exhaustive by
-    /// construction (one [`Status`] per skill).
-    pub fn rejected(&self) -> impl Iterator<Item = &Skill<Decided>> {
-        self.with_status(Status::Rejected)
     }
 
     fn with_status(&self, status: Status) -> impl Iterator<Item = &Skill<Decided>> {
@@ -402,6 +462,20 @@ impl Skills<Decided> {
 
     pub fn diagnostics(&self) -> &Diagnostics {
         &self.diagnostics
+    }
+
+    /// Skills `validate` dropped as inadmissible. Attached by [`Self::with_rejected`]
+    /// after resolution; warnings and the `ace skills` listing surface them.
+    pub fn rejected(&self) -> &[Rejected] {
+        &self.rejected
+    }
+
+    /// Attach the reject list from `validate` onto the resolved collection.
+    /// Called once, right after `resolve`, to reunite the partition's two
+    /// halves for the consumers that report both.
+    pub fn with_rejected(mut self, rejected: Vec<Rejected>) -> Self {
+        self.rejected = rejected;
+        self
     }
 }
 
@@ -473,7 +547,7 @@ mod tests {
             discovered("a", Tier::Curated),
             discovered("b", Tier::Experimental),
         ]);
-        let resolved = s.resolve(&tree(AceToml::default()));
+        let resolved = s.validate().0.resolve(&tree(AceToml::default()));
 
         let a = resolved.find("a").expect("a");
         assert_eq!(a.path, PathBuf::from("/school/a"));
@@ -486,19 +560,22 @@ mod tests {
     }
 
     #[test]
-    fn resolve_rejects_bad_identity_even_when_included_by_default() {
-        let s = Skills::<Discovered>::from_discovered(&[
+    fn validate_partitions_out_inadmissible_identity() {
+        let (validated, rejected) = Skills::<Discovered>::from_discovered(&[
             discovered("safe", Tier::Curated),
             discovered("bad\u{202E}name", Tier::Curated),
-        ]);
-        let resolved = s.resolve(&tree(AceToml::default()));
+        ])
+        .validate();
 
-        let rejected = resolved.find("bad\u{202E}name").expect("bad skill present");
-        assert!(rejected.admission().is_err());
+        // The bad skill split off as a Rejected; the clean one advanced.
+        assert_eq!(rejected.len(), 1);
+        assert_eq!(rejected[0].locator, "bad\u{202E}name");
 
+        let resolved = validated.resolve(&tree(AceToml::default())).with_rejected(rejected);
         let included: Vec<&str> = resolved.included().map(|s| s.name.as_str()).collect();
         assert_eq!(included, vec!["safe"]);
-        assert_eq!(resolved.rejected().count(), 1);
+        assert_eq!(resolved.rejected().len(), 1);
+        assert_eq!(resolved.rejected()[0].locator, "bad\u{202E}name");
     }
 
     #[test]
@@ -507,12 +584,10 @@ mod tests {
         // and never rejects the skill (name = basename(identity)).
         let mut skill = discovered("safe", Tier::Curated);
         skill.frontmatter_name = Some("bad\u{202E}name".to_string());
-        let s = Skills::<Discovered>::from_discovered(&[skill]);
-        let resolved = s.resolve(&tree(AceToml::default()));
+        let (validated, rejected) = Skills::<Discovered>::from_discovered(&[skill]).validate();
 
-        let admitted = resolved.find("safe").expect("skill present");
-        assert!(admitted.admission().is_ok());
-        assert_eq!(resolved.rejected().count(), 0);
+        assert!(rejected.is_empty());
+        let resolved = validated.resolve(&tree(AceToml::default()));
         assert_eq!(resolved.included().count(), 1);
     }
 
@@ -528,7 +603,7 @@ mod tests {
             discovered("a", Tier::Curated),
             discovered("b", Tier::Curated),
         ]);
-        let resolved = s.resolve(&tree(AceToml::default()));
+        let resolved = s.validate().0.resolve(&tree(AceToml::default()));
         assert!(excluded_names(&resolved).is_empty());
     }
 
@@ -539,7 +614,7 @@ mod tests {
             discovered("b", Tier::Curated),
             discovered("c", Tier::Curated),
         ]);
-        let resolved = s.resolve(&tree(ace(&["a"], &[], &[])));
+        let resolved = s.validate().0.resolve(&tree(ace(&["a"], &[], &[])));
         // include_skills via `skills = ["a"]` narrows the active set.
         assert_eq!(excluded_names(&resolved), vec!["b", "c"]);
     }
@@ -550,7 +625,7 @@ mod tests {
             discovered("a", Tier::Curated),
             discovered("b", Tier::Curated),
         ]);
-        let resolved = s.resolve(&tree(ace(&[], &[], &["a"])));
+        let resolved = s.validate().0.resolve(&tree(ace(&[], &[], &["a"])));
         assert_eq!(excluded_names(&resolved), vec!["a"]);
     }
 
@@ -561,7 +636,7 @@ mod tests {
             discovered("b", Tier::Curated),
             discovered("c", Tier::Curated),
         ]);
-        let resolved = s.resolve(&tree(ace(&["a", "b"], &[], &["b"])));
+        let resolved = s.validate().0.resolve(&tree(ace(&["a", "b"], &[], &["b"])));
         assert_eq!(excluded_names(&resolved), vec!["b", "c"]);
     }
 
@@ -571,7 +646,7 @@ mod tests {
             discovered("a", Tier::Curated),
             discovered("b", Tier::Curated),
         ]);
-        let resolved = s.resolve(&tree(ace(&["a"], &[], &[])));
+        let resolved = s.validate().0.resolve(&tree(ace(&["a"], &[], &[])));
 
         let included: Vec<&str> = resolved.included().map(|s| s.name.as_str()).collect();
         assert_eq!(included, vec!["a"]);
@@ -583,7 +658,7 @@ mod tests {
     #[test]
     fn diagnostics_carry_unknown_patterns() {
         let s = Skills::<Discovered>::from_discovered(&[discovered("a", Tier::Curated)]);
-        let resolved = s.resolve(&tree(ace(&["nonexistent"], &[], &[])));
+        let resolved = s.validate().0.resolve(&tree(ace(&["nonexistent"], &[], &[])));
 
         let unk = &resolved.diagnostics().unknown_patterns;
         assert_eq!(unk.len(), 1);

@@ -170,7 +170,7 @@ mod tests {
     fn resolve(names: &[&str], t: &Tree) -> Skills<Decided> {
         let disc: Vec<Skill<Discovered>> =
             names.iter().map(|n| discovered(n, Tier::Curated)).collect();
-        Skills::<Discovered>::from_discovered(&disc).resolve(t)
+        Skills::<Discovered>::from_discovered(&disc).validate().0.resolve(t)
     }
 
     #[test]

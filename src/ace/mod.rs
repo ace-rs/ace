@@ -240,9 +240,9 @@ impl Ace {
     pub fn skills(&self) -> Result<&Skills<Decided>, SkillError> {
         self.skills.get_or_try_init(|| {
             let school_root = &self.require_school()?.root;
-            let discovered = Skills::discover(school_root)?;
             let tree = self.require_tree()?;
-            Ok(discovered.resolve(tree))
+            let (validated, rejected) = Skills::discover(school_root)?.validate();
+            Ok(validated.resolve(tree).with_rejected(rejected))
         })
     }
 

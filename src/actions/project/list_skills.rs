@@ -21,6 +21,17 @@ pub fn render_table(skills: &Skills<Decided>, show_excluded: bool) -> String {
             reason_for(skill),
         );
     }
+    if show_excluded {
+        for rejected in skills.rejected() {
+            let _ = writeln!(
+                out,
+                "{}\t{}\trejected\t{}",
+                crate::skills::name::render(rejected.locator.as_str()),
+                rejected.tier.label(),
+                rejected.reason,
+            );
+        }
+    }
     out
 }
 
@@ -109,7 +120,8 @@ mod tests {
     }
 
     fn resolve(disc: Vec<Skill<Discovered>>, tree: &Tree) -> Skills<Decided> {
-        Skills::<Discovered>::from_discovered(&disc).resolve(tree)
+        let (validated, rejected) = Skills::<Discovered>::from_discovered(&disc).validate();
+        validated.resolve(tree).with_rejected(rejected)
     }
 
     #[test]
@@ -151,6 +163,26 @@ mod tests {
             .map(|l| l.split('\t').next().unwrap())
             .collect();
         assert_eq!(excluded, vec!["a", "b"]);
+    }
+
+    #[test]
+    fn show_all_lists_rejected_skills() {
+        // An inadmissible identity is partitioned out by validate; the listing
+        // surfaces it as a `rejected` row only under show_excluded.
+        let s = resolve(
+            all_curated(&["ok", "bad\u{202E}name"]),
+            &tree(AceToml::default(), AceToml::default(), AceToml::default()),
+        );
+
+        assert!(!render_table(&s, false).contains("rejected"));
+
+        let shown = render_table(&s, true);
+        let rejected_line = shown
+            .lines()
+            .find(|l| l.contains("\trejected\t"))
+            .expect("rejected row present");
+        assert!(rejected_line.starts_with("bad"));
+        assert!(rejected_line.contains("\tcurated\t"));
     }
 
     #[test]

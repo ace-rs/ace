@@ -160,7 +160,8 @@ pub fn prepare(
     tree: &Tree,
     backend_features: u32,
 ) -> io::Result<PreparedSkills> {
-    let skills = Skills::discover(school_root)?.resolve(tree);
+    let (validated, rejected) = Skills::discover(school_root)?.validate();
+    let skills = validated.resolve(tree).with_rejected(rejected);
     let (desired, collision_warnings) = build_desired(skills.included(), backend_features);
     Ok(PreparedSkills {
         desired,
@@ -380,13 +381,12 @@ pub fn emit_warnings(ace: &mut Ace, prepared: &PreparedSkills, link_result: &Lin
     for warning in &prepared.collision_warnings {
         ace.warn(warning);
     }
-    for skill in prepared.skills.rejected() {
-        if let Err(reason) = skill.admission() {
-            ace.warn(&format!(
-                "skill `{}` rejected: {reason}",
-                crate::skills::name::render(&skill.name)
-            ));
-        }
+    for rejected in prepared.skills.rejected() {
+        ace.warn(&format!(
+            "skill `{}` rejected: {}",
+            crate::skills::name::render(rejected.locator.as_str()),
+            rejected.reason,
+        ));
     }
     let diagnostics = prepared.skills.diagnostics();
     for unknown in &diagnostics.unknown_patterns {
