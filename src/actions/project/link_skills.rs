@@ -398,6 +398,15 @@ pub fn emit_warnings(ace: &mut Ace, prepared: &PreparedSkills, link_result: &Lin
             unknown.field,
         ));
     }
+    for invalid in &diagnostics.invalid_patterns {
+        ace.warn(&format!(
+            "ignoring unsupported skill pattern {}: {} (in {:?} {:?})",
+            crate::skills::name::render(&invalid.pattern),
+            invalid.reason,
+            invalid.source,
+            invalid.field,
+        ));
+    }
     for collision in &diagnostics.collisions {
         ace.warn(&format!(
             "skill {} appears in both include_skills and exclude_skills at {:?} scope",

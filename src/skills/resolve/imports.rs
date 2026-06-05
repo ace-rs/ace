@@ -15,6 +15,7 @@
 use std::collections::HashMap;
 
 use crate::config::school_toml::ImportDecl;
+use crate::glob;
 use crate::skills::discover::Tier;
 use crate::skills::identity::pattern_matches;
 use crate::skills::{Discovered, Locator, Skill};
@@ -30,6 +31,8 @@ pub struct ImportsResolution {
     pub collisions: Vec<ImportCollision>,
     /// Patterns that matched nothing in their source.
     pub unknown_patterns: Vec<UnknownImportPattern>,
+    /// Patterns with unsupported glob syntax — skipped, not rejected.
+    pub invalid_patterns: Vec<InvalidImportPattern>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -80,6 +83,18 @@ pub struct UnknownImportPattern {
     pub pattern: String,
 }
 
+/// An `[[imports]]` pattern whose glob syntax is unsupported (`?`,
+/// `[...]`, empty). Skipped and warned at the resolver boundary — never a
+/// hard error, since the school is third-party authored. `reason` is the
+/// `glob::validate` message, echoed verbatim.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InvalidImportPattern {
+    pub source: String,
+    pub decl_index: usize,
+    pub pattern: String,
+    pub reason: String,
+}
+
 /// Per-source set of discovered skills, keyed by the decl's `source`
 /// field. Same source can appear in multiple decls; the caller dedups
 /// the discovery work.
@@ -95,6 +110,7 @@ pub fn resolve_imports(
     // Stage 1: per-decl matched sets (identity → matched skill ref).
     let mut per_decl: Vec<Vec<MatchedSkill>> = Vec::with_capacity(decls.len());
     let mut unknown_patterns: Vec<UnknownImportPattern> = Vec::new();
+    let mut invalid_patterns: Vec<InvalidImportPattern> = Vec::new();
 
     for (idx, decl) in decls.iter().enumerate() {
         let Some(discovered) = discovery.get(decl.source.as_str()) else {
@@ -110,7 +126,13 @@ pub fn resolve_imports(
             per_decl.push(Vec::new());
             continue;
         };
-        per_decl.push(match_decl(decl, idx, discovered, &mut unknown_patterns));
+        per_decl.push(match_decl(
+            decl,
+            idx,
+            discovered,
+            &mut unknown_patterns,
+            &mut invalid_patterns,
+        ));
     }
 
     // Stage 2: cross-decl merge — first-wins on identity collision.
@@ -204,6 +226,7 @@ pub fn resolve_imports(
         skills: all_resolved,
         collisions,
         unknown_patterns,
+        invalid_patterns,
     }
 }
 
@@ -215,6 +238,7 @@ fn match_decl(
     decl_index: usize,
     discovered: &[Skill<Discovered>],
     unknown: &mut Vec<UnknownImportPattern>,
+    invalid: &mut Vec<InvalidImportPattern>,
 ) -> Vec<MatchedSkill> {
     let mut out: Vec<MatchedSkill> = Vec::new();
     let mut seen: HashMap<Locator, usize> = HashMap::new();
@@ -228,6 +252,15 @@ fn match_decl(
     };
 
     for pattern in decl.patterns() {
+        if let Err(reason) = glob::validate(pattern) {
+            invalid.push(InvalidImportPattern {
+                source: decl.source.clone(),
+                decl_index,
+                pattern: pattern.to_string(),
+                reason: reason.to_string(),
+            });
+            continue;
+        }
         let pattern_is_explicit = !pattern.contains('*');
         let mut any_match = false;
 
@@ -619,6 +652,25 @@ mod tests {
     fn missing_source_in_discovery_records_unknown_patterns() {
         let r = resolve_imports(&[decl("missing/source", &["a", "b"])], &discovery(&[]));
         assert_eq!(r.unknown_patterns.len(), 2);
+    }
+
+    // -- invalid glob syntax: warn-and-skip, never reject --
+
+    #[test]
+    fn invalid_import_pattern_recorded_and_skipped() {
+        let src = vec![dskill("a", Tier::Curated, false, None)];
+        let r = resolve_imports(
+            &[decl("owner/repo", &["a?", "a"])],
+            &discovery(&[("owner/repo", src.as_slice())]),
+        );
+        // `a?` is unsupported → invalid; the valid `a` still resolves.
+        assert_eq!(r.invalid_patterns.len(), 1);
+        assert_eq!(r.invalid_patterns[0].pattern, "a?");
+        assert_eq!(r.invalid_patterns[0].decl_index, 0);
+        assert_eq!(r.invalid_patterns[0].source, "owner/repo");
+        assert_eq!(included_identities(&r), vec!["a"]);
+        // Not double-reported as unknown.
+        assert!(r.unknown_patterns.is_empty());
     }
 
     // -- multi-pattern decl --

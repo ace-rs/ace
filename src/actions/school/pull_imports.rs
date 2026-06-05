@@ -158,6 +158,12 @@ fn surface_import_diagnostics(
             unknown.pattern, unknown.source,
         ));
     }
+    for invalid in &resolution.invalid_patterns {
+        ace.warn(&format!(
+            "ignoring unsupported import pattern `{}` in {}: {}",
+            invalid.pattern, invalid.source, invalid.reason,
+        ));
+    }
     for collision in &resolution.collisions {
         if collision.suppressed_by_exclude {
             continue;

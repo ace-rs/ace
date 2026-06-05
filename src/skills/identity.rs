@@ -10,8 +10,9 @@
 //! entry point; the looser visibility is a convention, not a hard wall.
 //!
 //! Patterns stay raw `&str` — they are selection *input*, never a skill state.
-//! [`pattern_matches`] applies the `selection.md` § Match handle rules at the
-//! resolver seam; the resolvers validate glob syntax there (slice 7).
+//! [`pattern_matches`] applies the `selection.md` § Match handle rules and is
+//! total; the resolvers validate glob *syntax* (via `glob::validate`) at their
+//! own seam, warning-and-skipping unsupported patterns rather than rejecting.
 
 use std::borrow::Borrow;
 use std::fmt;

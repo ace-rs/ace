@@ -27,7 +27,7 @@ use crate::school::SchoolError;
 use discover::Tier;
 
 pub use crate::config::resolve::Source;
-pub use resolve::{Collision, Decision, Entry, UnknownPattern};
+pub use resolve::{Collision, Decision, Entry, InvalidPattern, UnknownPattern};
 
 /// Errors that can occur while building the resolved SkillSet. Wraps
 /// upstream binding errors plus skill-specific I/O failures.
@@ -248,6 +248,7 @@ pub struct Skills<S> {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Diagnostics {
     pub unknown_patterns: Vec<UnknownPattern>,
+    pub invalid_patterns: Vec<InvalidPattern>,
     pub collisions: Vec<Collision>,
 }
 

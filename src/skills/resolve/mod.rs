@@ -13,4 +13,4 @@ mod imports;
 mod project;
 
 pub use imports::{DiscoveryBySource, ImportVerdict, ImportsResolution, resolve_imports};
-pub use project::{Collision, Decision, Entry, UnknownPattern};
+pub use project::{Collision, Decision, Entry, InvalidPattern, UnknownPattern};

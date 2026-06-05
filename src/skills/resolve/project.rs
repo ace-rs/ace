@@ -16,6 +16,7 @@ use std::collections::BTreeMap;
 
 use crate::config::ace_toml::AceToml;
 use crate::config::tree::Tree;
+use crate::glob;
 use crate::skills::identity::pattern_matches;
 
 use crate::skills::{Decided, Diagnostics, Locator, Skill, Skills, Validated};
@@ -34,6 +35,7 @@ struct Verdict {
 struct Selection {
     verdicts: BTreeMap<Locator, Verdict>,
     unknown_patterns: Vec<UnknownPattern>,
+    invalid_patterns: Vec<InvalidPattern>,
     collisions: Vec<Collision>,
 }
 
@@ -50,6 +52,18 @@ pub struct UnknownPattern {
     pub source: Source,
     pub field: Field,
     pub pattern: String,
+}
+
+/// A selection pattern whose glob syntax is unsupported (`?`, `[...]`,
+/// empty). Recorded and skipped at the resolver boundary — never a hard
+/// error, since `ace.toml` may be authored by a third party. `reason` is
+/// the `glob::validate` message, echoed verbatim beside the pattern.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InvalidPattern {
+    pub source: Source,
+    pub field: Field,
+    pub pattern: String,
+    pub reason: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -138,6 +152,7 @@ impl Skills<Validated> {
             items,
             diagnostics: Diagnostics {
                 unknown_patterns: selection.unknown_patterns,
+                invalid_patterns: selection.invalid_patterns,
                 collisions: selection.collisions,
             },
             rejected: Vec::new(),
@@ -162,17 +177,27 @@ fn select(locators: &[Locator], user: &AceToml, project: &AceToml, local: &AceTo
         })
         .collect();
     let mut unknown_patterns: Vec<UnknownPattern> = Vec::new();
+    let mut invalid_patterns: Vec<InvalidPattern> = Vec::new();
 
-    apply_base(&mut state, &mut unknown_patterns, user, project, local);
+    apply_base(
+        &mut state,
+        &mut unknown_patterns,
+        &mut invalid_patterns,
+        user,
+        project,
+        local,
+    );
     apply_phase(
         &mut state,
         &mut unknown_patterns,
+        &mut invalid_patterns,
         Phase::Exclude,
         scoped(user, project, local, |a| &a.exclude_skills),
     );
     apply_phase(
         &mut state,
         &mut unknown_patterns,
+        &mut invalid_patterns,
         Phase::Include,
         scoped(user, project, local, |a| &a.include_skills),
     );
@@ -182,8 +207,31 @@ fn select(locators: &[Locator], user: &AceToml, project: &AceToml, local: &AceTo
     Selection {
         verdicts: state,
         unknown_patterns,
+        invalid_patterns,
         collisions,
     }
+}
+
+/// Validate a selection pattern's glob syntax at the resolver boundary.
+/// Returns `false` and records a diagnostic for unsupported syntax — the
+/// pattern is then skipped rather than rejected, keeping resolution
+/// infallible (the config may be third-party authored).
+fn glob_ok(
+    pattern: &str,
+    source: Source,
+    field: Field,
+    invalid: &mut Vec<InvalidPattern>,
+) -> bool {
+    let Err(reason) = glob::validate(pattern) else {
+        return true;
+    };
+    invalid.push(InvalidPattern {
+        source,
+        field,
+        pattern: pattern.to_string(),
+        reason: reason.to_string(),
+    });
+    false
 }
 
 fn scoped<'a, F>(
@@ -205,6 +253,7 @@ where
 fn apply_base(
     state: &mut BTreeMap<Locator, Verdict>,
     unknown: &mut Vec<UnknownPattern>,
+    invalid: &mut Vec<InvalidPattern>,
     user: &AceToml,
     project: &AceToml,
     local: &AceToml,
@@ -233,6 +282,9 @@ fn apply_base(
     };
 
     for pattern in patterns {
+        if !glob_ok(pattern, source, Field::Skills, invalid) {
+            continue;
+        }
         let mut matched = false;
         for (locator, verdict) in state.iter_mut() {
             if !pattern_matches(pattern, locator.as_str()) {
@@ -294,12 +346,16 @@ impl Phase {
 fn apply_phase(
     state: &mut BTreeMap<Locator, Verdict>,
     unknown: &mut Vec<UnknownPattern>,
+    invalid: &mut Vec<InvalidPattern>,
     phase: Phase,
     sources: Vec<(Source, &[String])>,
 ) {
     let field = phase.field();
     for (source, patterns) in sources {
         for pattern in patterns {
+            if !glob_ok(pattern, source, field, invalid) {
+                continue;
+            }
             let mut matched = false;
             for (locator, verdict) in state.iter_mut() {
                 if !pattern_matches(pattern, locator.as_str()) {
@@ -541,6 +597,51 @@ mod tests {
         assert_eq!(s.unknown_patterns[0].pattern, "typo-*");
         assert_eq!(s.unknown_patterns[0].source, Source::User);
         assert_eq!(s.unknown_patterns[0].field, Field::IncludeSkills);
+    }
+
+    // -- invalid glob syntax: warn-and-skip, never reject --
+
+    #[test]
+    fn invalid_base_pattern_recorded_and_skipped() {
+        // `?` is unsupported. The pattern is recorded as invalid, matches
+        // nothing, and is not double-reported as unknown.
+        let s = select(
+            &names(),
+            &AceToml::default(),
+            &ace(&["foo?"], &[], &[]),
+            &AceToml::default(),
+        );
+        assert_eq!(s.invalid_patterns.len(), 1);
+        assert_eq!(s.invalid_patterns[0].pattern, "foo?");
+        assert_eq!(s.invalid_patterns[0].source, Source::Project);
+        assert_eq!(s.invalid_patterns[0].field, Field::Skills);
+        assert!(included(&s).is_empty());
+        assert!(s.unknown_patterns.is_empty());
+    }
+
+    #[test]
+    fn invalid_exclude_pattern_carries_field_and_spares_valid_base() {
+        let s = select(
+            &names(),
+            &AceToml::default(),
+            &ace(&["rust-*"], &[], &["bad[x]"]),
+            &AceToml::default(),
+        );
+        assert_eq!(s.invalid_patterns.len(), 1);
+        assert_eq!(s.invalid_patterns[0].field, Field::ExcludeSkills);
+        // The valid base still applies — one bad pattern doesn't poison the rest.
+        assert_eq!(included(&s), vec!["rust-coding", "rust-fmt"]);
+    }
+
+    #[test]
+    fn valid_globs_produce_no_invalid_diagnostics() {
+        let s = select(
+            &names(),
+            &AceToml::default(),
+            &ace(&["rust-*", "**", "a"], &[], &[]),
+            &AceToml::default(),
+        );
+        assert!(s.invalid_patterns.is_empty());
     }
 
     #[test]
