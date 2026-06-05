@@ -113,7 +113,26 @@ pub struct Rejected {
     pub locator: Locator,
     pub tier: Tier,
     pub reason: name::RejectReason,
+    /// Origin label (`owner/repo`) when the rejected skill came from an import
+    /// source, carried over from discovery. `None` for school-local skills.
+    /// Lets the pull reject warning name which source shipped the bad skill.
+    pub source: Option<String>,
 }
+
+mod sealed {
+    pub trait Sealed {}
+}
+
+/// Persist gate: a skill whose identity already passed the admission partition.
+/// Sealed, implemented by [`Validated`] and [`Decided`] but never [`Discovered`],
+/// so write-to-disk boundaries (`copy_into`) are *unrepresentable* for a skill
+/// that has not been validated — "validate before you persist" is compiler-enforced.
+pub trait Vetted: sealed::Sealed {}
+
+impl sealed::Sealed for Validated {}
+impl sealed::Sealed for Decided {}
+impl Vetted for Validated {}
+impl Vetted for Decided {}
 
 #[derive(Debug, Clone)]
 pub struct Skill<S> {
@@ -179,8 +198,7 @@ impl Skill<Discovered> {
     /// Surfaced only at authoring boundaries (`ace import`, `ace school pull`).
     pub fn frontmatter_warning(&self) -> Option<String> {
         let name = self.frontmatter_name.as_deref()?;
-        let reason =
-            name::admissible_component(name, name::NameContext::FrontmatterName).err()?;
+        let reason = name::admissible_component(name, name::NameContext::FrontmatterName).err()?;
         Some(format!(
             "skill `{}` admitted with an unsafe frontmatter `name:` — {reason}",
             name::render(self.locator.as_str()),
@@ -306,6 +324,7 @@ impl Skills<Discovered> {
                     locator: skill.locator,
                     tier: skill.tier,
                     reason,
+                    source: skill.source,
                 }),
             }
         }
@@ -316,15 +335,25 @@ impl Skills<Discovered> {
         };
         (validated, rejected)
     }
+}
 
+// ---- Skills<S> (stage-agnostic) ----
+
+impl<S> Skills<S> {
     pub fn names(&self) -> impl Iterator<Item = &str> {
         self.items.iter().map(|s| s.name.as_str())
     }
+}
 
+// ---- Skills<S: Vetted> (persist boundary) ----
+
+impl<S: Vetted> Skills<S> {
     /// Copy named skills into `dest_dir`. Each skill is classified Added
     /// (didn't exist) or Modified (overwrote). Unknown names silently skipped.
+    /// Gated on [`Vetted`]: only a validated-or-later set can be written to
+    /// disk — an unadmitted identity is unrepresentable here.
     pub fn copy_into(&self, dest_dir: &Path, names: &[&str]) -> io::Result<Vec<SkillChange>> {
-        let by_name: HashMap<&str, &Skill<Discovered>> =
+        let by_name: HashMap<&str, &Skill<S>> =
             self.items.iter().map(|s| (s.name.as_str(), s)).collect();
 
         let mut changes = Vec::new();
@@ -571,11 +600,27 @@ mod tests {
         assert_eq!(rejected.len(), 1);
         assert_eq!(rejected[0].locator, "bad\u{202E}name");
 
-        let resolved = validated.resolve(&tree(AceToml::default())).with_rejected(rejected);
+        let resolved = validated
+            .resolve(&tree(AceToml::default()))
+            .with_rejected(rejected);
         let included: Vec<&str> = resolved.included().map(|s| s.name.as_str()).collect();
         assert_eq!(included, vec!["safe"]);
         assert_eq!(resolved.rejected().len(), 1);
         assert_eq!(resolved.rejected()[0].locator, "bad\u{202E}name");
+    }
+
+    #[test]
+    fn validate_carries_source_onto_rejected() {
+        // The rejected half keeps the skill's origin so pull's multi-source
+        // reject warning can still name which source shipped the bad skill.
+        let (_validated, rejected) = Skills::<Discovered>::from_discovered_with_source(
+            &[discovered("bad\u{202E}name", Tier::Curated)],
+            "owner/repo",
+        )
+        .validate();
+
+        assert_eq!(rejected.len(), 1);
+        assert_eq!(rejected[0].source.as_deref(), Some("owner/repo"));
     }
 
     #[test]
@@ -658,7 +703,10 @@ mod tests {
     #[test]
     fn diagnostics_carry_unknown_patterns() {
         let s = Skills::<Discovered>::from_discovered(&[discovered("a", Tier::Curated)]);
-        let resolved = s.validate().0.resolve(&tree(ace(&["nonexistent"], &[], &[])));
+        let resolved = s
+            .validate()
+            .0
+            .resolve(&tree(ace(&["nonexistent"], &[], &[])));
 
         let unk = &resolved.diagnostics().unknown_patterns;
         assert_eq!(unk.len(), 1);
@@ -686,7 +734,9 @@ mod tests {
             frontmatter_name: None,
             source: None,
             state: Discovered,
-        }]);
+        }])
+        .validate()
+        .0;
 
         let added = s.copy_into(dest.path(), &["my-skill"]).expect("copy");
         assert_eq!(added.len(), 1);
@@ -700,7 +750,7 @@ mod tests {
     #[test]
     fn copy_into_skips_unknown() {
         let dest = tempfile::tempdir().expect("dest");
-        let s = Skills::<Discovered>::from_discovered(&[]);
+        let s = Skills::<Discovered>::from_discovered(&[]).validate().0;
         let changes = s.copy_into(dest.path(), &["nonexistent"]).expect("copy");
         assert!(changes.is_empty());
     }

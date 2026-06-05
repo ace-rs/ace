@@ -94,7 +94,6 @@ impl PullImports<'_> {
         // its source's discovered record so we keep the full SKILL.md
         // payload, tier, etc.
         let mut accumulator: Skills<Discovered> = Skills::default();
-        let mut rejected_count = 0;
         for resolved in resolution.included() {
             let Some(disc) = discovery.get(&resolved.source) else {
                 continue;
@@ -103,15 +102,6 @@ impl PullImports<'_> {
                 .iter()
                 .find(|d| d.locator.as_str() == resolved.identity)
             {
-                if let Err(reason) = d.admission() {
-                    rejected_count += 1;
-                    ace.warn(&format!(
-                        "skipping inadmissible skill `{}` from {}: {reason}",
-                        crate::skills::name::render(d.locator.as_str()),
-                        resolved.source,
-                    ));
-                    continue;
-                }
                 if let Some(warning) = d.frontmatter_warning() {
                     ace.warn(&warning);
                     ace.hint(FRONTMATTER_WARNING_HINT);
@@ -124,9 +114,22 @@ impl PullImports<'_> {
             }
         }
 
-        let winning_names: Vec<String> = accumulator.names().map(String::from).collect();
+        // The admission gate: inadmissible identities partition off here rather
+        // than being filtered inline, so only validated skills reach `copy_into`.
+        let (validated, rejected) = accumulator.validate();
+        for r in &rejected {
+            let from = r.source.as_deref().unwrap_or("?");
+            ace.warn(&format!(
+                "skipping inadmissible skill `{}` from {from}: {}",
+                crate::skills::name::render(r.locator.as_str()),
+                r.reason,
+            ));
+        }
+        let rejected_count = rejected.len();
+
+        let winning_names: Vec<String> = validated.names().map(String::from).collect();
         let name_refs: Vec<&str> = winning_names.iter().map(String::as_str).collect();
-        let changes = accumulator.copy_into(&skills_dir, &name_refs)?;
+        let changes = validated.copy_into(&skills_dir, &name_refs)?;
 
         let count = changes.len();
         ace.done(&crate::skills::format_pull_summary(&changes));
