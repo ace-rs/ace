@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use crate::config::school_toml::ImportDecl;
 use crate::skills::discover::Tier;
 use crate::skills::identity::pattern_matches;
-use crate::skills::{Discovered, Skill};
+use crate::skills::{Discovered, Locator, Skill};
 
 /// Resolution output: one entry per skill considered, plus diagnostics.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,7 +34,7 @@ pub struct ImportsResolution {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedImport {
-    pub identity: String,
+    pub identity: Locator,
     pub source: String,
     pub decl_index: usize,
     pub verdict: ImportVerdict,
@@ -59,7 +59,7 @@ pub enum ImportVerdict {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImportCollision {
-    pub identity: String,
+    pub identity: Locator,
     pub winner_source: String,
     pub winner_decl_index: usize,
     pub loser_source: String,
@@ -115,7 +115,7 @@ pub fn resolve_imports(
 
     // Stage 2: cross-decl merge — first-wins on identity collision.
     // `claimed` keys identity → winning entry (and the decl that claimed it).
-    let mut claimed: HashMap<String, ClaimEntry> = HashMap::new();
+    let mut claimed: HashMap<Locator, ClaimEntry> = HashMap::new();
     let mut all_resolved: Vec<ResolvedImport> = Vec::new();
     let mut collisions: Vec<ImportCollision> = Vec::new();
 
@@ -217,7 +217,7 @@ fn match_decl(
     unknown: &mut Vec<UnknownImportPattern>,
 ) -> Vec<MatchedSkill> {
     let mut out: Vec<MatchedSkill> = Vec::new();
-    let mut seen: HashMap<String, usize> = HashMap::new();
+    let mut seen: HashMap<Locator, usize> = HashMap::new();
 
     let allowed_tier = |tier: Tier| -> bool {
         match tier {
@@ -253,7 +253,7 @@ fn match_decl(
                 MatchFate::Ok
             };
 
-            let identity = d.locator.to_string();
+            let identity = d.locator.clone();
             if let Some(&existing) = seen.get(&identity) {
                 // Same skill matched by multiple patterns within this
                 // decl — promote `Ok` over filtered/excluded variants
@@ -288,17 +288,17 @@ fn match_decl(
     out
 }
 
-fn decl_excludes_identity(decl: &ImportDecl, identity: &str) -> bool {
+fn decl_excludes_identity(decl: &ImportDecl, identity: &Locator) -> bool {
     decl.exclude_skills
         .iter()
-        .any(|ex| pattern_matches(ex, identity))
+        .any(|ex| pattern_matches(ex, identity.as_str()))
 }
 
 /// Intermediate per-decl record. Public verdicts live in `ResolvedImport`
 /// after the cross-decl merge.
 #[derive(Debug, Clone)]
 struct MatchedSkill {
-    identity: String,
+    identity: Locator,
     source: String,
     fate: MatchFate,
     frontmatter_name: Option<String>,

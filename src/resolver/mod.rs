@@ -3,16 +3,10 @@
 //!
 //! See `docs/decisions/2026-04-27-config-resolution-redesign.md`.
 
-mod imports;
 mod merge;
 mod resolved;
 mod source;
 
-#[allow(unused_imports)]
-pub use imports::{
-    DiscoveryBySource, ImportCollision, ImportVerdict, ImportsResolution, ResolvedImport,
-    UnknownImportPattern, resolve_imports,
-};
 pub use merge::merge;
 pub use resolved::Resolved;
 pub use source::{Source, Sourced};

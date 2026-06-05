@@ -3,7 +3,9 @@ use std::path::Path;
 
 use crate::ace::Ace;
 use crate::config;
-use crate::resolver::{DiscoveryBySource, ImportVerdict, ImportsResolution, resolve_imports};
+use crate::skills::resolve::{
+    DiscoveryBySource, ImportVerdict, ImportsResolution, resolve_imports,
+};
 use crate::skills::discover::discover_skills;
 use crate::skills::{Discovered, FRONTMATTER_WARNING_HINT, Skill, Skills};
 
@@ -100,7 +102,7 @@ impl PullImports<'_> {
             };
             if let Some(d) = disc
                 .iter()
-                .find(|d| d.locator.as_str() == resolved.identity)
+                .find(|d| d.locator == resolved.identity)
             {
                 if let Some(warning) = d.frontmatter_warning() {
                     ace.warn(&warning);
