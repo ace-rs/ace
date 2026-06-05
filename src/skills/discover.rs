@@ -74,7 +74,7 @@ impl Tier {
 /// Build a freshly-discovered skill atom. Discovery is the only production
 /// minter of `Skill<Discovered>` — the `Locator` is the prefix-strip rule's
 /// output, and `source` starts empty (set later when the skill is pulled from
-/// an import). `name` is a transitional string copy of the locator.
+/// an import).
 fn atom(
     locator: Locator,
     path: PathBuf,
