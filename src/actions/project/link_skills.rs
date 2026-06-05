@@ -733,12 +733,12 @@ mod tests {
 
     // -- backend emit rule (spec: emit.md § Backend emit rule) --
 
-    use crate::skills::Skill;
     use crate::skills::discover::Tier;
-    use crate::skills::{Decided, Decision};
+    use crate::skills::{Decided, Decision, Locator, Skill};
 
     fn included_skill(identity: &str, path: &str) -> Skill<Decided> {
         Skill {
+            locator: Locator::from_basename(identity),
             name: identity.to_string(),
             path: PathBuf::from(path),
             tier: Tier::Curated,

@@ -69,8 +69,8 @@ mod tests {
     use super::*;
     use crate::config::ace_toml::AceToml;
     use crate::config::tree::Tree;
-    use crate::skills::discover::{DiscoveredSkill, Tier};
-    use crate::skills::Discovered;
+    use crate::skills::discover::Tier;
+    use crate::skills::{Discovered, Locator, Skill};
     use std::path::PathBuf;
 
     fn ace(skills: &[&str], inc: &[&str], exc: &[&str]) -> AceToml {
@@ -91,21 +91,24 @@ mod tests {
         }
     }
 
-    fn discovered(name: &str, tier: Tier) -> DiscoveredSkill {
-        DiscoveredSkill {
-            locator: crate::skills::Locator::from_basename(name),
+    fn discovered(name: &str, tier: Tier) -> Skill<Discovered> {
+        Skill {
+            locator: Locator::from_basename(name),
+            name: name.to_string(),
             path: PathBuf::from(format!("/school/{name}")),
             tier,
             internal: false,
             frontmatter_name: None,
+            source: None,
+            state: Discovered,
         }
     }
 
-    fn all_curated(names: &[&str]) -> Vec<DiscoveredSkill> {
+    fn all_curated(names: &[&str]) -> Vec<Skill<Discovered>> {
         names.iter().map(|n| discovered(n, Tier::Curated)).collect()
     }
 
-    fn resolve(disc: Vec<DiscoveredSkill>, tree: &Tree) -> Skills<Decided> {
+    fn resolve(disc: Vec<Skill<Discovered>>, tree: &Tree) -> Skills<Decided> {
         Skills::<Discovered>::from_discovered(&disc).resolve(tree)
     }
 

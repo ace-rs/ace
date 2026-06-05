@@ -33,6 +33,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use super::identity::Locator;
+use super::{Discovered, Skill};
 
 /// Hidden directory names that mark tier sub-trees under `skills/`. These are
 /// processed as separate priority entries; the `skills/` walk excludes them
@@ -70,77 +71,42 @@ impl Tier {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct DiscoveredSkill {
-    /// Identity — produced by the discovery layer's prefix-strip rule.
-    /// Backed by a `Locator` newtype so the resolver/emit boundaries
-    /// can't be passed a raw user string by accident.
-    pub locator: Locator,
-    /// Absolute path to the skill directory containing `SKILL.md`.
-    pub path: PathBuf,
-    /// Tier classification, derived from the priority dir the skill was
-    /// found under. Backend-fallback skills are tagged Curated.
-    pub tier: Tier,
-    /// `internal: true` in SKILL.md frontmatter. Discovery preserves the
-    /// flag; filtering (against explicit-name imports, etc.) is the
-    /// caller's job. Default false when not present in frontmatter.
-    pub internal: bool,
-    /// Frontmatter `name:` value, when present. Display/diagnostic only —
-    /// never an emit or match key (name = `basename(identity)`). Used by the
-    /// imports resolver to flag cross-source mismatches at colliding
-    /// identities. `None` when the SKILL.md has no parseable name.
-    #[allow(dead_code)] // consumed by imports resolver
-    pub frontmatter_name: Option<String>,
-}
-
-impl DiscoveredSkill {
-    /// Character + structural admissibility of this skill's identity path.
-    /// Discovery is the gate of record (model.md § Name Admission): every
-    /// consumer calls this single predicate rather than reimplementing the
-    /// check. Orthogonal to config selection — an inadmissible skill is
-    /// rejected regardless of whether `skills`/`include`/`exclude` would have
-    /// picked it.
-    pub fn admission(&self) -> Result<(), super::name::RejectReason> {
-        super::name::admissible_skill(self.locator.as_str())
-    }
-
-    /// Display-hygiene warning for an admitted skill whose frontmatter `name:`
-    /// carries spoofable characters (bidi/control) or a non-token shape. The
-    /// skill is *not* rejected — frontmatter is display-only, never emitted or
-    /// matched ([`admission`](Self::admission) ignores it) — but the author who
-    /// imported it should know. `None` when the name is absent or clean.
-    /// Surfaced only at authoring boundaries (`ace import`, `ace school pull`).
-    pub fn frontmatter_warning(&self) -> Option<String> {
-        let name = self.frontmatter_name.as_deref()?;
-        let reason =
-            super::name::admissible_component(name, super::name::NameContext::FrontmatterName)
-                .err()?;
-        Some(format!(
-            "skill `{}` admitted with an unsafe frontmatter `name:` — {reason}",
-            super::name::render(self.locator.as_str()),
-        ))
+/// Build a freshly-discovered skill atom. Discovery is the only production
+/// minter of `Skill<Discovered>` — the `Locator` is the prefix-strip rule's
+/// output, and `source` starts empty (set later when the skill is pulled from
+/// an import). `name` is a transitional string copy of the locator.
+fn atom(
+    locator: Locator,
+    path: PathBuf,
+    tier: Tier,
+    internal: bool,
+    frontmatter_name: Option<String>,
+) -> Skill<Discovered> {
+    Skill {
+        name: locator.to_string(),
+        locator,
+        path,
+        tier,
+        internal,
+        frontmatter_name,
+        source: None,
+        state: Discovered,
     }
 }
-
-/// Hint paired with [`DiscoveredSkill::frontmatter_warning`]. The name is
-/// display-only, so the fix is upstream or selection-side, never an ACE edit.
-pub const FRONTMATTER_WARNING_HINT: &str =
-    "ACE emits the path basename and renders the name sanitized, but the backend reads \
-     the frontmatter raw — verify the source or drop the skill via `exclude_skills`";
 
 /// Discover skills under `root` per the 2-stage cascade. See module docs.
-pub fn discover_skills(root: &Path) -> Result<Vec<DiscoveredSkill>, std::io::Error> {
+pub fn discover_skills(root: &Path) -> Result<Vec<Skill<Discovered>>, std::io::Error> {
     // Stage 1: direct skill at root.
     if root.join("SKILL.md").is_file() {
         let basename = root.file_name().and_then(|n| n.to_str()).unwrap_or("skill");
         let (internal, frontmatter_name) = read_frontmatter_flags(&root.join("SKILL.md"));
-        return Ok(vec![DiscoveredSkill {
-            locator: Locator::from_basename(basename),
-            path: root.to_path_buf(),
-            tier: Tier::Curated,
+        return Ok(vec![atom(
+            Locator::from_basename(basename),
+            root.to_path_buf(),
+            Tier::Curated,
             internal,
             frontmatter_name,
-        }]);
+        )]);
     }
 
     let mut skills = Vec::new();
@@ -194,7 +160,7 @@ fn walk_priority_dir(
     prefix: &Path,
     tier: Tier,
     exclude_tier_subdirs: bool,
-    skills: &mut Vec<DiscoveredSkill>,
+    skills: &mut Vec<Skill<Discovered>>,
     seen: &mut HashSet<String>,
 ) -> Result<(), std::io::Error> {
     if dir.join("SKILL.md").is_file() {
@@ -205,13 +171,13 @@ fn walk_priority_dir(
         let locator = Locator::from_relative_path(rel);
         if seen.insert(locator.to_string()) {
             let (internal, frontmatter_name) = read_frontmatter_flags(&dir.join("SKILL.md"));
-            skills.push(DiscoveredSkill {
+            skills.push(atom(
                 locator,
-                path: dir.to_path_buf(),
+                dir.to_path_buf(),
                 tier,
                 internal,
                 frontmatter_name,
-            });
+            ));
         }
         // Skills cannot nest inside other skills; don't recurse into a dir
         // that's already a skill. Matches skills.sh behavior.
@@ -672,14 +638,14 @@ mod tests {
         assert_eq!(names, vec!["python/coding", "rust/coding"]);
     }
 
-    fn discovered_with_name(id: &str, frontmatter_name: Option<&str>) -> DiscoveredSkill {
-        DiscoveredSkill {
-            locator: Locator::from_basename(id),
-            path: PathBuf::from(format!("/s/{id}")),
-            tier: Tier::Curated,
-            internal: false,
-            frontmatter_name: frontmatter_name.map(String::from),
-        }
+    fn discovered_with_name(id: &str, frontmatter_name: Option<&str>) -> Skill<Discovered> {
+        atom(
+            Locator::from_basename(id),
+            PathBuf::from(format!("/s/{id}")),
+            Tier::Curated,
+            false,
+            frontmatter_name.map(String::from),
+        )
     }
 
     #[test]

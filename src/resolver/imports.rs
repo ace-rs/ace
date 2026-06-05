@@ -15,8 +15,9 @@
 use std::collections::HashMap;
 
 use crate::config::school_toml::ImportDecl;
-use crate::skills::discover::{DiscoveredSkill, Tier};
+use crate::skills::discover::Tier;
 use crate::skills::identity::pattern_matches;
+use crate::skills::{Discovered, Skill};
 
 /// Resolution output: one entry per skill considered, plus diagnostics.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -82,7 +83,7 @@ pub struct UnknownImportPattern {
 /// Per-source set of discovered skills, keyed by the decl's `source`
 /// field. Same source can appear in multiple decls; the caller dedups
 /// the discovery work.
-pub type DiscoveryBySource<'a> = HashMap<&'a str, &'a [DiscoveredSkill]>;
+pub type DiscoveryBySource<'a> = HashMap<&'a str, &'a [Skill<Discovered>]>;
 
 /// Run the imports resolver. Walks decls in declaration order, applies
 /// pattern + tier + internal filters per decl, and merges across decls
@@ -212,7 +213,7 @@ pub fn resolve_imports(
 fn match_decl(
     decl: &ImportDecl,
     decl_index: usize,
-    discovered: &[DiscoveredSkill],
+    discovered: &[Skill<Discovered>],
     unknown: &mut Vec<UnknownImportPattern>,
 ) -> Vec<MatchedSkill> {
     let mut out: Vec<MatchedSkill> = Vec::new();
@@ -333,13 +334,16 @@ mod tests {
     use crate::skills::Locator;
     use std::path::PathBuf;
 
-    fn dskill(id: &str, tier: Tier, internal: bool, name: Option<&str>) -> DiscoveredSkill {
-        DiscoveredSkill {
+    fn dskill(id: &str, tier: Tier, internal: bool, name: Option<&str>) -> Skill<Discovered> {
+        Skill {
             locator: Locator::from_basename(id),
+            name: id.to_string(),
             path: PathBuf::from(format!("/src/{id}")),
             tier,
             internal,
             frontmatter_name: name.map(String::from),
+            source: None,
+            state: Discovered,
         }
     }
 
@@ -351,7 +355,7 @@ mod tests {
         }
     }
 
-    fn discovery<'a>(entries: &'a [(&str, &'a [DiscoveredSkill])]) -> DiscoveryBySource<'a> {
+    fn discovery<'a>(entries: &'a [(&str, &'a [Skill<Discovered>])]) -> DiscoveryBySource<'a> {
         let mut map = HashMap::new();
         for (k, v) in entries {
             map.insert(*k, *v);
@@ -582,12 +586,15 @@ mod tests {
 
     #[test]
     fn nested_identity_preserved_through_resolution() {
-        let src = vec![DiscoveredSkill {
+        let src = vec![Skill {
             locator: Locator::from_basename("typescript/coding"),
+            name: "typescript/coding".to_string(),
             path: PathBuf::from("/src"),
             tier: Tier::Curated,
             internal: false,
             frontmatter_name: None,
+            source: None,
+            state: Discovered,
         }];
         let r = resolve_imports(
             &[decl("owner/repo", &["*"])],

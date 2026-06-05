@@ -55,7 +55,7 @@ pub struct Collision {
 
 /// Config-selection verdict — purely whether the `skills`/`include`/`exclude`
 /// rules picked this skill. Name admissibility is an orthogonal axis carried
-/// on the skill itself (see `DiscoveredSkill::admission`), not a variant here.
+/// on the skill itself (see `Skill::admission`), not a variant here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Decision {
     Included,

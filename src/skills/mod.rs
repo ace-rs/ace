@@ -1,7 +1,7 @@
 //! Unified skills domain: typestate over discovery → resolution.
 //!
-//! `Skill<S>` carries name/path/tier from discovery onward; the marker `S`
-//! adds resolver verdict + provenance trace once `resolve()` runs.
+//! `Skill<S>` carries locator/path/tier from discovery onward; the marker `S`
+//! adds the resolver verdict + provenance trace once `resolve()` runs.
 //! `Skills<S>` is the collection plus, when resolved, the resolution-wide
 //! diagnostics (unknown patterns + collisions).
 
@@ -13,9 +13,8 @@ pub mod discover;
 pub mod identity;
 pub mod name;
 
-// Re-exported as the skills module's identity type; consumed via
-// `crate::skills::Locator` only by test fixtures today, hence the allow.
-#[allow(unused_imports)]
+// The skills module's identity type — carried on every `Skill<S>` from
+// discovery through resolution.
 pub use identity::Locator;
 
 use crate::config::tree::Tree;
@@ -23,7 +22,7 @@ use crate::config::ConfigError;
 use crate::resolver;
 use crate::school::SchoolError;
 
-use discover::{DiscoveredSkill, Tier};
+use discover::Tier;
 
 pub use crate::resolver::{Collision, Decision, Entry, Source, UnknownPattern};
 
@@ -98,6 +97,13 @@ pub struct Decided {
 
 #[derive(Debug, Clone)]
 pub struct Skill<S> {
+    /// Path-shaped identity, minted by discovery and carried unchanged
+    /// through resolution and emit. The single source of truth for which
+    /// skill this is.
+    pub locator: Locator,
+    /// Redundant string copy of `locator`, kept transitionally while the
+    /// resolver still round-trips identities as `String`. Dropped once the
+    /// resolvers carry `Locator` natively.
     pub name: String,
     pub path: PathBuf,
     pub tier: Tier,
@@ -118,13 +124,40 @@ pub struct Skill<S> {
 }
 
 impl<S> Skill<S> {
-    /// Name admissibility verdict — see [`discover::DiscoveredSkill::admission`].
-    /// Orthogonal to the resolver's selection [`Decision`]; carried unchanged
-    /// across the resolve typestate.
+    /// Character + structural admissibility of this skill's identity path.
+    /// Discovery is the gate of record (model.md § Name Admission): every
+    /// consumer calls this single predicate rather than reimplementing the
+    /// check. Orthogonal to the resolver's selection [`Decision`] — an
+    /// inadmissible skill is rejected regardless of what selection decided —
+    /// and carried unchanged across the resolve typestate.
     pub fn admission(&self) -> Result<(), name::RejectReason> {
-        name::admissible_skill(&self.name)
+        name::admissible_skill(self.locator.as_str())
     }
 }
+
+impl Skill<Discovered> {
+    /// Display-hygiene warning for an admitted skill whose frontmatter `name:`
+    /// carries spoofable characters (bidi/control) or a non-token shape. The
+    /// skill is *not* rejected — frontmatter is display-only, never emitted or
+    /// matched ([`admission`](Self::admission) ignores it) — but the author who
+    /// imported it should know. `None` when the name is absent or clean.
+    /// Surfaced only at authoring boundaries (`ace import`, `ace school pull`).
+    pub fn frontmatter_warning(&self) -> Option<String> {
+        let name = self.frontmatter_name.as_deref()?;
+        let reason =
+            name::admissible_component(name, name::NameContext::FrontmatterName).err()?;
+        Some(format!(
+            "skill `{}` admitted with an unsafe frontmatter `name:` — {reason}",
+            name::render(self.locator.as_str()),
+        ))
+    }
+}
+
+/// Hint paired with [`Skill::frontmatter_warning`]. The name is display-only,
+/// so the fix is upstream or selection-side, never an ACE edit.
+pub const FRONTMATTER_WARNING_HINT: &str =
+    "ACE emits the path basename and renders the name sanitized, but the backend reads \
+     the frontmatter raw — verify the source or drop the skill via `exclude_skills`";
 
 /// Effective status of a resolved skill — the product of the two orthogonal
 /// axes (admission × selection) collapsed into one verdict. Inadmissibility
@@ -184,28 +217,23 @@ impl Skills<Discovered> {
         )?))
     }
 
-    pub fn from_discovered(discovered: &[DiscoveredSkill]) -> Self {
+    pub fn from_discovered(discovered: &[Skill<Discovered>]) -> Self {
         Self::from_discovered_inner(discovered, None)
     }
 
     /// Like `from_discovered`, but tags every skill with an origin source label
     /// (e.g. `"owner/repo"`). Used by `pull_imports` to build a multi-source
     /// accumulator where each skill remembers where it came from.
-    pub fn from_discovered_with_source(discovered: &[DiscoveredSkill], source: &str) -> Self {
+    pub fn from_discovered_with_source(discovered: &[Skill<Discovered>], source: &str) -> Self {
         Self::from_discovered_inner(discovered, Some(source.to_string()))
     }
 
-    fn from_discovered_inner(discovered: &[DiscoveredSkill], source: Option<String>) -> Self {
+    fn from_discovered_inner(discovered: &[Skill<Discovered>], source: Option<String>) -> Self {
         let items = discovered
             .iter()
             .map(|d| Skill {
-                name: d.locator.to_string(),
-                path: d.path.clone(),
-                tier: d.tier,
-                internal: d.internal,
-                frontmatter_name: d.frontmatter_name.clone(),
                 source: source.clone(),
-                state: Discovered,
+                ..d.clone()
             })
             .collect();
         Self {
@@ -242,6 +270,7 @@ impl Skills<Discovered> {
         // payload. A small local struct beats a 5-tuple for readability
         // (and silences the clippy::type_complexity lint).
         struct Carry {
+            locator: Locator,
             path: PathBuf,
             tier: Tier,
             internal: bool,
@@ -255,6 +284,7 @@ impl Skills<Discovered> {
                 (
                     s.name,
                     Carry {
+                        locator: s.locator,
                         path: s.path,
                         tier: s.tier,
                         internal: s.internal,
@@ -270,6 +300,7 @@ impl Skills<Discovered> {
             .into_iter()
             .filter_map(|r| {
                 let Carry {
+                    locator,
                     path,
                     tier,
                     internal,
@@ -277,6 +308,7 @@ impl Skills<Discovered> {
                     source,
                 } = by_name.remove(&r.name)?;
                 Some(Skill {
+                    locator,
                     name: r.name,
                     path,
                     tier,
@@ -422,13 +454,16 @@ mod tests {
         }
     }
 
-    fn discovered(name: &str, tier: Tier) -> DiscoveredSkill {
-        DiscoveredSkill {
+    fn discovered(name: &str, tier: Tier) -> Skill<Discovered> {
+        Skill {
             locator: Locator::from_basename(name),
+            name: name.to_string(),
             path: PathBuf::from(format!("/school/{name}")),
             tier,
             internal: false,
             frontmatter_name: None,
+            source: None,
+            state: Discovered,
         }
     }
 
@@ -567,12 +602,15 @@ mod tests {
         fs::create_dir_all(&skill_dir).expect("mkdir");
         fs::write(skill_dir.join("SKILL.md"), "# my-skill").expect("write");
 
-        let s = Skills::<Discovered>::from_discovered(&[DiscoveredSkill {
+        let s = Skills::<Discovered>::from_discovered(&[Skill {
             locator: Locator::from_basename("my-skill"),
+            name: "my-skill".to_string(),
             path: skill_dir,
             tier: Tier::Curated,
             internal: false,
             frontmatter_name: None,
+            source: None,
+            state: Discovered,
         }]);
 
         let added = s.copy_into(dest.path(), &["my-skill"]).expect("copy");

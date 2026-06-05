@@ -4,7 +4,8 @@ use crate::ace::Ace;
 use crate::config;
 use crate::config::school_toml::ImportDecl;
 
-use crate::skills::discover::{discover_skills, DiscoveredSkill};
+use crate::skills::discover::discover_skills;
+use crate::skills::{Discovered, Skill, FRONTMATTER_WARNING_HINT};
 
 pub struct AddImport<'a> {
     pub source: &'a str,
@@ -34,7 +35,7 @@ pub enum AddImportResult {
         #[allow(dead_code)] // part of result API
         skill: String,
     },
-    NeedsSelection(Vec<DiscoveredSkill>),
+    NeedsSelection(Vec<Skill<Discovered>>),
 }
 
 impl AddImport<'_> {
@@ -77,7 +78,7 @@ impl AddImport<'_> {
     /// Install a specific discovered skill after selection.
     pub fn install_selected(
         &self,
-        skill: &DiscoveredSkill,
+        skill: &Skill<Discovered>,
         ace: &mut Ace,
     ) -> Result<(), AddImportError> {
         ace.progress(&format!("Installing {}", skill.locator));
@@ -89,7 +90,7 @@ impl AddImport<'_> {
         Ok(())
     }
 
-    fn install_skill(&self, skill: &DiscoveredSkill) -> Result<(), AddImportError> {
+    fn install_skill(&self, skill: &Skill<Discovered>) -> Result<(), AddImportError> {
         let dest = self.school_root.join("skills").join(skill.locator.as_str());
         if dest.exists() {
             std::fs::remove_dir_all(&dest)?;
@@ -122,7 +123,7 @@ impl AddImport<'_> {
     }
 }
 
-fn warn_if_rejected(skill: &DiscoveredSkill, ace: &mut Ace) -> bool {
+fn warn_if_rejected(skill: &Skill<Discovered>, ace: &mut Ace) -> bool {
     if let Err(reason) = skill.admission() {
         ace.warn(&format!(
             "skipping inadmissible skill `{}`: {reason}",
@@ -132,7 +133,7 @@ fn warn_if_rejected(skill: &DiscoveredSkill, ace: &mut Ace) -> bool {
     }
     if let Some(warning) = skill.frontmatter_warning() {
         ace.warn(&warning);
-        ace.hint(crate::skills::discover::FRONTMATTER_WARNING_HINT);
+        ace.hint(FRONTMATTER_WARNING_HINT);
     }
     true
 }

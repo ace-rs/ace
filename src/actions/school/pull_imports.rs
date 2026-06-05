@@ -4,8 +4,8 @@ use std::path::Path;
 use crate::ace::Ace;
 use crate::config;
 use crate::resolver::{resolve_imports, DiscoveryBySource, ImportVerdict, ImportsResolution};
-use crate::skills::discover::{discover_skills, DiscoveredSkill};
-use crate::skills::{Discovered, Skills};
+use crate::skills::discover::discover_skills;
+use crate::skills::{Discovered, Skill, Skills, FRONTMATTER_WARNING_HINT};
 
 pub struct PullImports<'a> {
     pub school_root: &'a Path,
@@ -66,7 +66,7 @@ impl PullImports<'_> {
             }
             seen
         };
-        let mut discovery: HashMap<String, Vec<DiscoveredSkill>> = HashMap::new();
+        let mut discovery: HashMap<String, Vec<Skill<Discovered>>> = HashMap::new();
         for source in &unique_sources {
             ace.progress(&format!("Fetching {source}"));
             let cached = match crate::git::ensure_source_cache(source) {
@@ -114,7 +114,7 @@ impl PullImports<'_> {
                 }
                 if let Some(warning) = d.frontmatter_warning() {
                     ace.warn(&warning);
-                    ace.hint(crate::skills::discover::FRONTMATTER_WARNING_HINT);
+                    ace.hint(FRONTMATTER_WARNING_HINT);
                 }
                 let batch = Skills::<Discovered>::from_discovered_with_source(
                     std::slice::from_ref(d),
