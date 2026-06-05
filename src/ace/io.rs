@@ -136,7 +136,11 @@ impl Io {
             OutputMode::Human => Some(TerminalGuard::new()),
             _ => None,
         };
-        Self { mode, spinner: None, guard }
+        Self {
+            mode,
+            spinner: None,
+            guard,
+        }
     }
 
     /// Enter alternate screen buffer. The guard will exit it on drop/SIGINT.
@@ -267,8 +271,9 @@ impl Io {
 
 fn map_inquire_err(e: inquire::InquireError) -> IoError {
     match e {
-        inquire::InquireError::OperationCanceled
-        | inquire::InquireError::OperationInterrupted => IoError::Cancelled,
+        inquire::InquireError::OperationCanceled | inquire::InquireError::OperationInterrupted => {
+            IoError::Cancelled
+        }
         other => IoError::Io(std::io::Error::other(other)),
     }
 }

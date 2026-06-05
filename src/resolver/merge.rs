@@ -56,10 +56,7 @@ fn school_specifier(layers: &[(Source, &AceToml); 4]) -> Sourced<Option<String>>
     Sourced::at_default(None)
 }
 
-fn backend_name(
-    layers: &[(Source, &AceToml); 4],
-    school_backend: Option<&str>,
-) -> Sourced<String> {
+fn backend_name(layers: &[(Source, &AceToml); 4], school_backend: Option<&str>) -> Sourced<String> {
     // Override → local → project → user → school → "claude"
     for (src, layer) in layers.iter().rev() {
         if let Some(name) = &layer.backend {
@@ -151,7 +148,10 @@ mod tests {
     fn ace(school: &str, env: &[(&str, &str)]) -> AceToml {
         AceToml {
             school: school.to_string(),
-            env: env.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+            env: env
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
             ..AceToml::default()
         }
     }
@@ -165,11 +165,7 @@ mod tests {
         }
     }
 
-    fn tree_with_school_backend(
-        project: AceToml,
-        local: AceToml,
-        backend: &str,
-    ) -> Tree {
+    fn tree_with_school_backend(project: AceToml, local: AceToml, backend: &str) -> Tree {
         use crate::config::school_toml::SchoolToml;
         Tree {
             user: None,
@@ -258,7 +254,10 @@ mod tests {
         local.backend = Some(Kind::Claude.into());
         let t = tree_with_school_backend(project, local, Kind::Codex.name());
 
-        let overrides = AceToml { backend: Some(Kind::Codex.into()), ..AceToml::default() };
+        let overrides = AceToml {
+            backend: Some(Kind::Codex.into()),
+            ..AceToml::default()
+        };
         let r = merge(&t, &overrides);
         assert_eq!(r.backend_name.value, "codex");
         assert_eq!(r.backend_name.from, Source::Override);
@@ -307,8 +306,14 @@ mod tests {
 
     #[test]
     fn trust_local_wins() {
-        let user = AceToml { trust: Trust::Auto, ..AceToml::default() };
-        let local = AceToml { trust: Trust::Yolo, ..AceToml::default() };
+        let user = AceToml {
+            trust: Trust::Auto,
+            ..AceToml::default()
+        };
+        let local = AceToml {
+            trust: Trust::Yolo,
+            ..AceToml::default()
+        };
 
         let t = Tree {
             user: Some(user),
@@ -323,7 +328,10 @@ mod tests {
 
     #[test]
     fn trust_yolo_legacy_local() {
-        let local = AceToml { yolo: true, ..AceToml::default() };
+        let local = AceToml {
+            yolo: true,
+            ..AceToml::default()
+        };
         let t = Tree {
             user: None,
             project: None,
@@ -395,7 +403,10 @@ mod tests {
     #[test]
     fn skip_update_user_propagates_when_others_unset() {
         let t = Tree {
-            user: Some(AceToml { skip_update: Some(true), ..AceToml::default() }),
+            user: Some(AceToml {
+                skip_update: Some(true),
+                ..AceToml::default()
+            }),
             project: None,
             local: None,
             school: None,

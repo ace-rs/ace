@@ -37,7 +37,10 @@ impl<T> Sourced<T> {
     }
 
     pub fn at_default(value: T) -> Self {
-        Self { value, from: Source::Default }
+        Self {
+            value,
+            from: Source::Default,
+        }
     }
 }
 

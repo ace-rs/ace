@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use crate::config::ace_toml::{BackendDecl, Trust};
 use super::source::Sourced;
+use crate::config::ace_toml::{BackendDecl, Trust};
 
 /// Merged config view with provenance per field.
 ///
