@@ -13,8 +13,10 @@ pub mod discover;
 pub mod identity;
 pub mod name;
 
+// Re-exported as the skills module's identity type; consumed via
+// `crate::skills::Locator` only by test fixtures today, hence the allow.
 #[allow(unused_imports)]
-pub use identity::{Locator, MatchHandle};
+pub use identity::Locator;
 
 use crate::config::tree::Tree;
 use crate::config::ConfigError;

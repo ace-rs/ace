@@ -1,25 +1,17 @@
-//! Typed skill identifiers and user-supplied match handles.
+//! Typed skill identity ([`Locator`]) and the pattern matcher
+//! ([`pattern_matches`]) that decides whether a user pattern selects it.
 //!
-//! Two newtypes encode the spec's identity-vs-input distinction
-//! (see `docs/spec/skills/model.md` § Type-safety invariant and
-//! `docs/spec/skills/selection.md` § Match handle):
+//! [`Locator`] — a path-shaped identity produced **only** by the discovery
+//! layer after the prefix-strip rule has been applied (see
+//! `docs/spec/skills/model.md` § Type-safety invariant). Constructors are
+//! `pub(crate)` — visible across the binary so typed test fixtures in
+//! `crate::actions::*` can construct fakes, but unreachable from any
+//! hypothetical external library consumer. Discovery is the only production
+//! entry point; the looser visibility is a convention, not a hard wall.
 //!
-//! - [`Locator`] — a path-shaped identity produced **only** by the
-//!   discovery layer after the prefix-strip rule has been applied.
-//!   Constructors are `pub(crate)` — visible across the binary so
-//!   typed test fixtures in `crate::actions::*` can construct fakes,
-//!   but unreachable from any hypothetical external library consumer.
-//!   Discovery is the only production entry point; the looser
-//!   visibility is a convention, not a hard wall.
-//!
-//! - [`MatchHandle`] — a user-supplied pattern: CLI `--skill`, `[[imports]]`
-//!   `skills`, `ace.toml` `{skills, include_skills, exclude_skills}`. Built
-//!   via [`MatchHandle::new`], which validates glob syntax up front so
-//!   downstream code never has to re-check.
-//!
-//! `Locator` and `MatchHandle` cannot be interconverted directly; the only
-//! crossing point is [`MatchHandle::matches`], which decides whether a
-//! handle matches an identity per the rules in `selection.md`.
+//! Patterns stay raw `&str` — they are selection *input*, never a skill state.
+//! [`pattern_matches`] applies the `selection.md` § Match handle rules at the
+//! resolver seam; the resolvers validate glob syntax there (slice 7).
 
 use std::borrow::Borrow;
 use std::fmt;
@@ -127,63 +119,9 @@ impl From<Locator> for String {
     }
 }
 
-/// A user-supplied skill match pattern. Distinct kind from `Locator` —
-/// constructed via [`MatchHandle::new`], which validates glob syntax.
-///
-/// Production callsites land in the project and imports resolvers (later
-/// slices); the type is fully defined here so downstream code can adopt
-/// it incrementally.
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[allow(dead_code)]
-pub struct MatchHandle(String);
-
-#[allow(dead_code)]
-impl MatchHandle {
-    /// Construct a handle from a raw user pattern. Validates glob syntax
-    /// (rejects `**`, `?`, character classes, empty) so downstream matchers
-    /// never have to re-check.
-    pub fn new(pattern: impl Into<String>) -> Result<Self, glob::GlobError> {
-        let pattern = pattern.into();
-        glob::validate(&pattern)?;
-        Ok(Self(pattern))
-    }
-
-    /// Skip validation. Used at the config-deserialize boundary where
-    /// `ace.toml` already holds previously-validated strings, and at test
-    /// fixtures. Internal callers must not pass arbitrary strings without
-    /// validating elsewhere.
-    pub(crate) fn from_raw(pattern: impl Into<String>) -> Self {
-        Self(pattern.into())
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    /// True when the pattern contains `*`.
-    pub fn is_glob(&self) -> bool {
-        glob::is_glob(&self.0)
-    }
-
-    /// True when the pattern contains `/` (path-anchored — exact-match only,
-    /// no leaf-fallback). See `selection.md` § Path-anchored patterns.
-    pub fn is_path_anchored(&self) -> bool {
-        self.0.contains('/')
-    }
-
-    /// True when this handle matches the given identity per the rules in
-    /// `docs/spec/skills/selection.md` § Match handle. Delegates to the
-    /// free function [`pattern_matches`] for shared use by the project
-    /// and imports resolvers.
-    pub fn matches(&self, id: &Locator) -> bool {
-        pattern_matches(&self.0, id.as_str())
-    }
-}
-
 /// Apply the spec's match-handle rules to a raw string pattern and a raw
-/// identity string. Shared between [`MatchHandle::matches`] and the
-/// resolvers (which currently hold patterns/identities as `String` for
-/// historical reasons). See `docs/spec/skills/selection.md` § Match handle.
+/// identity string. Called by the project and imports resolvers.
+/// See `docs/spec/skills/selection.md` § Match handle.
 ///
 /// - Glob (`*` present): standard glob match against the full identity.
 /// - Path-anchored (`/` present, no `*`): exact equality against the
@@ -209,25 +147,6 @@ pub fn pattern_matches(pattern: &str, identity: &str) -> bool {
         .next()
         .map(|leaf| leaf == pattern)
         .unwrap_or(false)
-}
-
-impl Deref for MatchHandle {
-    type Target = str;
-    fn deref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl AsRef<str> for MatchHandle {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Display for MatchHandle {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
 }
 
 #[cfg(test)]
@@ -288,62 +207,18 @@ mod tests {
         assert_eq!(s, "foo");
     }
 
-    // -- MatchHandle --
-
-    #[test]
-    fn match_handle_validates_syntax() {
-        assert!(MatchHandle::new("foo").is_ok());
-        assert!(MatchHandle::new("*").is_ok());
-        assert!(MatchHandle::new("typescript/coding").is_ok());
-        assert!(MatchHandle::new("rust-*").is_ok());
-        // Per docs/spec/skills/selection.md, `**` is accepted (treated
-        // as `*` by the matcher) — no longer rejected.
-        assert!(MatchHandle::new("**").is_ok());
-        assert!(MatchHandle::new("").is_err());
-        assert!(MatchHandle::new("foo?").is_err());
-        assert!(MatchHandle::new("[abc]").is_err());
-    }
-
-    #[test]
-    fn match_handle_from_raw_skips_validation() {
-        // Used by config deserialize where the string came from a previously
-        // validated source. We exercise it; we don't validate.
-        let h = MatchHandle::from_raw("foo");
-        assert_eq!(h.as_str(), "foo");
-    }
-
-    #[test]
-    fn match_handle_classification() {
-        let h = MatchHandle::new("foo").unwrap();
-        assert!(!h.is_glob());
-        assert!(!h.is_path_anchored());
-
-        let h = MatchHandle::new("typescript/coding").unwrap();
-        assert!(!h.is_glob());
-        assert!(h.is_path_anchored());
-
-        let h = MatchHandle::new("rust-*").unwrap();
-        assert!(h.is_glob());
-        assert!(!h.is_path_anchored());
-
-        let h = MatchHandle::new("*/coding").unwrap();
-        assert!(h.is_glob());
-        // Has both `/` and `*` — glob wins (it's a glob, not path-anchored exact).
-    }
+    // -- pattern_matches (selection.md § Match handle) --
 
     #[test]
     fn bare_name_exact_match() {
-        let h = MatchHandle::new("rust-coding").unwrap();
-        assert!(h.matches(&id("rust-coding")));
-        assert!(!h.matches(&id("rust-fmt")));
+        assert!(pattern_matches("rust-coding", "rust-coding"));
+        assert!(!pattern_matches("rust-coding", "rust-fmt"));
     }
 
     #[test]
     fn bare_name_leaf_match_under_nested_path() {
-        let h = MatchHandle::new("rust-coding").unwrap();
-        let nested = Locator::from_relative_path(&PathBuf::from("typescript").join("rust-coding"));
         assert!(
-            h.matches(&nested),
+            pattern_matches("rust-coding", "typescript/rust-coding"),
             "bare name should match the leaf segment"
         );
     }
@@ -351,57 +226,41 @@ mod tests {
     #[test]
     fn bare_name_no_prefix_match() {
         // `rust` should not match `rust-coding`. Only exact OR leaf.
-        let h = MatchHandle::new("rust").unwrap();
-        assert!(!h.matches(&id("rust-coding")));
+        assert!(!pattern_matches("rust", "rust-coding"));
     }
 
     #[test]
     fn bare_name_no_middle_match() {
         // `coding` should not match `rust-coding-extra`.
-        let h = MatchHandle::new("coding").unwrap();
-        assert!(!h.matches(&id("rust-coding-extra")));
+        assert!(!pattern_matches("coding", "rust-coding-extra"));
     }
 
     #[test]
     fn path_anchored_no_leaf_fallback() {
         // `typescript/coding` matches exactly `typescript/coding`, not just
         // anything ending in `/coding`.
-        let h = MatchHandle::new("typescript/coding").unwrap();
-        let nested = Locator::from_relative_path(&PathBuf::from("typescript").join("coding"));
-        assert!(h.matches(&nested));
-
-        let other = Locator::from_relative_path(&PathBuf::from("python").join("coding"));
-        assert!(!h.matches(&other));
+        assert!(pattern_matches("typescript/coding", "typescript/coding"));
+        assert!(!pattern_matches("typescript/coding", "python/coding"));
     }
 
     #[test]
     fn glob_star_matches_everything() {
-        let h = MatchHandle::new("*").unwrap();
-        assert!(h.matches(&id("foo")));
-        assert!(h.matches(&id("rust-coding")));
+        assert!(pattern_matches("*", "foo"));
+        assert!(pattern_matches("*", "rust-coding"));
     }
 
     #[test]
     fn glob_prefix_pattern() {
-        let h = MatchHandle::new("rust-*").unwrap();
-        assert!(h.matches(&id("rust-coding")));
-        assert!(h.matches(&id("rust-fmt")));
-        assert!(!h.matches(&id("python-coding")));
+        assert!(pattern_matches("rust-*", "rust-coding"));
+        assert!(pattern_matches("rust-*", "rust-fmt"));
+        assert!(!pattern_matches("rust-*", "python-coding"));
     }
 
     #[test]
     fn glob_suffix_pattern_anchored() {
         // `*/coding` matches identities like `typescript/coding` —
         // the glob version of "any path ending in /coding".
-        let h = MatchHandle::new("*/coding").unwrap();
-        let nested = Locator::from_relative_path(&PathBuf::from("typescript").join("coding"));
-        assert!(h.matches(&nested));
-        // The flat `coding` skill matches too, because glob `*/coding`
-        // wildcards the `*` even to empty (per glob_match semantics).
-        // The spec table marks `*/coding` as "multi-segment paths only",
-        // but the current glob_match treats `*` as "zero-or-more". This
-        // is a minor semantic gap noted for the imports-resolver slice
-        // when collision warnings get specific.
+        assert!(pattern_matches("*/coding", "typescript/coding"));
     }
 
     #[test]
