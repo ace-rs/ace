@@ -196,17 +196,18 @@ where
     let mut nested: Vec<DesiredLink> = Vec::new();
     let mut to_flatten: Vec<&crate::skills::Skill<crate::skills::Decided>> = Vec::new();
     for skill in included {
-        let depth = skill.name.split('/').count();
+        let identity = skill.locator.as_str();
+        let depth = identity.split('/').count();
         if nested_capable && depth <= MAX_SKILL_DEPTH {
-            if let Err(reason) = structural_path_ok(&skill.name) {
+            if let Err(reason) = structural_path_ok(identity) {
                 warnings.push(format!(
                     "skill `{}` produces unsafe backend path ({reason}); dropping",
-                    crate::skills::name::render(&skill.name),
+                    crate::skills::name::render(identity),
                 ));
                 continue;
             }
             nested.push(DesiredLink {
-                name: skill.name.clone(),
+                name: identity.to_string(),
                 target: skill.path.clone(),
             });
         } else {
@@ -217,8 +218,8 @@ where
     let mut candidates: Vec<(String, &Path, &str)> = to_flatten
         .iter()
         .map(|s| {
-            let link_name = basename_of(&s.name).to_string();
-            (link_name, s.path.as_path(), s.name.as_str())
+            let link_name = basename_of(s.locator.as_str()).to_string();
+            (link_name, s.path.as_path(), s.locator.as_str())
         })
         .collect();
     candidates.sort_by(|a, b| a.2.cmp(b.2));
@@ -739,7 +740,6 @@ mod tests {
     fn included_skill(identity: &str, path: &str) -> Skill<Decided> {
         Skill {
             locator: Locator::from_basename(identity),
-            name: identity.to_string(),
             path: PathBuf::from(path),
             tier: Tier::Curated,
             internal: false,
@@ -895,7 +895,10 @@ mod tests {
         // Emit is a structural backstop, not a character gate — it never
         // rewrites Unicode content. A bidi char in the leaf passes structure
         // and emits verbatim; rejecting it is discovery-admission's job.
-        let skills = [included_skill("good\u{202E}coding", "/s/good\u{202E}coding")];
+        let skills = [included_skill(
+            "good\u{202E}coding",
+            "/s/good\u{202E}coding",
+        )];
         let (desired, warnings) = build_desired(skills.iter(), 0);
         assert_eq!(desired[0].name, "good\u{202E}coding");
         assert!(warnings.is_empty());

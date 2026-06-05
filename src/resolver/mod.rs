@@ -5,16 +5,14 @@
 
 mod imports;
 mod merge;
-mod project;
 mod resolved;
 mod source;
 
 #[allow(unused_imports)]
 pub use imports::{
-    DiscoveryBySource, ImportCollision, ImportVerdict, ImportsResolution, ResolvedImport,
-    UnknownImportPattern, resolve_imports,
+    resolve_imports, DiscoveryBySource, ImportCollision, ImportVerdict, ImportsResolution,
+    ResolvedImport, UnknownImportPattern,
 };
 pub use merge::merge;
-pub use project::{Collision, Decision, Entry, UnknownPattern, resolve_skills};
 pub use resolved::Resolved;
 pub use source::{Source, Sourced};

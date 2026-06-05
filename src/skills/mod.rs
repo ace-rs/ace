@@ -15,19 +15,19 @@ use std::path::{Path, PathBuf};
 pub mod discover;
 pub mod identity;
 pub mod name;
+pub mod resolve;
 
 // The skills module's identity type — carried on every `Skill<S>` from
 // discovery through resolution.
 pub use identity::Locator;
 
-use crate::config::tree::Tree;
 use crate::config::ConfigError;
-use crate::resolver;
 use crate::school::SchoolError;
 
 use discover::Tier;
 
-pub use crate::resolver::{Collision, Decision, Entry, Source, UnknownPattern};
+pub use crate::resolver::Source;
+pub use resolve::{Collision, Decision, Entry, UnknownPattern};
 
 /// Errors that can occur while building the resolved SkillSet. Wraps
 /// upstream binding errors plus skill-specific I/O failures.
@@ -140,10 +140,6 @@ pub struct Skill<S> {
     /// through resolution and emit. The single source of truth for which
     /// skill this is.
     pub locator: Locator,
-    /// Redundant string copy of `locator`, kept transitionally while the
-    /// resolver still round-trips identities as `String`. Dropped once the
-    /// resolvers carry `Locator` natively.
-    pub name: String,
     pub path: PathBuf,
     pub tier: Tier,
     /// `internal: true` in SKILL.md frontmatter. Used by the imports
@@ -169,7 +165,6 @@ impl<S> Skill<S> {
     fn with_state<T>(self, state: T) -> Skill<T> {
         Skill {
             locator: self.locator,
-            name: self.name,
             path: self.path,
             tier: self.tier,
             internal: self.internal,
@@ -300,7 +295,7 @@ impl Skills<Discovered> {
     /// declaration order — see `docs/spec/skills-sync.md` § Import Merge Strategy.
     pub fn merge(&mut self, other: Skills<Discovered>) {
         for skill in other.items {
-            if let Some(existing) = self.items.iter_mut().find(|s| s.name == skill.name) {
+            if let Some(existing) = self.items.iter_mut().find(|s| s.locator == skill.locator) {
                 *existing = skill;
             } else {
                 self.items.push(skill);
@@ -341,7 +336,7 @@ impl Skills<Discovered> {
 
 impl<S> Skills<S> {
     pub fn names(&self) -> impl Iterator<Item = &str> {
-        self.items.iter().map(|s| s.name.as_str())
+        self.items.iter().map(|s| s.locator.as_str())
     }
 }
 
@@ -354,7 +349,7 @@ impl<S: Vetted> Skills<S> {
     /// disk — an unadmitted identity is unrepresentable here.
     pub fn copy_into(&self, dest_dir: &Path, names: &[&str]) -> io::Result<Vec<SkillChange>> {
         let by_name: HashMap<&str, &Skill<S>> =
-            self.items.iter().map(|s| (s.name.as_str(), s)).collect();
+            self.items.iter().map(|s| (s.locator.as_str(), s)).collect();
 
         let mut changes = Vec::new();
         for &name in names {
@@ -380,93 +375,11 @@ impl<S: Vetted> Skills<S> {
     }
 }
 
-// ---- Skills<Validated> ----
-
-impl Skills<Validated> {
-    /// Run the three-layer resolver against the given config tree. Consumes
-    /// `self` — the typestate transition is one-way. Selection runs over the
-    /// validated set; rejects were already partitioned out by `validate`.
-    pub fn resolve(self, tree: &Tree) -> Skills<Decided> {
-        let names: Vec<String> = self.items.iter().map(|s| s.name.clone()).collect();
-        let default = crate::config::ace_toml::AceToml::default();
-        let user = tree.user.as_ref().unwrap_or(&default);
-        let project = tree.project.as_ref().unwrap_or(&default);
-        let local = tree.local.as_ref().unwrap_or(&default);
-        let resolution = resolver::resolve_skills(&names, user, project, local);
-
-        // Pull each resolved name back together with its discovery
-        // payload. A small local struct beats a 5-tuple for readability
-        // (and silences the clippy::type_complexity lint).
-        struct Carry {
-            locator: Locator,
-            path: PathBuf,
-            tier: Tier,
-            internal: bool,
-            frontmatter_name: Option<String>,
-            source: Option<String>,
-        }
-        let mut by_name: HashMap<String, Carry> = self
-            .items
-            .into_iter()
-            .map(|s| {
-                (
-                    s.name,
-                    Carry {
-                        locator: s.locator,
-                        path: s.path,
-                        tier: s.tier,
-                        internal: s.internal,
-                        frontmatter_name: s.frontmatter_name,
-                        source: s.source,
-                    },
-                )
-            })
-            .collect();
-
-        let items = resolution
-            .skills
-            .into_iter()
-            .filter_map(|r| {
-                let Carry {
-                    locator,
-                    path,
-                    tier,
-                    internal,
-                    frontmatter_name,
-                    source,
-                } = by_name.remove(&r.name)?;
-                Some(Skill {
-                    locator,
-                    name: r.name,
-                    path,
-                    tier,
-                    internal,
-                    frontmatter_name,
-                    source,
-                    state: Decided {
-                        decision: r.decision,
-                        trace: r.trace,
-                    },
-                })
-            })
-            .collect();
-
-        Skills {
-            items,
-            diagnostics: Diagnostics {
-                unknown_patterns: resolution.unknown_patterns,
-                collisions: resolution.collisions,
-            },
-            rejected: Vec::new(),
-        }
-    }
-}
-
 // ---- Skills<Decided> ----
 
 impl Skills<Decided> {
     pub fn find(&self, name: &str) -> Option<&Skill<Decided>> {
-        self.items.iter().find(|s| s.name == name)
+        self.items.iter().find(|s| s.locator.as_str() == name)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &Skill<Decided>> {
@@ -512,6 +425,7 @@ impl Skills<Decided> {
 mod tests {
     use super::*;
     use crate::config::ace_toml::AceToml;
+    use crate::config::tree::Tree;
 
     #[test]
     fn pull_summary_empty() {
@@ -560,7 +474,6 @@ mod tests {
     fn discovered(name: &str, tier: Tier) -> Skill<Discovered> {
         Skill {
             locator: Locator::from_basename(name),
-            name: name.to_string(),
             path: PathBuf::from(format!("/school/{name}")),
             tier,
             internal: false,
@@ -589,6 +502,20 @@ mod tests {
     }
 
     #[test]
+    fn resolve_output_sorted_by_locator() {
+        // Discovery order is arbitrary; resolution sorts by identity so the
+        // `ace skills` listing is stable regardless of on-disk walk order.
+        let s = Skills::<Discovered>::from_discovered(&[
+            discovered("c", Tier::Curated),
+            discovered("a", Tier::Curated),
+            discovered("b", Tier::Curated),
+        ]);
+        let resolved = s.validate().0.resolve(&tree(AceToml::default()));
+        let order: Vec<&str> = resolved.iter().map(|s| s.locator.as_str()).collect();
+        assert_eq!(order, vec!["a", "b", "c"]);
+    }
+
+    #[test]
     fn validate_partitions_out_inadmissible_identity() {
         let (validated, rejected) = Skills::<Discovered>::from_discovered(&[
             discovered("safe", Tier::Curated),
@@ -603,7 +530,7 @@ mod tests {
         let resolved = validated
             .resolve(&tree(AceToml::default()))
             .with_rejected(rejected);
-        let included: Vec<&str> = resolved.included().map(|s| s.name.as_str()).collect();
+        let included: Vec<&str> = resolved.included().map(|s| s.locator.as_str()).collect();
         assert_eq!(included, vec!["safe"]);
         assert_eq!(resolved.rejected().len(), 1);
         assert_eq!(resolved.rejected()[0].locator, "bad\u{202E}name");
@@ -637,7 +564,7 @@ mod tests {
     }
 
     fn excluded_names(resolved: &Skills<Decided>) -> Vec<String> {
-        let mut names: Vec<String> = resolved.excluded().map(|s| s.name.clone()).collect();
+        let mut names: Vec<String> = resolved.excluded().map(|s| s.locator.to_string()).collect();
         names.sort();
         names
     }
@@ -693,7 +620,7 @@ mod tests {
         ]);
         let resolved = s.validate().0.resolve(&tree(ace(&["a"], &[], &[])));
 
-        let included: Vec<&str> = resolved.included().map(|s| s.name.as_str()).collect();
+        let included: Vec<&str> = resolved.included().map(|s| s.locator.as_str()).collect();
         assert_eq!(included, vec!["a"]);
 
         // Both still iterable; only `b` is excluded.
@@ -727,7 +654,6 @@ mod tests {
 
         let s = Skills::<Discovered>::from_discovered(&[Skill {
             locator: Locator::from_basename("my-skill"),
-            name: "my-skill".to_string(),
             path: skill_dir,
             tier: Tier::Curated,
             internal: false,
@@ -818,7 +744,8 @@ mod tests {
         assert_eq!(names, vec!["a", "b", "c"]);
         // All colliding entries replaced by src/two.
         for item in &acc.items {
-            if item.name == "a" || item.name == "b" || item.name == "c" {
+            let id = item.locator.as_str();
+            if id == "a" || id == "b" || id == "c" {
                 assert_eq!(item.source.as_deref(), Some("src/two"));
             }
         }

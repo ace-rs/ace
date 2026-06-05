@@ -55,7 +55,7 @@ pub fn find_or_suggest<'a>(
 pub fn render(skill: &Skill<Decided>) -> String {
     let mut s = format!(
         "{} ({})\n  status: {}\n  trace:\n",
-        crate::skills::name::render(&skill.name),
+        crate::skills::name::render(skill.locator.as_str()),
         skill.tier.label(),
         skill.status().label(),
     );
@@ -90,7 +90,7 @@ fn near_matches(query: &str, skills: &Skills<Decided>) -> Vec<String> {
     let mut scored: Vec<(usize, &str)> = skills
         .iter()
         .filter_map(|s| {
-            let name = s.name.as_str();
+            let name = s.locator.as_str();
             let lower = name.to_lowercase();
             let score = overlap_score(&q, &lower);
             (score >= 3).then_some((score, name))
@@ -157,7 +157,6 @@ mod tests {
     fn discovered(name: &str, tier: Tier) -> Skill<Discovered> {
         Skill {
             locator: Locator::from_basename(name),
-            name: name.to_string(),
             path: PathBuf::from(format!("/school/{name}")),
             tier,
             internal: false,
@@ -170,7 +169,10 @@ mod tests {
     fn resolve(names: &[&str], t: &Tree) -> Skills<Decided> {
         let disc: Vec<Skill<Discovered>> =
             names.iter().map(|n| discovered(n, Tier::Curated)).collect();
-        Skills::<Discovered>::from_discovered(&disc).validate().0.resolve(t)
+        Skills::<Discovered>::from_discovered(&disc)
+            .validate()
+            .0
+            .resolve(t)
     }
 
     #[test]
@@ -180,7 +182,7 @@ mod tests {
             &tree(AceToml::default(), AceToml::default(), AceToml::default()),
         );
         let skill = find_or_suggest(&s, "rust-coding").expect("known");
-        assert_eq!(skill.name, "rust-coding");
+        assert_eq!(skill.locator.as_str(), "rust-coding");
         assert_eq!(skill.state.decision, Decision::Included);
         assert_eq!(skill.tier, Tier::Curated);
         assert_eq!(skill.state.trace.len(), 1);

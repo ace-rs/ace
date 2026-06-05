@@ -337,7 +337,6 @@ mod tests {
     fn dskill(id: &str, tier: Tier, internal: bool, name: Option<&str>) -> Skill<Discovered> {
         Skill {
             locator: Locator::from_basename(id),
-            name: id.to_string(),
             path: PathBuf::from(format!("/src/{id}")),
             tier,
             internal,
@@ -588,7 +587,6 @@ mod tests {
     fn nested_identity_preserved_through_resolution() {
         let src = vec![Skill {
             locator: Locator::from_basename("typescript/coding"),
-            name: "typescript/coding".to_string(),
             path: PathBuf::from("/src"),
             tier: Tier::Curated,
             internal: false,

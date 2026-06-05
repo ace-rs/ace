@@ -83,7 +83,6 @@ fn atom(
     frontmatter_name: Option<String>,
 ) -> Skill<Discovered> {
     Skill {
-        name: locator.to_string(),
         locator,
         path,
         tier,

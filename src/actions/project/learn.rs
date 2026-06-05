@@ -47,7 +47,11 @@ impl LearnAction {
         ace.require_school()?;
 
         // Build {available_skills} from the school's skill index.
-        let available: Vec<String> = ace.skills()?.iter().map(|s| s.name.clone()).collect();
+        let available: Vec<String> = ace
+            .skills()?
+            .iter()
+            .map(|s| s.locator.to_string())
+            .collect();
         let prompt_text = render_prompt(&available);
 
         let project_dir = ace.project_dir().to_path_buf();
@@ -109,9 +113,7 @@ impl LearnAction {
 
 fn render_prompt(available: &[String]) -> String {
     let tpl = Template::parse(templates::builtins::LEARN);
-    let values = HashMap::from([
-        ("available_skills".to_string(), available.join("\n")),
-    ]);
+    let values = HashMap::from([("available_skills".to_string(), available.join("\n"))]);
     tpl.substitute(&values)
 }
 
@@ -150,9 +152,9 @@ pub(crate) fn parse_stdout(stdout: &str, known: &HashSet<&str>) -> ParseResult {
         }
 
         if !looks_like_skill_token(&stripped) {
-            result.warnings.push(format!(
-                "ace learn: dropped {trimmed:?} (looks like prose)"
-            ));
+            result
+                .warnings
+                .push(format!("ace learn: dropped {trimmed:?} (looks like prose)"));
             continue;
         }
 
@@ -160,9 +162,9 @@ pub(crate) fn parse_stdout(stdout: &str, known: &HashSet<&str>) -> ParseResult {
         let is_known = known.contains(stripped.as_str());
 
         if !is_glob && !is_known {
-            result.warnings.push(format!(
-                "ace learn: dropped {stripped:?} (unknown skill)"
-            ));
+            result
+                .warnings
+                .push(format!("ace learn: dropped {stripped:?} (unknown skill)"));
             continue;
         }
 
@@ -214,9 +216,8 @@ fn strip_decoration(s: &str) -> String {
 /// Spaces or other characters mean it's prose.
 fn looks_like_skill_token(s: &str) -> bool {
     !s.is_empty()
-        && s.chars().all(|c| {
-            c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '*' | '?' | '/' | '.')
-        })
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '*' | '?' | '/' | '.'))
 }
 
 fn is_glob_pattern(s: &str) -> bool {
@@ -253,7 +254,10 @@ mod tests {
     #[test]
     fn parses_clean_strict_form() {
         let stdout = "general-coding\nrust-coding\nsimplify\n";
-        let r = parse_stdout(stdout, &known(&["general-coding", "rust-coding", "simplify"]));
+        let r = parse_stdout(
+            stdout,
+            &known(&["general-coding", "rust-coding", "simplify"]),
+        );
         assert_eq!(r.kept, vec!["general-coding", "rust-coding", "simplify"]);
         assert!(r.warnings.is_empty());
     }
@@ -296,7 +300,10 @@ mod tests {
         let stdout = "```\nrust-coding\n```\n";
         let r = parse_stdout(stdout, &known(&["rust-coding"]));
         assert_eq!(r.kept, vec!["rust-coding"]);
-        assert!(r.warnings.is_empty(), "fence lines should be silently skipped");
+        assert!(
+            r.warnings.is_empty(),
+            "fence lines should be silently skipped"
+        );
     }
 
     #[test]

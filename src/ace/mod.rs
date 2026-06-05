@@ -18,8 +18,8 @@ use crate::resolver::Resolved;
 use crate::school::{School, SchoolError};
 use crate::skills::{Decided, SkillError, Skills};
 
-pub use io::{logo, IoError, OutputMode};
 use io::Io;
+pub use io::{logo, IoError, OutputMode};
 
 /// Lazy-cached session view. All read accessors take `&self` and populate
 /// their cell on first call via `OnceCell`. Mutations (overrides, reload)
@@ -151,7 +151,11 @@ impl Ace {
             .unwrap_or_default();
         let project_dir = self.project_dir.display().to_string();
         let home = std::env::var("HOME").unwrap_or_default();
-        TemplateCtx { school_dir, project_dir, home }
+        TemplateCtx {
+            school_dir,
+            project_dir,
+            home,
+        }
     }
 
     /// Union of `exclude_mcp` across user/project/local scopes. Empty when no
@@ -162,7 +166,11 @@ impl Ace {
             return std::collections::HashSet::new();
         };
         let mut out = std::collections::HashSet::new();
-        for toml in [&tree.user, &tree.project, &tree.local].iter().copied().flatten() {
+        for toml in [&tree.user, &tree.project, &tree.local]
+            .iter()
+            .copied()
+            .flatten()
+        {
             for name in &toml.exclude_mcp {
                 out.insert(name.clone());
             }
@@ -178,7 +186,7 @@ impl Ace {
         let Ok(skills) = self.skills() else {
             return Vec::new();
         };
-        let mut names: Vec<String> = skills.excluded().map(|s| s.name.clone()).collect();
+        let mut names: Vec<String> = skills.excluded().map(|s| s.locator.to_string()).collect();
         names.sort();
         names.dedup();
         names
@@ -319,11 +327,11 @@ mod tests {
         .unwrap();
         let ace = Ace::new(tmp.path().to_path_buf(), OutputMode::Silent);
         let err = ace.require_school().expect_err("expected NotInitialized");
-        assert!(
-            matches!(err, SchoolError::NotInitialized),
-            "got: {err:?}"
+        assert!(matches!(err, SchoolError::NotInitialized), "got: {err:?}");
+        assert_eq!(
+            err.hint(),
+            Some("run `ace school init` to bootstrap this repo as a school")
         );
-        assert_eq!(err.hint(), Some("run `ace school init` to bootstrap this repo as a school"));
     }
 
     /// School-repo dogfood: ace.toml with `school = "."` plus a workdir school.toml

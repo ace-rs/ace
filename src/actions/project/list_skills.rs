@@ -15,7 +15,7 @@ pub fn render_table(skills: &Skills<Decided>, show_excluded: bool) -> String {
         let _ = writeln!(
             out,
             "{}\t{}\t{}\t{}",
-            crate::skills::name::render(&skill.name),
+            crate::skills::name::render(skill.locator.as_str()),
             skill.tier.label(),
             skill.status().label(),
             reason_for(skill),
@@ -39,7 +39,7 @@ pub fn render_table(skills: &Skills<Decided>, show_excluded: bool) -> String {
 pub fn render_names(skills: &Skills<Decided>, show_excluded: bool) -> String {
     let mut out = String::new();
     for skill in visible(skills, show_excluded) {
-        out.push_str(crate::skills::name::render(&skill.name).as_ref());
+        out.push_str(crate::skills::name::render(skill.locator.as_str()).as_ref());
         out.push('\n');
     }
     out
@@ -105,7 +105,6 @@ mod tests {
     fn discovered(name: &str, tier: Tier) -> Skill<Discovered> {
         Skill {
             locator: Locator::from_basename(name),
-            name: name.to_string(),
             path: PathBuf::from(format!("/school/{name}")),
             tier,
             internal: false,
