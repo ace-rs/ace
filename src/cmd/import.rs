@@ -69,17 +69,17 @@ fn run_inner(
     match result {
         AddImportResult::Done { .. } => {}
         AddImportResult::NeedsSelection(skills) => {
-            let names: Vec<String> = skills.iter().map(|s| s.id.to_string()).collect();
+            let names: Vec<String> = skills.iter().map(|s| s.locator.to_string()).collect();
             let selected = ace.prompt_select("Multiple skills found, pick one:", names)?;
 
             let skill = skills
                 .iter()
-                .find(|s| s.id == selected.as_str())
+                .find(|s| s.locator == selected.as_str())
                 .ok_or_else(|| AddImportError::SkillNotFound(selected.to_string()))?;
 
             AddImport {
                 source: &normalized,
-                skill: Some(skill.id.as_str()),
+                skill: Some(skill.locator.as_str()),
                 school_root: &school_root,
             }
             .install_selected(skill, ace)?;

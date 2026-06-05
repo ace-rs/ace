@@ -93,7 +93,7 @@ mod tests {
 
     fn discovered(name: &str, tier: Tier) -> DiscoveredSkill {
         DiscoveredSkill {
-            id: crate::skills::SkillId::from_basename(name),
+            locator: crate::skills::Locator::from_basename(name),
             path: PathBuf::from(format!("/school/{name}")),
             tier,
             internal: false,

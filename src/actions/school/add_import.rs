@@ -4,7 +4,7 @@ use crate::ace::Ace;
 use crate::config;
 use crate::config::school_toml::ImportDecl;
 
-use crate::skills::discover::{DiscoveredSkill, discover_skills};
+use crate::skills::discover::{discover_skills, DiscoveredSkill};
 
 pub struct AddImport<'a> {
     pub source: &'a str,
@@ -57,7 +57,7 @@ impl AddImport<'_> {
         let selected = match self.skill {
             Some(name) => skills
                 .iter()
-                .find(|s| s.id == name)
+                .find(|s| s.locator == name)
                 .ok_or_else(|| AddImportError::SkillNotFound(name.to_string()))?,
             None if skills.len() == 1 => &skills[0],
             None => return Ok(AddImportResult::NeedsSelection(skills)),
@@ -68,9 +68,9 @@ impl AddImport<'_> {
         }
         self.install_skill(selected)?;
 
-        ace.done(&format!("Imported skill: {}", selected.id));
+        ace.done(&format!("Imported skill: {}", selected.locator));
         Ok(AddImportResult::Done {
-            skill: selected.id.to_string(),
+            skill: selected.locator.to_string(),
         })
     }
 
@@ -80,17 +80,17 @@ impl AddImport<'_> {
         skill: &DiscoveredSkill,
         ace: &mut Ace,
     ) -> Result<(), AddImportError> {
-        ace.progress(&format!("Installing {}", skill.id));
+        ace.progress(&format!("Installing {}", skill.locator));
         if !warn_if_rejected(skill, ace) {
             return Err(AddImportError::RejectedImports { count: 1 });
         }
         self.install_skill(skill)?;
-        ace.done(&format!("Imported skill: {}", skill.id));
+        ace.done(&format!("Imported skill: {}", skill.locator));
         Ok(())
     }
 
     fn install_skill(&self, skill: &DiscoveredSkill) -> Result<(), AddImportError> {
-        let dest = self.school_root.join("skills").join(skill.id.as_str());
+        let dest = self.school_root.join("skills").join(skill.locator.as_str());
         if dest.exists() {
             std::fs::remove_dir_all(&dest)?;
         }
@@ -103,7 +103,7 @@ impl AddImport<'_> {
         // Match against the canonical plural set, not just the singular
         // alias — a decl using the new `skills = [...]` form must still
         // be detected as a duplicate for the same skill.
-        let needle = skill.id.as_str();
+        let needle = skill.locator.as_str();
         let entry = school
             .imports
             .iter_mut()
@@ -112,7 +112,7 @@ impl AddImport<'_> {
             Some(existing) => existing.source = self.source.to_string(),
             None => school.imports.push(ImportDecl {
                 source: self.source.to_string(),
-                skills: vec![skill.id.to_string()],
+                skills: vec![skill.locator.to_string()],
                 ..ImportDecl::default()
             }),
         }
@@ -126,7 +126,7 @@ fn warn_if_rejected(skill: &DiscoveredSkill, ace: &mut Ace) -> bool {
     if let Err(reason) = skill.admission() {
         ace.warn(&format!(
             "skipping inadmissible skill `{}`: {reason}",
-            crate::skills::name::render(skill.id.as_str()),
+            crate::skills::name::render(skill.locator.as_str()),
         ));
         return false;
     }

@@ -4,7 +4,7 @@
 //! (see `docs/spec/skills/model.md` § Type-safety invariant and
 //! `docs/spec/skills/selection.md` § Match handle):
 //!
-//! - [`SkillId`] — a path-shaped identity produced **only** by the
+//! - [`Locator`] — a path-shaped identity produced **only** by the
 //!   discovery layer after the prefix-strip rule has been applied.
 //!   Constructors are `pub(crate)` — visible across the binary so
 //!   typed test fixtures in `crate::actions::*` can construct fakes,
@@ -17,7 +17,7 @@
 //!   via [`MatchHandle::new`], which validates glob syntax up front so
 //!   downstream code never has to re-check.
 //!
-//! `SkillId` and `MatchHandle` cannot be interconverted directly; the only
+//! `Locator` and `MatchHandle` cannot be interconverted directly; the only
 //! crossing point is [`MatchHandle::matches`], which decides whether a
 //! handle matches an identity per the rules in `selection.md`.
 
@@ -32,10 +32,10 @@ use crate::glob;
 /// rule is the only path into existence). Equivalent to a slash-joined
 /// path: `foo`, `typescript/coding`, etc.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct SkillId(String);
+pub struct Locator(String);
 
-impl SkillId {
-    /// Construct a `SkillId` from a path relative to a discovery prefix.
+impl Locator {
+    /// Construct a `Locator` from a path relative to a discovery prefix.
     /// Components are joined with `/` for cross-platform stability.
     /// `pub(in crate::skills)` so only the discovery layer can call it.
     pub(crate) fn from_relative_path(rel: &Path) -> Self {
@@ -48,7 +48,7 @@ impl SkillId {
         Self(parts.join("/"))
     }
 
-    /// Construct a `SkillId` from a basename. Used by stage-1 discovery
+    /// Construct a `Locator` from a basename. Used by stage-1 discovery
     /// (root-level `SKILL.md`) and by `[[imports]]` declarations that
     /// supply an explicit identity key.
     pub(crate) fn from_basename(name: impl Into<String>) -> Self {
@@ -72,62 +72,62 @@ impl SkillId {
     }
 }
 
-impl Deref for SkillId {
+impl Deref for Locator {
     type Target = str;
     fn deref(&self) -> &str {
         &self.0
     }
 }
 
-impl AsRef<str> for SkillId {
+impl AsRef<str> for Locator {
     fn as_ref(&self) -> &str {
         &self.0
     }
 }
 
-impl Borrow<str> for SkillId {
+impl Borrow<str> for Locator {
     fn borrow(&self) -> &str {
         &self.0
     }
 }
 
-impl fmt::Display for SkillId {
+impl fmt::Display for Locator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
     }
 }
 
-impl PartialEq<str> for SkillId {
+impl PartialEq<str> for Locator {
     fn eq(&self, other: &str) -> bool {
         self.0 == other
     }
 }
 
-impl PartialEq<&str> for SkillId {
+impl PartialEq<&str> for Locator {
     fn eq(&self, other: &&str) -> bool {
         self.0 == *other
     }
 }
 
-impl PartialEq<String> for SkillId {
+impl PartialEq<String> for Locator {
     fn eq(&self, other: &String) -> bool {
         &self.0 == other
     }
 }
 
-impl From<&SkillId> for String {
-    fn from(id: &SkillId) -> String {
+impl From<&Locator> for String {
+    fn from(id: &Locator) -> String {
         id.0.clone()
     }
 }
 
-impl From<SkillId> for String {
-    fn from(id: SkillId) -> String {
+impl From<Locator> for String {
+    fn from(id: Locator) -> String {
         id.0
     }
 }
 
-/// A user-supplied skill match pattern. Distinct kind from `SkillId` —
+/// A user-supplied skill match pattern. Distinct kind from `Locator` —
 /// constructed via [`MatchHandle::new`], which validates glob syntax.
 ///
 /// Production callsites land in the project and imports resolvers (later
@@ -175,7 +175,7 @@ impl MatchHandle {
     /// `docs/spec/skills/selection.md` § Match handle. Delegates to the
     /// free function [`pattern_matches`] for shared use by the project
     /// and imports resolvers.
-    pub fn matches(&self, id: &SkillId) -> bool {
+    pub fn matches(&self, id: &Locator) -> bool {
         pattern_matches(&self.0, id.as_str())
     }
 }
@@ -235,22 +235,22 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
-    fn id(s: &str) -> SkillId {
+    fn id(s: &str) -> Locator {
         // Test-only constructor — uses the from_basename path which the
         // discovery layer also uses. Tests in this module live inside
         // crate::skills so they can call the private ctor.
-        SkillId::from_basename(s)
+        Locator::from_basename(s)
     }
 
     #[test]
     fn skill_id_from_path_joins_with_slash() {
-        let id = SkillId::from_relative_path(&PathBuf::from("typescript").join("coding"));
+        let id = Locator::from_relative_path(&PathBuf::from("typescript").join("coding"));
         assert_eq!(id.as_str(), "typescript/coding");
     }
 
     #[test]
     fn skill_id_flat_basename() {
-        let id = SkillId::from_basename("foo");
+        let id = Locator::from_basename("foo");
         assert_eq!(id.as_str(), "foo");
         assert_eq!(id.leaf(), "foo");
         assert!(!id.is_nested());
@@ -258,7 +258,7 @@ mod tests {
 
     #[test]
     fn skill_id_nested_has_leaf() {
-        let id = SkillId::from_relative_path(&PathBuf::from("ts").join("coding"));
+        let id = Locator::from_relative_path(&PathBuf::from("ts").join("coding"));
         assert_eq!(id.leaf(), "coding");
         assert!(id.is_nested());
     }
@@ -341,7 +341,7 @@ mod tests {
     #[test]
     fn bare_name_leaf_match_under_nested_path() {
         let h = MatchHandle::new("rust-coding").unwrap();
-        let nested = SkillId::from_relative_path(&PathBuf::from("typescript").join("rust-coding"));
+        let nested = Locator::from_relative_path(&PathBuf::from("typescript").join("rust-coding"));
         assert!(
             h.matches(&nested),
             "bare name should match the leaf segment"
@@ -367,10 +367,10 @@ mod tests {
         // `typescript/coding` matches exactly `typescript/coding`, not just
         // anything ending in `/coding`.
         let h = MatchHandle::new("typescript/coding").unwrap();
-        let nested = SkillId::from_relative_path(&PathBuf::from("typescript").join("coding"));
+        let nested = Locator::from_relative_path(&PathBuf::from("typescript").join("coding"));
         assert!(h.matches(&nested));
 
-        let other = SkillId::from_relative_path(&PathBuf::from("python").join("coding"));
+        let other = Locator::from_relative_path(&PathBuf::from("python").join("coding"));
         assert!(!h.matches(&other));
     }
 
@@ -394,7 +394,7 @@ mod tests {
         // `*/coding` matches identities like `typescript/coding` —
         // the glob version of "any path ending in /coding".
         let h = MatchHandle::new("*/coding").unwrap();
-        let nested = SkillId::from_relative_path(&PathBuf::from("typescript").join("coding"));
+        let nested = Locator::from_relative_path(&PathBuf::from("typescript").join("coding"));
         assert!(h.matches(&nested));
         // The flat `coding` skill matches too, because glob `*/coding`
         // wildcards the `*` even to empty (per glob_match semantics).
@@ -411,6 +411,6 @@ mod tests {
         // (crate::skills::identity) CAN call them; tests outside
         // crate::skills cannot. No runtime assertion is possible — the
         // type invariant is enforced by Rust's privacy at compile time.
-        let _ = SkillId::from_basename("ok");
+        let _ = Locator::from_basename("ok");
     }
 }

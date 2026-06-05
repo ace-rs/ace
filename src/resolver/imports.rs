@@ -231,7 +231,7 @@ fn match_decl(
         let mut any_match = false;
 
         for d in discovered {
-            if !pattern_matches(pattern, d.id.as_str()) {
+            if !pattern_matches(pattern, d.locator.as_str()) {
                 continue;
             }
             any_match = true;
@@ -245,14 +245,14 @@ fn match_decl(
             } else if decl
                 .exclude_skills
                 .iter()
-                .any(|ex| pattern_matches(ex, d.id.as_str()))
+                .any(|ex| pattern_matches(ex, d.locator.as_str()))
             {
                 MatchFate::ExcludedBySelf
             } else {
                 MatchFate::Ok
             };
 
-            let identity = d.id.to_string();
+            let identity = d.locator.to_string();
             if let Some(&existing) = seen.get(&identity) {
                 // Same skill matched by multiple patterns within this
                 // decl — promote `Ok` over filtered/excluded variants
@@ -330,12 +330,12 @@ impl ImportsResolution {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::skills::SkillId;
+    use crate::skills::Locator;
     use std::path::PathBuf;
 
     fn dskill(id: &str, tier: Tier, internal: bool, name: Option<&str>) -> DiscoveredSkill {
         DiscoveredSkill {
-            id: SkillId::from_basename(id),
+            locator: Locator::from_basename(id),
             path: PathBuf::from(format!("/src/{id}")),
             tier,
             internal,
@@ -525,8 +525,18 @@ mod tests {
 
     #[test]
     fn frontmatter_mismatch_recorded_at_collision() {
-        let src_a = vec![dskill("rust-coding", Tier::Curated, false, Some("rust-coding"))];
-        let src_b = vec![dskill("rust-coding", Tier::Curated, false, Some("RustCoding"))];
+        let src_a = vec![dskill(
+            "rust-coding",
+            Tier::Curated,
+            false,
+            Some("rust-coding"),
+        )];
+        let src_b = vec![dskill(
+            "rust-coding",
+            Tier::Curated,
+            false,
+            Some("RustCoding"),
+        )];
         let r = resolve_imports(
             &[
                 decl("upstream/a", &["rust-coding"]),
@@ -543,8 +553,18 @@ mod tests {
 
     #[test]
     fn matching_frontmatter_name_no_mismatch() {
-        let src_a = vec![dskill("rust-coding", Tier::Curated, false, Some("rust-coding"))];
-        let src_b = vec![dskill("rust-coding", Tier::Curated, false, Some("rust-coding"))];
+        let src_a = vec![dskill(
+            "rust-coding",
+            Tier::Curated,
+            false,
+            Some("rust-coding"),
+        )];
+        let src_b = vec![dskill(
+            "rust-coding",
+            Tier::Curated,
+            false,
+            Some("rust-coding"),
+        )];
         let r = resolve_imports(
             &[
                 decl("upstream/a", &["rust-coding"]),
@@ -562,15 +582,13 @@ mod tests {
 
     #[test]
     fn nested_identity_preserved_through_resolution() {
-        let src = vec![
-            DiscoveredSkill {
-                id: SkillId::from_basename("typescript/coding"),
-                path: PathBuf::from("/src"),
-                tier: Tier::Curated,
-                internal: false,
-                frontmatter_name: None,
-            },
-        ];
+        let src = vec![DiscoveredSkill {
+            locator: Locator::from_basename("typescript/coding"),
+            path: PathBuf::from("/src"),
+            tier: Tier::Curated,
+            internal: false,
+            frontmatter_name: None,
+        }];
         let r = resolve_imports(
             &[decl("owner/repo", &["*"])],
             &discovery(&[("owner/repo", src.as_slice())]),
@@ -594,10 +612,7 @@ mod tests {
 
     #[test]
     fn missing_source_in_discovery_records_unknown_patterns() {
-        let r = resolve_imports(
-            &[decl("missing/source", &["a", "b"])],
-            &discovery(&[]),
-        );
+        let r = resolve_imports(&[decl("missing/source", &["a", "b"])], &discovery(&[]));
         assert_eq!(r.unknown_patterns.len(), 2);
     }
 

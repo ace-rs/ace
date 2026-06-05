@@ -14,7 +14,7 @@ pub mod identity;
 pub mod name;
 
 #[allow(unused_imports)]
-pub use identity::{MatchHandle, SkillId};
+pub use identity::{Locator, MatchHandle};
 
 use crate::config::tree::Tree;
 use crate::config::ConfigError;
@@ -197,7 +197,7 @@ impl Skills<Discovered> {
         let items = discovered
             .iter()
             .map(|d| Skill {
-                name: d.id.to_string(),
+                name: d.locator.to_string(),
                 path: d.path.clone(),
                 tier: d.tier,
                 internal: d.internal,
@@ -422,7 +422,7 @@ mod tests {
 
     fn discovered(name: &str, tier: Tier) -> DiscoveredSkill {
         DiscoveredSkill {
-            id: SkillId::from_basename(name),
+            locator: Locator::from_basename(name),
             path: PathBuf::from(format!("/school/{name}")),
             tier,
             internal: false,
@@ -566,7 +566,7 @@ mod tests {
         fs::write(skill_dir.join("SKILL.md"), "# my-skill").expect("write");
 
         let s = Skills::<Discovered>::from_discovered(&[DiscoveredSkill {
-            id: SkillId::from_basename("my-skill"),
+            locator: Locator::from_basename("my-skill"),
             path: skill_dir,
             tier: Tier::Curated,
             internal: false,

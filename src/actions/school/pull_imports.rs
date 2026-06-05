@@ -3,8 +3,8 @@ use std::path::Path;
 
 use crate::ace::Ace;
 use crate::config;
-use crate::resolver::{DiscoveryBySource, ImportVerdict, ImportsResolution, resolve_imports};
-use crate::skills::discover::{DiscoveredSkill, discover_skills};
+use crate::resolver::{resolve_imports, DiscoveryBySource, ImportVerdict, ImportsResolution};
+use crate::skills::discover::{discover_skills, DiscoveredSkill};
 use crate::skills::{Discovered, Skills};
 
 pub struct PullImports<'a> {
@@ -99,12 +99,15 @@ impl PullImports<'_> {
             let Some(disc) = discovery.get(&resolved.source) else {
                 continue;
             };
-            if let Some(d) = disc.iter().find(|d| d.id.as_str() == resolved.identity) {
+            if let Some(d) = disc
+                .iter()
+                .find(|d| d.locator.as_str() == resolved.identity)
+            {
                 if let Err(reason) = d.admission() {
                     rejected_count += 1;
                     ace.warn(&format!(
                         "skipping inadmissible skill `{}` from {}: {reason}",
-                        crate::skills::name::render(d.id.as_str()),
+                        crate::skills::name::render(d.locator.as_str()),
                         resolved.source,
                     ));
                     continue;
