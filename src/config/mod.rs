@@ -1,6 +1,7 @@
 pub mod ace_toml;
 pub mod index_toml;
 pub mod paths;
+pub mod resolve;
 pub mod school_paths;
 pub mod school_toml;
 pub mod skill_meta;

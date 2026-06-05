@@ -10,7 +10,6 @@ mod git;
 mod glob;
 mod paths;
 mod platform;
-mod resolver;
 mod school;
 mod skills;
 mod templates;

@@ -9,7 +9,7 @@ use std::path::Path;
 
 use super::{Backend, BackendError, Kind, Registry};
 use crate::config::ace_toml::BackendDecl;
-use crate::resolver::{Resolved, Sourced};
+use crate::config::resolve::{Resolved, Sourced};
 use crate::templates::Template;
 
 /// Render context for `{{ ... }}` placeholders inside `[[backends]].cmd` and
@@ -413,7 +413,7 @@ mod tests {
 
     use crate::config::ace_toml::AceToml;
     use crate::config::tree::Tree;
-    use crate::resolver;
+    use crate::config::resolve;
 
     fn ace_with(school: &str, env: &[(&str, &str)]) -> AceToml {
         AceToml {
@@ -437,7 +437,7 @@ mod tests {
 
     fn bind_default(t: &Tree) -> Result<Backend, BackendError> {
         bind(
-            &resolver::merge(t, &AceToml::default()),
+            &resolve::merge(t, &AceToml::default()),
             &TemplateCtx::empty(),
         )
     }

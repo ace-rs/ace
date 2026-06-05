@@ -13,8 +13,8 @@ use crate::config::school_paths::SchoolPaths;
 use crate::config::tree::Tree;
 use crate::config::{ConfigError, Scope};
 use crate::git::Git;
-use crate::resolver;
-use crate::resolver::Resolved;
+use crate::config::resolve;
+use crate::config::resolve::Resolved;
 use crate::school::{School, SchoolError};
 use crate::skills::{Decided, SkillError, Skills};
 
@@ -125,7 +125,7 @@ impl Ace {
     pub fn require_resolved(&self) -> Result<&Resolved, ConfigError> {
         self.resolved.get_or_try_init(|| {
             let tree = self.require_tree()?;
-            Ok(resolver::merge(tree, &self.overrides))
+            Ok(resolve::merge(tree, &self.overrides))
         })
     }
 

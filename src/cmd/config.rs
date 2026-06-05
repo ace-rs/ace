@@ -7,7 +7,7 @@ use crate::backend::Kind;
 use crate::config::ace_toml::{self, AceToml, Trust};
 use crate::config::tree::Tree;
 use crate::config::{ConfigKey, Scope};
-use crate::resolver::Source;
+use crate::config::resolve::Source;
 
 use super::CmdError;
 

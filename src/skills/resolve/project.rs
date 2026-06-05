@@ -9,8 +9,8 @@
 //! carries [`Locator`] natively — no stringly round-trip. The verdict drives
 //! `ace skills` (provenance listing) and `ace explain <name>` (full chain).
 //!
-//! `Source` still imports leftward from `crate::resolver` until the config-merge
-//! slice relocates it to `config/resolve/`.
+//! `Source` is imported leftward from `config/resolve/` (binding → config),
+//! the correct dependency direction — see the resolver-dissolution decision.
 
 use std::collections::BTreeMap;
 
@@ -20,7 +20,7 @@ use crate::skills::identity::pattern_matches;
 
 use crate::skills::{Decided, Diagnostics, Locator, Skill, Skills, Validated};
 
-pub use crate::resolver::Source;
+pub use crate::config::resolve::Source;
 
 /// Per-identity selection result: whether the config rules picked this skill,
 /// and the ordered trace of rule applications that produced the verdict.

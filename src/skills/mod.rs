@@ -26,7 +26,7 @@ use crate::school::SchoolError;
 
 use discover::Tier;
 
-pub use crate::resolver::Source;
+pub use crate::config::resolve::Source;
 pub use resolve::{Collision, Decision, Entry, UnknownPattern};
 
 /// Errors that can occur while building the resolved SkillSet. Wraps
