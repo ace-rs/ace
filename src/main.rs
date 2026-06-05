@@ -16,9 +16,9 @@ mod skills;
 mod templates;
 mod upgrade;
 
+use ace::OutputMode;
 use clap::Parser;
 use cmd::Cli;
-use ace::OutputMode;
 
 fn main() {
     let cli = Cli::parse();

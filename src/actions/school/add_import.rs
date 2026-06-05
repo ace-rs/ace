@@ -5,7 +5,7 @@ use crate::config;
 use crate::config::school_toml::ImportDecl;
 
 use crate::skills::discover::discover_skills;
-use crate::skills::{Discovered, Skill, FRONTMATTER_WARNING_HINT};
+use crate::skills::{Discovered, FRONTMATTER_WARNING_HINT, Skill};
 
 pub struct AddImport<'a> {
     pub source: &'a str,

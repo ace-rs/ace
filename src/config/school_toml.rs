@@ -2,8 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 
+use super::{ConfigError, is_empty_map, is_empty_str, is_empty_vec, is_false};
 use crate::config::ace_toml::BackendDecl;
-use super::{is_empty_str, is_empty_map, is_empty_vec, is_false, ConfigError};
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
@@ -162,12 +162,18 @@ mod tests {
             ..ImportDecl::default()
         };
         let out = toml::to_string(&decl).expect("serialize");
-        assert!(!out.contains("include_experimental"),
-            "false include_experimental should not be serialized: {out}");
-        assert!(!out.contains("include_system"),
-            "false include_system should not be serialized: {out}");
-        assert!(!out.contains("include_internal"),
-            "false include_internal should not be serialized: {out}");
+        assert!(
+            !out.contains("include_experimental"),
+            "false include_experimental should not be serialized: {out}"
+        );
+        assert!(
+            !out.contains("include_system"),
+            "false include_system should not be serialized: {out}"
+        );
+        assert!(
+            !out.contains("include_internal"),
+            "false include_internal should not be serialized: {out}"
+        );
     }
 
     #[test]
@@ -179,8 +185,14 @@ mod tests {
             ..ImportDecl::default()
         };
         let out = toml::to_string(&decl).expect("serialize");
-        assert!(out.contains("include_experimental = true"), "missing flag in {out}");
-        assert!(!out.contains("include_system"), "false flag should be omitted: {out}");
+        assert!(
+            out.contains("include_experimental = true"),
+            "missing flag in {out}"
+        );
+        assert!(
+            !out.contains("include_system"),
+            "false flag should be omitted: {out}"
+        );
     }
 
     // -- plural `skills` (canonical form) --
@@ -202,8 +214,14 @@ mod tests {
             ..ImportDecl::default()
         };
         let out = toml::to_string(&decl).expect("serialize");
-        assert!(out.contains("skills = [\"alpha\", \"beta\"]"), "missing plural form: {out}");
-        assert!(!out.contains("skill = \""), "should not emit singular alias when plural is canonical: {out}");
+        assert!(
+            out.contains("skills = [\"alpha\", \"beta\"]"),
+            "missing plural form: {out}"
+        );
+        assert!(
+            !out.contains("skill = \""),
+            "should not emit singular alias when plural is canonical: {out}"
+        );
     }
 
     #[test]
@@ -215,7 +233,10 @@ mod tests {
         };
         decl.normalize();
         assert_eq!(decl.skills, vec!["foo".to_string()]);
-        assert!(decl.skill.is_empty(), "singular alias cleared after normalize");
+        assert!(
+            decl.skill.is_empty(),
+            "singular alias cleared after normalize"
+        );
     }
 
     #[test]
@@ -250,8 +271,14 @@ mod tests {
             toml::from_str("source = \"owner/repo\"\nskill = \"foo\"\n").expect("parse");
         decl.normalize();
         let out = toml::to_string(&decl).expect("serialize");
-        assert!(out.contains("skills = [\"foo\"]"), "expected plural form: {out}");
-        assert!(!out.contains("skill = "), "singular alias must not be emitted: {out}");
+        assert!(
+            out.contains("skills = [\"foo\"]"),
+            "expected plural form: {out}"
+        );
+        assert!(
+            !out.contains("skill = "),
+            "singular alias must not be emitted: {out}"
+        );
     }
 
     #[test]
@@ -274,7 +301,8 @@ mod tests {
 
     #[test]
     fn import_decl_parses_exclude_skills() {
-        let toml_str = "source = \"owner/repo\"\nskills = [\"*\"]\nexclude_skills = [\"rust-coding\"]\n";
+        let toml_str =
+            "source = \"owner/repo\"\nskills = [\"*\"]\nexclude_skills = [\"rust-coding\"]\n";
         let decl: ImportDecl = toml::from_str(toml_str).expect("parse");
         assert_eq!(decl.exclude_skills, vec!["rust-coding".to_string()]);
     }
@@ -294,6 +322,9 @@ mod tests {
             ..ImportDecl::default()
         };
         let out = toml::to_string(&decl).expect("serialize");
-        assert!(!out.contains("exclude_skills"), "empty exclude should be omitted: {out}");
+        assert!(
+            !out.contains("exclude_skills"),
+            "empty exclude should be omitted: {out}"
+        );
     }
 }

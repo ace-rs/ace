@@ -1,7 +1,7 @@
 use crate::ace::Ace;
+use crate::actions::project::Setup;
 use crate::config::index_toml;
 use crate::git;
-use crate::actions::project::Setup;
 use crate::templates;
 
 use super::CmdError;
@@ -34,9 +34,7 @@ fn run_inner(ace: &mut Ace, specifier: Option<&str>) -> Result<(), CmdError> {
 
     let instructions = project_dir.join(backend.instructions_file());
     if !instructions.exists() {
-        let school_name = ace.school()?
-            .map(|s| s.name.clone())
-            .unwrap_or_default();
+        let school_name = ace.school()?.map(|s| s.name.clone()).unwrap_or_default();
 
         let backend_dir_name = backend.backend_dir();
         let tpl = templates::Template::parse(templates::builtins::PROJECT_CLAUDE_MD);

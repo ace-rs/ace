@@ -30,11 +30,10 @@ fn git_command() -> Command {
 /// Ensure a local clone of `source` exists in the import cache, fetching updates when
 /// already present. Returns the on-disk path of the cached clone.
 pub fn ensure_source_cache(source: &str) -> Result<std::path::PathBuf, GitError> {
-    let cache_root =
-        crate::config::paths::ace_import_cache_dir().map_err(|e| GitError::Exec {
-            cmd: "ensure_source_cache: resolve cache root".to_string(),
-            source: std::io::Error::other(e.to_string()),
-        })?;
+    let cache_root = crate::config::paths::ace_import_cache_dir().map_err(|e| GitError::Exec {
+        cmd: "ensure_source_cache: resolve cache root".to_string(),
+        source: std::io::Error::other(e.to_string()),
+    })?;
     let normalized = normalize_github_source(source);
     let url = format!("https://github.com/{normalized}.git");
     let dest = cache_root.join(&normalized);
@@ -234,7 +233,12 @@ mod tests {
         let envs: Vec<(String, String)> = cmd
             .get_envs()
             .filter_map(|(k, v)| {
-                v.map(|v| (k.to_string_lossy().into_owned(), v.to_string_lossy().into_owned()))
+                v.map(|v| {
+                    (
+                        k.to_string_lossy().into_owned(),
+                        v.to_string_lossy().into_owned(),
+                    )
+                })
             })
             .collect();
 
@@ -243,7 +247,10 @@ mod tests {
 
         let ssh = envs.iter().find(|(k, _)| k == "GIT_SSH_COMMAND");
         let ssh_val = ssh.map(|(_, v)| v.as_str()).unwrap_or("");
-        assert!(ssh_val.contains("BatchMode=yes"), "GIT_SSH_COMMAND: {ssh_val}");
+        assert!(
+            ssh_val.contains("BatchMode=yes"),
+            "GIT_SSH_COMMAND: {ssh_val}"
+        );
         assert!(
             ssh_val.contains("StrictHostKeyChecking=accept-new"),
             "GIT_SSH_COMMAND: {ssh_val}"
@@ -265,10 +272,7 @@ mod tests {
 
     #[test]
     fn normalize_strips_git_suffix() {
-        assert_eq!(
-            normalize_github_source("owner/repo.git"),
-            "owner/repo"
-        );
+        assert_eq!(normalize_github_source("owner/repo.git"), "owner/repo");
     }
 
     #[test]
@@ -410,9 +414,17 @@ mod tests {
     fn init_remote_with_commit(message: &str) -> TempDir {
         let remote = TempDir::new().expect("remote tempdir");
         let path = remote.path();
-        Command::new("git").args(["init"]).current_dir(path).output().expect("git init");
+        Command::new("git")
+            .args(["init"])
+            .current_dir(path)
+            .output()
+            .expect("git init");
         std::fs::write(path.join("f.txt"), message).unwrap();
-        Command::new("git").args(["add", "."]).current_dir(path).output().expect("git add");
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(path)
+            .output()
+            .expect("git add");
         Command::new("git")
             .args(["commit", "-m", message])
             .current_dir(path)
@@ -423,7 +435,11 @@ mod tests {
 
     fn add_commit(remote_path: &Path, content: &str) {
         std::fs::write(remote_path.join("f.txt"), content).unwrap();
-        Command::new("git").args(["add", "."]).current_dir(remote_path).output().expect("git add");
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(remote_path)
+            .output()
+            .expect("git add");
         Command::new("git")
             .args(["commit", "-m", content])
             .current_dir(remote_path)
@@ -449,7 +465,10 @@ mod tests {
 
         ensure_source_cache_in(&dest, &url).expect("first call should clone");
 
-        assert!(dest.join(".git").exists(), "dest should be a git repo after clone");
+        assert!(
+            dest.join(".git").exists(),
+            "dest should be a git repo after clone"
+        );
         assert_eq!(head_sha(&dest), head_sha(remote.path()));
     }
 

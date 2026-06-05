@@ -21,7 +21,10 @@ enum Segment<'a> {
 
 impl<'a> Template<'a> {
     fn new() -> Self {
-        Self { segments: Vec::new(), names: Vec::new() }
+        Self {
+            segments: Vec::new(),
+            names: Vec::new(),
+        }
     }
 
     /// Parse a template string into segments. Single-pass, zero-copy for literals.
@@ -100,8 +103,12 @@ fn levenshtein(a: &str, b: &str) -> usize {
     let a: Vec<char> = a.chars().collect();
     let b: Vec<char> = b.chars().collect();
     let (n, m) = (a.len(), b.len());
-    if n == 0 { return m; }
-    if m == 0 { return n; }
+    if n == 0 {
+        return m;
+    }
+    if m == 0 {
+        return n;
+    }
 
     let mut prev: Vec<usize> = (0..=m).collect();
     let mut curr = vec![0usize; m + 1];
@@ -109,9 +116,7 @@ fn levenshtein(a: &str, b: &str) -> usize {
         curr[0] = i;
         for j in 1..=m {
             let cost = if a[i - 1] == b[j - 1] { 0 } else { 1 };
-            curr[j] = (curr[j - 1] + 1)
-                .min(prev[j] + 1)
-                .min(prev[j - 1] + cost);
+            curr[j] = (curr[j - 1] + 1).min(prev[j] + 1).min(prev[j - 1] + cost);
         }
         std::mem::swap(&mut prev, &mut curr);
     }
@@ -123,7 +128,10 @@ mod tests {
     use super::*;
 
     fn vals(pairs: &[(&str, &str)]) -> HashMap<String, String> {
-        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
     }
 
     // -- substitute (data-driven) --
@@ -138,29 +146,27 @@ mod tests {
             ("{{  key  }}", &[("key", "val")], "val"),
             ("{{ a }}+{{ b }}", &[("a", "1"), ("b", "2")], "1+2"),
             ("{{a}}{{b}}", &[("a", "x"), ("b", "y")], "xy"),
-
             // missing key → empty
             ("{{ missing }}", &[], ""),
             ("[{{ gone }}]", &[], "[]"),
-
             // no placeholders → passthrough
-            ("no placeholders here", &[("a", "b")], "no placeholders here"),
+            (
+                "no placeholders here",
+                &[("a", "b")],
+                "no placeholders here",
+            ),
             ("", &[], ""),
-
             // single braces → not a placeholder
             ("{x}", &[("x", "1")], "{x}"),
             ("{x} and {{ x }}", &[("x", "1")], "{x} and 1"),
-
             // invalid names → preserved as literal
             ("{{ not-valid }}", &[], "{{ not-valid }}"),
             ("{{ has space }}", &[], "{{ has space }}"),
             ("{{ 123.456 }}", &[], "{{ 123.456 }}"),
             ("{{ a!b }}", &[], "{{ a!b }}"),
-
             // empty braces → literal
             ("{{}}", &[], "{{}}"),
             ("{{ }}", &[], "{{ }}"),
-
             // unbalanced / broken open braces
             ("end{", &[], "end{"),
             ("end{{", &[], "end{{"),
@@ -169,42 +175,54 @@ mod tests {
             ("{{{", &[], "{{{"),
             ("a{b", &[], "a{b"),
             ("a{{b", &[], "a{{b"),
-
             // unbalanced / broken close braces
             ("a}b", &[], "a}b"),
             ("a}}b", &[], "a}}b"),
             ("}}", &[], "}}"),
             ("}}}", &[], "}}}"),
-
             // incomplete placeholder (no closing)
             ("{{ name", &[], "{{ name"),
             ("{{ name }", &[], "{{ name }"),
             ("before {{ name", &[], "before {{ name"),
-
             // triple braces — inner `{` becomes part of name (invalid), all literal
             ("{{{ x }}}", &[("x", "v")], "{{{ x }}}"),
             ("{{{{ x }}}}", &[("x", "v")], "{{{{ x }}}}"),
-
             // mixed valid and broken
-            ("{{ a }} {{ bad- }} {{ b }}", &[("a", "1"), ("b", "2")], "1 {{ bad- }} 2"),
+            (
+                "{{ a }} {{ bad- }} {{ b }}",
+                &[("a", "1"), ("b", "2")],
+                "1 {{ bad- }} 2",
+            ),
             ("ok {{ x }} {{ }} tail", &[("x", "v")], "ok v {{ }} tail"),
-
             // newlines in and around placeholders
-            ("line1\n{{ x }}\nline2", &[("x", "mid")], "line1\nmid\nline2"),
+            (
+                "line1\n{{ x }}\nline2",
+                &[("x", "mid")],
+                "line1\nmid\nline2",
+            ),
             ("{{ x\n}}", &[], "{{ x\n}}"),
             ("\n\n{{ a }}\n\n", &[("a", "b")], "\n\nb\n\n"),
-
             // unicode passthrough
-            ("héllo {{ name }} wörld", &[("name", "日本")], "héllo 日本 wörld"),
+            (
+                "héllo {{ name }} wörld",
+                &[("name", "日本")],
+                "héllo 日本 wörld",
+            ),
             ("{{ emoji }}", &[("emoji", "🎉")], "🎉"),
             ("café ☕ {{ x }}", &[("x", "✓")], "café ☕ ✓"),
-
             // broken unicode-like sequences (not actual broken UTF-8, just unusual chars)
             ("{{ naïve }}", &[], "{{ naïve }}"),
-            ("curly \u{201c}quotes\u{201d} {{ x }}", &[("x", "v")], "curly \u{201c}quotes\u{201d} v"),
-
+            (
+                "curly \u{201c}quotes\u{201d} {{ x }}",
+                &[("x", "v")],
+                "curly \u{201c}quotes\u{201d} v",
+            ),
             // real-world: MCP header
-            ("Bearer {{ github_pat }}", &[("github_pat", "ghp_abc")], "Bearer ghp_abc"),
+            (
+                "Bearer {{ github_pat }}",
+                &[("github_pat", "ghp_abc")],
+                "Bearer ghp_abc",
+            ),
         ];
 
         for (i, (input, pairs, expected)) in cases.iter().enumerate() {
@@ -243,11 +261,14 @@ mod tests {
     #[test]
     fn parse_mixed_segments() {
         let tpl = Template::parse("hi {{ name }}, welcome");
-        assert_eq!(tpl.segments, vec![
-            Segment::Literal("hi "),
-            Segment::Placeholder("name"),
-            Segment::Literal(", welcome"),
-        ]);
+        assert_eq!(
+            tpl.segments,
+            vec![
+                Segment::Literal("hi "),
+                Segment::Placeholder("name"),
+                Segment::Literal(", welcome"),
+            ]
+        );
     }
 
     // -- check (data-driven) --
@@ -261,13 +282,14 @@ mod tests {
             ("", &[]),
             ("plain literal", &[]),
             ("{{ school_dir }}/x", &[]),
-            ("{{ school_dir }} {{ project_dir }} {{ home }} {{ backend_dir }}", &[]),
-
+            (
+                "{{ school_dir }} {{ project_dir }} {{ home }} {{ backend_dir }}",
+                &[],
+            ),
             // single typo with suggestion
             ("{{ schol_dir }}/x", &[("schol_dir", Some("school_dir"))]),
             ("{{ projectdir }}/x", &[("projectdir", Some("project_dir"))]),
             ("{{ hom }}", &[("hom", Some("home"))]),
-
             // multiple typos
             (
                 "{{ schol_dir }}/{{ projct_dir }}",
@@ -276,20 +298,22 @@ mod tests {
                     ("projct_dir", Some("project_dir")),
                 ],
             ),
-
             // mixed valid + typo: only typo flagged
-            ("{{ school_dir }}/{{ schol_dir }}", &[("schol_dir", Some("school_dir"))]),
-
+            (
+                "{{ school_dir }}/{{ schol_dir }}",
+                &[("schol_dir", Some("school_dir"))],
+            ),
             // unknown with no near match
             ("{{ totally_different }}", &[("totally_different", None)]),
-
             // broken placeholder syntax → parser drops it → no issue
             ("{{ }} {{ bad- }} {{ has space }}", &[]),
             ("{{ schol_dir", &[]),
             ("{schol_dir}", &[]),
-
             // duplicates collapse (placeholders() returns unique names)
-            ("{{ schol_dir }} and {{ schol_dir }}", &[("schol_dir", Some("school_dir"))]),
+            (
+                "{{ schol_dir }} and {{ schol_dir }}",
+                &[("schol_dir", Some("school_dir"))],
+            ),
         ];
 
         for (i, (input, expected)) in cases.iter().enumerate() {

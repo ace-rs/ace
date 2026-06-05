@@ -61,17 +61,26 @@ mod tests {
 
     #[test]
     fn parse_latest_marker_with_v_prefix() {
-        assert_eq!(parse_latest_marker("v0.6.0"), Some(semver::Version::new(0, 6, 0)));
+        assert_eq!(
+            parse_latest_marker("v0.6.0"),
+            Some(semver::Version::new(0, 6, 0))
+        );
     }
 
     #[test]
     fn parse_latest_marker_without_v_prefix() {
-        assert_eq!(parse_latest_marker("0.6.0"), Some(semver::Version::new(0, 6, 0)));
+        assert_eq!(
+            parse_latest_marker("0.6.0"),
+            Some(semver::Version::new(0, 6, 0))
+        );
     }
 
     #[test]
     fn parse_latest_marker_strips_whitespace() {
-        assert_eq!(parse_latest_marker("  v0.6.0\n"), Some(semver::Version::new(0, 6, 0)));
+        assert_eq!(
+            parse_latest_marker("  v0.6.0\n"),
+            Some(semver::Version::new(0, 6, 0))
+        );
     }
 
     #[test]
@@ -95,7 +104,10 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("latest_version");
         std::fs::write(&path, "0.4.0\n").expect("write marker");
-        assert_eq!(read_cache_marker(&path), Some(semver::Version::new(0, 4, 0)));
+        assert_eq!(
+            read_cache_marker(&path),
+            Some(semver::Version::new(0, 4, 0))
+        );
     }
 
     #[test]
@@ -103,7 +115,10 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("latest_version");
         std::fs::write(&path, "  0.4.0  \n").expect("write marker");
-        assert_eq!(read_cache_marker(&path), Some(semver::Version::new(0, 4, 0)));
+        assert_eq!(
+            read_cache_marker(&path),
+            Some(semver::Version::new(0, 4, 0))
+        );
     }
 
     #[test]

@@ -134,10 +134,7 @@ source = "nonexistent-owner-xxxxx/nonexistent-repo-xxxxx"
     env.redirect_to_invalid("nonexistent-owner-xxxxx/nonexistent-repo-xxxxx");
 
     // Update fails due to clone, but local skill should still be on disk.
-    env.ace()
-        .args(["school", "update"])
-        .assert()
-        .failure();
+    env.ace().args(["school", "update"]).assert().failure();
 
     // Local skill untouched after failed update.
     env.assert_exists("skills/local-skill/SKILL.md");

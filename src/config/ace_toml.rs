@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::str::FromStr;
 
-use super::{is_empty_str, is_empty_map, ConfigError};
+use super::{ConfigError, is_empty_map, is_empty_str};
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 #[serde(default)]
@@ -200,7 +200,10 @@ mod tests {
         assert!(config.backends[0].kind.is_none());
         assert!(config.backends[0].cmd.is_empty());
         assert_eq!(
-            config.backends[0].env.get("ANTHROPIC_BASE_URL").map(String::as_str),
+            config.backends[0]
+                .env
+                .get("ANTHROPIC_BASE_URL")
+                .map(String::as_str),
             Some("https://example.com"),
         );
     }
@@ -228,7 +231,10 @@ AWS_REGION = "us-east-1"
         assert_eq!(b.name, "bedrock-claude");
         assert_eq!(b.kind.as_deref(), Some("claude"));
         assert_eq!(b.cmd, vec!["claude-bedrock", "--profile", "prod"]);
-        assert_eq!(b.env.get("AWS_REGION").map(String::as_str), Some("us-east-1"));
+        assert_eq!(
+            b.env.get("AWS_REGION").map(String::as_str),
+            Some("us-east-1")
+        );
     }
 
     #[test]
@@ -238,7 +244,10 @@ AWS_REGION = "us-east-1"
         std::fs::write(&path, "exclude_mcp = [\"github\", \"linear\"]\n").expect("write");
 
         let loaded = load_or_default(&path).expect("load");
-        assert_eq!(loaded.exclude_mcp, vec!["github".to_string(), "linear".to_string()]);
+        assert_eq!(
+            loaded.exclude_mcp,
+            vec!["github".to_string(), "linear".to_string()]
+        );
 
         save(&path, &loaded).expect("save");
         let text = std::fs::read_to_string(&path).expect("re-read");

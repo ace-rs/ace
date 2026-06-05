@@ -3,8 +3,8 @@
 
 use std::path::Path;
 
-use crate::config::ace_toml;
 use crate::config::ConfigError;
+use crate::config::ace_toml;
 
 /// Append `name` to `exclude_mcp` if not already present. Idempotent.
 pub fn exclude(local_toml_path: &Path, name: &str) -> Result<(), ConfigError> {
@@ -61,7 +61,10 @@ mod tests {
         exclude(&path, "linear").unwrap();
 
         let toml = ace_toml::load_or_default(&path).unwrap();
-        assert_eq!(toml.exclude_mcp, vec!["github".to_string(), "linear".to_string()]);
+        assert_eq!(
+            toml.exclude_mcp,
+            vec!["github".to_string(), "linear".to_string()]
+        );
     }
 
     #[test]

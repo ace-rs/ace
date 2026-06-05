@@ -18,11 +18,17 @@ fn run_inner(
     version: Option<String>,
 ) -> Result<(), super::CmdError> {
     if std::env::var("ACE_SKIP_UPDATE").as_deref() == Ok("1") {
-        if !silent { ace.done("update check skipped (ACE_SKIP_UPDATE=1)"); }
+        if !silent {
+            ace.done("update check skipped (ACE_SKIP_UPDATE=1)");
+        }
         return Ok(());
     }
-    if let Ok(r) = ace.require_resolved() && r.skip_update.value {
-        if !silent { ace.done("update check skipped (skip_update = true)"); }
+    if let Ok(r) = ace.require_resolved()
+        && r.skip_update.value
+    {
+        if !silent {
+            ace.done("update check skipped (skip_update = true)");
+        }
         return Ok(());
     }
 
@@ -31,12 +37,16 @@ fn run_inner(
     let target_version = resolve_target_version(ace, silent, force, version.as_deref())?;
 
     if !force && !check::needs_update(&current, &target_version) {
-        if !silent { ace.done(&format!("already at latest version ({current})")); }
+        if !silent {
+            ace.done(&format!("already at latest version ({current})"));
+        }
         return Ok(());
     }
 
     let url = download::build_download_url(&target_version, target_triple());
-    if !silent { ace.progress(&format!("downloading ace {target_version}...")); }
+    if !silent {
+        ace.progress(&format!("downloading ace {target_version}..."));
+    }
 
     let binary = ureq::get(&url)
         .call()
@@ -60,7 +70,9 @@ fn run_inner(
         let _ = check::write_cache_marker(&marker, &target_version);
     }
 
-    if !silent { ace.done(&format!("upgraded to {target_version}")); }
+    if !silent {
+        ace.done(&format!("upgraded to {target_version}"));
+    }
     Ok(())
 }
 
@@ -78,10 +90,11 @@ fn resolve_target_version(
             .map_err(|e| super::CmdError::usage(format!("invalid version: {e}")));
     }
 
-    if !silent { ace.progress("checking for updates..."); }
+    if !silent {
+        ace.progress("checking for updates...");
+    }
 
-    let latest = check::fetch_latest_version()
-        .map_err(super::CmdError::failed)?;
+    let latest = check::fetch_latest_version().map_err(super::CmdError::failed)?;
 
     if let Some(marker) = check::cache_marker_path() {
         let _ = check::write_cache_marker(&marker, &latest);

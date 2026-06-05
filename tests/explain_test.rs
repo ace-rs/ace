@@ -17,7 +17,11 @@ fn explain_active_skill_shows_trace() {
     let env = TestEnv::new();
     setup_school_with_skills(&env, "te1", &["alpha"]);
 
-    let output = env.ace().args(["explain", "alpha"]).output().expect("ace explain alpha");
+    let output = env
+        .ace()
+        .args(["explain", "alpha"])
+        .output()
+        .expect("ace explain alpha");
     assert!(output.status.success(), "ace explain should succeed");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -31,9 +35,16 @@ fn explain_excluded_skill_shows_removal() {
     let env = TestEnv::new();
     setup_school_with_skills(&env, "te2", &["alpha", "beta"]);
 
-    env.ace().args(["skills", "exclude", "alpha"]).assert().success();
+    env.ace()
+        .args(["skills", "exclude", "alpha"])
+        .assert()
+        .success();
 
-    let output = env.ace().args(["explain", "alpha"]).output().expect("ace explain alpha");
+    let output = env
+        .ace()
+        .args(["explain", "alpha"])
+        .output()
+        .expect("ace explain alpha");
     assert!(output.status.success());
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -47,12 +58,19 @@ fn explain_unknown_skill_suggests_near_matches() {
     let env = TestEnv::new();
     setup_school_with_skills(&env, "te3", &["rust-coding", "rust-fmt"]);
 
-    let output = env.ace().args(["explain", "rust-cod"]).output().expect("ace explain rust-cod");
+    let output = env
+        .ace()
+        .args(["explain", "rust-cod"])
+        .output()
+        .expect("ace explain rust-cod");
     assert!(!output.status.success(), "unknown skill should fail");
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("unknown skill"));
-    assert!(stderr.contains("rust-coding"), "should suggest near match:\n{stderr}");
+    assert!(
+        stderr.contains("rust-coding"),
+        "should suggest near match:\n{stderr}"
+    );
 }
 
 #[test]
@@ -60,7 +78,11 @@ fn explain_unknown_no_overlap_just_errors() {
     let env = TestEnv::new();
     setup_school_with_skills(&env, "te4", &["alpha"]);
 
-    let output = env.ace().args(["explain", "xz"]).output().expect("ace explain xz");
+    let output = env
+        .ace()
+        .args(["explain", "xz"])
+        .output()
+        .expect("ace explain xz");
     assert!(!output.status.success());
 
     let stderr = String::from_utf8_lossy(&output.stderr);

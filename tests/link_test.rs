@@ -17,7 +17,10 @@ fn link_repairs_deleted_skills_symlinks() {
 
     // Delete a per-skill symlink to simulate staleness.
     let maverick_link = skills_dir.join("maverick");
-    assert!(maverick_link.exists(), "maverick symlink should exist after setup");
+    assert!(
+        maverick_link.exists(),
+        "maverick symlink should exist after setup"
+    );
     std::fs::remove_file(&maverick_link).expect("delete symlink");
     assert!(!maverick_link.exists(), "maverick symlink should be gone");
 
@@ -96,9 +99,13 @@ fn link_repairs_stale_whole_dir_symlink() {
     env.git_in(
         &school.cache,
         &[
-            "-c", "user.email=test@test.com",
-            "-c", "user.name=Test",
-            "commit", "-m", "add rules",
+            "-c",
+            "user.email=test@test.com",
+            "-c",
+            "user.name=Test",
+            "commit",
+            "-m",
+            "add rules",
         ],
     );
 
@@ -106,10 +113,12 @@ fn link_repairs_stale_whole_dir_symlink() {
 
     // Break the rules symlink by pointing it at a nonexistent target.
     let rules_link = env.path(".claude/rules");
-    assert!(rules_link.exists(), "rules symlink should exist after setup");
+    assert!(
+        rules_link.exists(),
+        "rules symlink should exist after setup"
+    );
     std::fs::remove_file(&rules_link).expect("remove old symlink");
-    std::os::unix::fs::symlink(env.path("nonexistent"), &rules_link)
-        .expect("create stale symlink");
+    std::os::unix::fs::symlink(env.path("nonexistent"), &rules_link).expect("create stale symlink");
 
     env.ace().args(["link"]).assert().success();
 

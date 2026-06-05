@@ -15,7 +15,9 @@ pub enum BackendError {
     TreeLoad(#[from] ConfigError),
     #[error("unknown backend: {0}")]
     Unknown(String),
-    #[error("cannot resolve kind for custom backend `{0}`: set `kind = \"...\"` or use a `cmd` whose binary matches a built-in")]
+    #[error(
+        "cannot resolve kind for custom backend `{0}`: set `kind = \"...\"` or use a `cmd` whose binary matches a built-in"
+    )]
     Unresolvable(String),
     #[error("backend `{name}` declared kind `{declared}` but is already registered as `{actual}`")]
     KindMismatch {
@@ -173,7 +175,11 @@ impl Kind {
         dispatch!(self, exec_session, cmd, req)
     }
 
-    pub fn exec_one_shot(&self, cmd: &[String], req: OneShotRequest) -> Result<Output, std::io::Error> {
+    pub fn exec_one_shot(
+        &self,
+        cmd: &[String],
+        req: OneShotRequest,
+    ) -> Result<Output, std::io::Error> {
         dispatch!(self, exec_one_shot, cmd, req)
     }
 
@@ -190,7 +196,11 @@ impl Kind {
         dispatch!(self, mcp_remove, name, project_dir)
     }
 
-    pub fn mcp_check(&self, names: &[String], project_dir: &Path) -> Result<Vec<McpStatus>, String> {
+    pub fn mcp_check(
+        &self,
+        names: &[String],
+        project_dir: &Path,
+    ) -> Result<Vec<McpStatus>, String> {
         if names.is_empty() {
             return Ok(Vec::new());
         }
@@ -279,7 +289,11 @@ impl Backend {
         self.kind.mcp_remove(name, project_dir)
     }
 
-    pub fn mcp_check(&self, names: &[String], project_dir: &Path) -> Result<Vec<McpStatus>, String> {
+    pub fn mcp_check(
+        &self,
+        names: &[String],
+        project_dir: &Path,
+    ) -> Result<Vec<McpStatus>, String> {
         self.kind.mcp_check(names, project_dir)
     }
 
@@ -297,7 +311,8 @@ pub struct Registry {
 
 impl Registry {
     pub fn with_builtins() -> Self {
-        let entries = Kind::ALL.iter()
+        let entries = Kind::ALL
+            .iter()
             .map(|k| (k.name().to_string(), Backend::from(*k)))
             .collect();
         Self { entries }
@@ -331,14 +346,18 @@ pub(super) fn parse_status_array(json: &str) -> Vec<McpStatus> {
         Err(_) => return Vec::new(),
     };
 
-    entries.into_iter()
-        .map(|e| McpStatus { name: e.name, ok: e.ok })
+    entries
+        .into_iter()
+        .map(|e| McpStatus {
+            name: e.name,
+            ok: e.ok,
+        })
         .collect()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Backend, Kind, Registry, FEATURE_NESTED_SKILLS};
+    use super::{Backend, FEATURE_NESTED_SKILLS, Kind, Registry};
     use std::collections::HashMap;
 
     #[test]

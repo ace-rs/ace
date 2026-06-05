@@ -11,7 +11,10 @@ fn bad_flag_combo_exits_usage() {
     let env = TestEnv::new();
 
     // Conflicting scope flags are rejected before any subcommand dispatch.
-    env.ace().args(["--user", "--project", "paths"]).assert().code(1);
+    env.ace()
+        .args(["--user", "--project", "paths"])
+        .assert()
+        .code(1);
 }
 
 #[test]
@@ -19,7 +22,10 @@ fn unknown_config_key_exits_usage() {
     let env = TestEnv::new();
     env.setup_embedded("maverick");
 
-    env.ace().args(["config", "get", "no-such-key"]).assert().code(1);
+    env.ace()
+        .args(["config", "get", "no-such-key"])
+        .assert()
+        .code(1);
 }
 
 #[test]

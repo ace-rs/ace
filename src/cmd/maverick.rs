@@ -83,10 +83,7 @@ fn blit_frame(canvas: &mut [u8], canvas_w: u32, frame: &gif::Frame) {
         for col in 0..fw {
             let src = (row * fw + col) * 4;
             let dst = ((fy + row) * canvas_w as usize + (fx + col)) * 4;
-            if src + 3 < frame.buffer.len()
-                && dst + 3 < canvas.len()
-                && frame.buffer[src + 3] > 0
-            {
+            if src + 3 < frame.buffer.len() && dst + 3 < canvas.len() && frame.buffer[src + 3] > 0 {
                 canvas[dst..dst + 4].copy_from_slice(&frame.buffer[src..src + 4]);
             }
         }
@@ -117,7 +114,12 @@ fn build_color_lut() -> [u8; 256] {
 
 /// Precompute source pixel coordinates for nearest-neighbor scaling.
 /// All frames share the same dimensions, so this is built once.
-fn build_scale_maps(src_w: u32, src_h: u32, dst_w: u32, dst_h: u32) -> (u32, u32, Vec<u32>, Vec<u32>) {
+fn build_scale_maps(
+    src_w: u32,
+    src_h: u32,
+    dst_w: u32,
+    dst_h: u32,
+) -> (u32, u32, Vec<u32>, Vec<u32>) {
     let scale_w = dst_w as f64 / src_w as f64;
     let scale_h = dst_h as f64 / src_h as f64;
     let scale = scale_w.min(scale_h);

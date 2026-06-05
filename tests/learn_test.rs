@@ -120,7 +120,10 @@ fn learn_propagates_backend_nonzero_exit() {
         .output()
         .expect("ace learn");
 
-    assert!(!output.status.success(), "ace learn should fail on backend non-zero");
+    assert!(
+        !output.status.success(),
+        "ace learn should fail on backend non-zero"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains("model crashed") || stderr.contains("backend exited"),
@@ -198,9 +201,18 @@ fn learn_preserves_other_ace_toml_keys() {
         .success();
 
     let ace_toml = env.read_file("ace.toml");
-    assert!(ace_toml.contains("session_prompt"), "session_prompt preserved: {ace_toml}");
-    assert!(ace_toml.contains("hello there"), "session_prompt value preserved");
-    assert!(ace_toml.contains("FOO") && ace_toml.contains("bar"), "[env] block preserved");
+    assert!(
+        ace_toml.contains("session_prompt"),
+        "session_prompt preserved: {ace_toml}"
+    );
+    assert!(
+        ace_toml.contains("hello there"),
+        "session_prompt value preserved"
+    );
+    assert!(
+        ace_toml.contains("FOO") && ace_toml.contains("bar"),
+        "[env] block preserved"
+    );
     assert!(ace_toml.contains("test-skill"), "skills written");
 }
 
@@ -253,7 +265,10 @@ fn learn_dedupes_repeated_lines_in_stdout() {
 
     let ace_toml = env.read_file("ace.toml");
     let occurrences = ace_toml.matches("\"test-skill\"").count();
-    assert_eq!(occurrences, 1, "duplicates must be deduped, got:\n{ace_toml}");
+    assert_eq!(
+        occurrences, 1,
+        "duplicates must be deduped, got:\n{ace_toml}"
+    );
 }
 
 #[test]
@@ -278,7 +293,10 @@ fn learn_strips_decoration_in_agent_output() {
             "missing {expected} after strip; got:\n{ace_toml}",
         );
     }
-    assert!(!ace_toml.contains("```"), "fences must not leak through: {ace_toml}");
+    assert!(
+        !ace_toml.contains("```"),
+        "fences must not leak through: {ace_toml}"
+    );
 }
 
 #[test]

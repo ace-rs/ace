@@ -11,12 +11,19 @@ pub struct AcePaths {
 }
 
 pub fn resolve(project_dir: &std::path::Path) -> Result<AcePaths, ConfigError> {
-    let user = paths::user_config_dir().ok_or(ConfigError::NoConfigDir)?.join("ace/ace.toml");
+    let user = paths::user_config_dir()
+        .ok_or(ConfigError::NoConfigDir)?
+        .join("ace/ace.toml");
     let project = project_dir.join("ace.toml");
     let local = project_dir.join("ace.local.toml");
     let cache = ace_cache_dir()?;
 
-    Ok(AcePaths { user, project, local, cache })
+    Ok(AcePaths {
+        user,
+        project,
+        local,
+        cache,
+    })
 }
 
 /// ACE's cache root: `<user_cache_dir>/ace`.
@@ -134,7 +141,10 @@ mod tests {
         std::fs::create_dir_all(cache_root.join("imports")).unwrap();
 
         let stray = detect_stray_cache_dirs(cache_root);
-        assert!(stray.is_empty(), "clean cache should report no stray; got {stray:?}");
+        assert!(
+            stray.is_empty(),
+            "clean cache should report no stray; got {stray:?}"
+        );
     }
 
     #[test]
@@ -143,6 +153,9 @@ mod tests {
         let missing = tmp.path().join("does-not-exist");
 
         let stray = detect_stray_cache_dirs(&missing);
-        assert!(stray.is_empty(), "missing cache root should report no stray");
+        assert!(
+            stray.is_empty(),
+            "missing cache root should report no stray"
+        );
     }
 }

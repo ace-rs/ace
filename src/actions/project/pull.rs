@@ -2,8 +2,8 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::time::Duration;
 
-use crate::actions::project::PrepareError;
 use crate::ace::Ace;
+use crate::actions::project::PrepareError;
 use crate::config;
 
 pub use crate::skills::{ChangeKind, SkillChange};
@@ -47,7 +47,10 @@ impl PullOutcome {
                 ace.hint("Skills may be outdated until changes are proposed.");
                 ace.hint("Ask your AI assistant to propose the changes — it knows how.");
             }
-            PullOutcome::Dirty { on_main: false, branch } => {
+            PullOutcome::Dirty {
+                on_main: false,
+                branch,
+            } => {
                 ace.warn(&format!(
                     "school is on branch {branch} with uncommitted changes — updates blocked"
                 ));
@@ -165,11 +168,7 @@ impl Pull<'_> {
     }
 }
 
-fn diff_skill_changes(
-    git: &crate::git::Git<'_>,
-    old: &str,
-    new: &str,
-) -> Vec<SkillChange> {
+fn diff_skill_changes(git: &crate::git::Git<'_>, old: &str, new: &str) -> Vec<SkillChange> {
     if old == new {
         return Vec::new();
     }

@@ -1,10 +1,10 @@
 use std::path::Path;
 
 use crate::ace::Ace;
+use crate::actions::project::PrepareError;
 use crate::config;
 use crate::config::index_toml;
 use crate::git;
-use crate::actions::project::PrepareError;
 
 /// Install or reinstall school: git clone + index update. Also used as the
 /// self-heal path when a prior clone is missing or partial.
@@ -32,10 +32,10 @@ impl Clone<'_> {
                 .map_err(|e| PrepareError::Clone(format!("remove stale clone dir: {e}")))?;
         }
 
-        let raw_repo = self.specifier.split_once(':').map_or(
-            self.specifier,
-            |(owner_repo, _)| owner_repo,
-        );
+        let raw_repo = self
+            .specifier
+            .split_once(':')
+            .map_or(self.specifier, |(owner_repo, _)| owner_repo);
         let repo = git::normalize_github_source(raw_repo);
         let url = format!("https://github.com/{repo}.git");
 
@@ -58,8 +58,8 @@ impl Clone<'_> {
 }
 
 fn update_index(source: &str) -> Result<(), PrepareError> {
-    let index_path = index_toml::index_path()
-        .map_err(|e| PrepareError::Clone(format!("index path: {e}")))?;
+    let index_path =
+        index_toml::index_path().map_err(|e| PrepareError::Clone(format!("index path: {e}")))?;
     let legacy_path = index_toml::legacy_index_path()
         .map_err(|e| PrepareError::Clone(format!("legacy index path: {e}")))?;
     let mut index = index_toml::load_or_migrate(&index_path, &legacy_path)

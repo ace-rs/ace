@@ -49,7 +49,11 @@ impl BackendVars {
         let backend_dir = if ctx.project_dir.is_empty() {
             String::new()
         } else {
-            format!("{}/{}", ctx.project_dir.trim_end_matches('/'), kind.backend_dir())
+            format!(
+                "{}/{}",
+                ctx.project_dir.trim_end_matches('/'),
+                kind.backend_dir()
+            )
         };
         Self {
             school_dir: ctx.school_dir.clone(),
@@ -74,7 +78,10 @@ impl BackendVars {
 /// `BackendError::Unknown`.
 pub fn bind(resolved: &Resolved, ctx: &TemplateCtx) -> Result<Backend, BackendError> {
     let registry = build_registry(
-        resolved.backend_decls.iter().map(|s: &Sourced<BackendDecl>| &s.value),
+        resolved
+            .backend_decls
+            .iter()
+            .map(|s: &Sourced<BackendDecl>| &s.value),
         ctx,
     )?;
     let name = &resolved.backend_name.value;
@@ -107,7 +114,11 @@ where
 /// - Else (new name): resolve kind via explicit field → name match →
 ///   `cmd[0]` basename match → error. Resolve cmd via explicit `cmd` else
 ///   `[kind.name()]`. Insert.
-fn merge_decl(registry: &mut Registry, decl: &BackendDecl, ctx: &TemplateCtx) -> Result<(), BackendError> {
+fn merge_decl(
+    registry: &mut Registry,
+    decl: &BackendDecl,
+    ctx: &TemplateCtx,
+) -> Result<(), BackendError> {
     if let Some(existing) = registry.get_mut(&decl.name) {
         if let Some(declared) = &decl.kind
             && Kind::from_name(declared) != Some(existing.kind)
@@ -135,7 +146,11 @@ fn merge_decl(registry: &mut Registry, decl: &BackendDecl, ctx: &TemplateCtx) ->
     } else {
         decl.cmd.iter().map(|s| render(s, &vars)).collect()
     };
-    let env = decl.env.iter().map(|(k, v)| (k.clone(), render(v, &vars))).collect();
+    let env = decl
+        .env
+        .iter()
+        .map(|(k, v)| (k.clone(), render(v, &vars)))
+        .collect();
     registry.insert(Backend {
         name: decl.name.clone(),
         kind,
@@ -231,7 +246,11 @@ mod tests {
         d.kind = Some("codex".into());
         let err = merge_decl(&mut reg, &d, &TemplateCtx::empty()).expect_err("should reject");
         match err {
-            BackendError::KindMismatch { name, declared, actual } => {
+            BackendError::KindMismatch {
+                name,
+                declared,
+                actual,
+            } => {
                 assert_eq!(name, "claude");
                 assert_eq!(declared, "codex");
                 assert_eq!(actual, "claude");
@@ -245,13 +264,17 @@ mod tests {
         let mut reg = Registry::with_builtins();
         let mut d = decl("bailer");
         d.kind = Some("claude".into());
-        d.env.insert("ANTHROPIC_BASE_URL".into(), "https://x".into());
+        d.env
+            .insert("ANTHROPIC_BASE_URL".into(), "https://x".into());
         merge_decl(&mut reg, &d, &TemplateCtx::empty()).expect("merge");
 
         let bailer = reg.lookup("bailer").expect("bailer registered");
         assert_eq!(bailer.kind, Kind::Claude);
         assert_eq!(bailer.cmd, vec!["claude"]); // defaulted from kind
-        assert_eq!(bailer.env.get("ANTHROPIC_BASE_URL").map(String::as_str), Some("https://x"));
+        assert_eq!(
+            bailer.env.get("ANTHROPIC_BASE_URL").map(String::as_str),
+            Some("https://x")
+        );
     }
 
     #[test]
@@ -302,7 +325,10 @@ mod tests {
         merge_decl(&mut reg, &d, &ctx("/sch", "/proj", "/home/u")).expect("merge");
 
         let b = reg.lookup("codex-ace").expect("registered");
-        assert_eq!(b.cmd, vec!["/sch/skills/ace-connect/scripts/codex.sh".to_string()]);
+        assert_eq!(
+            b.cmd,
+            vec!["/sch/skills/ace-connect/scripts/codex.sh".to_string()]
+        );
     }
 
     #[test]
@@ -343,7 +369,14 @@ mod tests {
         d.env.insert("CFG".into(), "{{ school_dir }}/conf".into());
         merge_decl(&mut reg, &d, &ctx("/sch", "/proj", "/home/u")).expect("merge");
 
-        assert_eq!(reg.lookup("custom").unwrap().env.get("CFG").map(String::as_str), Some("/sch/conf"));
+        assert_eq!(
+            reg.lookup("custom")
+                .unwrap()
+                .env
+                .get("CFG")
+                .map(String::as_str),
+            Some("/sch/conf")
+        );
     }
 
     #[test]
@@ -354,7 +387,10 @@ mod tests {
         d.cmd = vec!["$HOME/foo".into(), "~/bar".into()];
         merge_decl(&mut reg, &d, &ctx("/sch", "/proj", "/home/u")).expect("merge");
 
-        assert_eq!(reg.lookup("custom").unwrap().cmd, vec!["$HOME/foo".to_string(), "~/bar".to_string()]);
+        assert_eq!(
+            reg.lookup("custom").unwrap().cmd,
+            vec!["$HOME/foo".to_string(), "~/bar".to_string()]
+        );
     }
 
     #[test]
@@ -365,7 +401,10 @@ mod tests {
         d.cmd = vec!["/usr/local/bin/claude".into()];
         merge_decl(&mut reg, &d, &ctx("/sch", "/proj", "/home/u")).expect("merge");
 
-        assert_eq!(reg.lookup("custom").unwrap().cmd, vec!["/usr/local/bin/claude".to_string()]);
+        assert_eq!(
+            reg.lookup("custom").unwrap().cmd,
+            vec!["/usr/local/bin/claude".to_string()]
+        );
     }
 
     // -- bind() integration tests: covers merge → registry → name lookup as a
@@ -379,7 +418,10 @@ mod tests {
     fn ace_with(school: &str, env: &[(&str, &str)]) -> AceToml {
         AceToml {
             school: school.to_string(),
-            env: env.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+            env: env
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
             ..AceToml::default()
         }
     }
@@ -394,7 +436,10 @@ mod tests {
     }
 
     fn bind_default(t: &Tree) -> Result<Backend, BackendError> {
-        bind(&resolver::merge(t, &AceToml::default()), &TemplateCtx::empty())
+        bind(
+            &resolver::merge(t, &AceToml::default()),
+            &TemplateCtx::empty(),
+        )
     }
 
     #[test]
@@ -424,7 +469,10 @@ mod tests {
 
         assert_eq!(backend.kind, Kind::Claude);
         assert_eq!(backend.name, "claude");
-        assert_eq!(backend.env.get("API_BASE").map(String::as_str), Some("https://example.com"));
+        assert_eq!(
+            backend.env.get("API_BASE").map(String::as_str),
+            Some("https://example.com")
+        );
     }
 
     #[test]
@@ -446,7 +494,10 @@ mod tests {
         assert_eq!(backend.name, "bailer");
         assert_eq!(backend.kind, Kind::Claude);
         assert_eq!(backend.cmd, vec!["claude"]);
-        assert_eq!(backend.env.get("ANTHROPIC_BASE_URL").map(String::as_str), Some("https://x"));
+        assert_eq!(
+            backend.env.get("ANTHROPIC_BASE_URL").map(String::as_str),
+            Some("https://x")
+        );
     }
 
     #[test]

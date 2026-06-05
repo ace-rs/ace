@@ -84,7 +84,10 @@ description: >
 # Body";
         let meta = parse(content).expect("should parse block scalar frontmatter");
         assert_eq!(meta.name, "multi-line");
-        assert_eq!(meta.description, "First line of description second line of description.");
+        assert_eq!(
+            meta.description,
+            "First line of description second line of description."
+        );
     }
 
     #[test]

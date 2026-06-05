@@ -12,7 +12,8 @@ pub(super) fn is_ready() -> bool {
 }
 
 pub(super) fn exec_session(launch: &[String], req: SessionRequest) -> Result<(), std::io::Error> {
-    let (program, prefix) = launch.split_first()
+    let (program, prefix) = launch
+        .split_first()
         .map(|(p, rest)| (p.as_str(), rest))
         .unwrap_or(("claude", &[][..]));
     let mut cmd = Command::new(program);
@@ -28,8 +29,12 @@ pub(super) fn exec_session(launch: &[String], req: SessionRequest) -> Result<(),
     Err(crate::platform::exec_replace(cmd))
 }
 
-pub(super) fn exec_one_shot(launch: &[String], req: OneShotRequest) -> Result<Output, std::io::Error> {
-    let (program, prefix) = launch.split_first()
+pub(super) fn exec_one_shot(
+    launch: &[String],
+    req: OneShotRequest,
+) -> Result<Output, std::io::Error> {
+    let (program, prefix) = launch
+        .split_first()
         .map(|(p, rest)| (p.as_str(), rest))
         .unwrap_or(("claude", &[][..]));
     let mut cmd = Command::new(program);
@@ -129,7 +134,10 @@ pub(super) fn mcp_remove(name: &str, _project_dir: &std::path::Path) -> Result<(
     Ok(())
 }
 
-pub(super) fn mcp_check(names: &[String], _project_dir: &std::path::Path) -> Result<Vec<McpStatus>, String> {
+pub(super) fn mcp_check(
+    names: &[String],
+    _project_dir: &std::path::Path,
+) -> Result<Vec<McpStatus>, String> {
     let prompt = format!(
         "You have MCP servers registered. For each of the following, call any tool to verify \
          it responds. Reply with only a JSON object matching this shape: \
@@ -139,9 +147,12 @@ pub(super) fn mcp_check(names: &[String], _project_dir: &std::path::Path) -> Res
 
     let output = Command::new("claude")
         .args([
-            "-p", &prompt,
-            "--output-format", "json",
-            "--json-schema", CHECK_SCHEMA,
+            "-p",
+            &prompt,
+            "--output-format",
+            "json",
+            "--json-schema",
+            CHECK_SCHEMA,
         ])
         .output()
         .map_err(|e| format!("claude: {e}"))?;
@@ -203,12 +214,17 @@ const CHECK_SCHEMA: &str = r#"{"type":"object","properties":{"statuses":{"type":
 
 /// Parse Claude's `{"type":"result","result":"..."}` envelope.
 fn parse_check_output(output: &str) -> Result<Vec<McpStatus>, String> {
-    let parsed: serde_json::Value = serde_json::from_str(output)
-        .map_err(|_| "failed to parse claude output".to_string())?;
+    let parsed: serde_json::Value =
+        serde_json::from_str(output).map_err(|_| "failed to parse claude output".to_string())?;
 
     // Error results — extract the message
-    if parsed.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false) {
-        let msg = parsed.get("result")
+    if parsed
+        .get("is_error")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
+        let msg = parsed
+            .get("result")
             .and_then(|v| v.as_str())
             .unwrap_or("unknown error");
         return Err(format!("claude: {msg}"));
@@ -311,7 +327,10 @@ mod tests {
         }"#;
         let names = parse_mcp_names(json);
         assert_eq!(names.len(), 2);
-        assert!(names.contains("linear-server"), "should contain linear-server");
+        assert!(
+            names.contains("linear-server"),
+            "should contain linear-server"
+        );
         assert!(names.contains("github"), "should contain github");
     }
 
@@ -345,7 +364,16 @@ mod tests {
         let args = build_mcp_add_args(&entry);
         assert_eq!(
             args,
-            vec!["mcp", "add", "-t", "http", "-s", "user", "linear", "https://mcp.linear.app/mcp"]
+            vec![
+                "mcp",
+                "add",
+                "-t",
+                "http",
+                "-s",
+                "user",
+                "linear",
+                "https://mcp.linear.app/mcp"
+            ]
         );
     }
 
@@ -365,9 +393,16 @@ mod tests {
         assert_eq!(
             args,
             vec![
-                "mcp", "add", "-t", "http", "-s", "user",
-                "sentry", "https://mcp.sentry.dev/sse",
-                "-H", "Authorization: Bearer tok",
+                "mcp",
+                "add",
+                "-t",
+                "http",
+                "-s",
+                "user",
+                "sentry",
+                "https://mcp.sentry.dev/sse",
+                "-H",
+                "Authorization: Bearer tok",
             ]
         );
     }
@@ -387,7 +422,8 @@ mod tests {
 
     #[test]
     fn parse_check_statuses_object_in_string() {
-        let output = r#"{"type":"result","result":"{\"statuses\":[{\"name\":\"linear\",\"ok\":true}]}"}"#;
+        let output =
+            r#"{"type":"result","result":"{\"statuses\":[{\"name\":\"linear\",\"ok\":true}]}"}"#;
         let result = parse_check_output(output).expect("should parse");
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].name, "linear");
@@ -431,9 +467,13 @@ mod tests {
 
     #[test]
     fn parse_check_error_result_returns_err() {
-        let output = r#"{"type":"result","subtype":"failure","is_error":true,"result":"Exec failed"}"#;
+        let output =
+            r#"{"type":"result","subtype":"failure","is_error":true,"result":"Exec failed"}"#;
         let err = parse_check_output(output).expect_err("should be error");
-        assert!(err.contains("Exec failed"), "error should contain the message");
+        assert!(
+            err.contains("Exec failed"),
+            "error should contain the message"
+        );
     }
 
     // -- build_mcp_remove_args --
@@ -460,7 +500,10 @@ mod tests {
         let args = build_mcp_add_args(&entry);
         // Positional args must come before -H flags (variadic flag consumes rest)
         let name_pos = args.iter().position(|a| a == "test").unwrap();
-        let url_pos = args.iter().position(|a| a == "https://example.com/mcp").unwrap();
+        let url_pos = args
+            .iter()
+            .position(|a| a == "https://example.com/mcp")
+            .unwrap();
         let first_h = args.iter().position(|a| a == "-H").unwrap();
 
         assert!(name_pos < first_h, "name must precede -H flags");

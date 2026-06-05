@@ -90,7 +90,11 @@ fn replace_block(content: &str, block: &str) -> String {
     };
     let end = search_from + end_marker + MARKER_END.len();
 
-    let end = if content[end..].starts_with('\n') { end + 1 } else { end };
+    let end = if content[end..].starts_with('\n') {
+        end + 1
+    } else {
+        end
+    };
 
     let mut result = content[..start].to_string();
     result.push_str(block);
@@ -131,7 +135,10 @@ mod tests {
     fn block_omits_static_prelude_and_dropped_patterns() {
         let block = build_block();
         for line in STATIC_PRELUDE {
-            assert!(!block.contains(line), "block should not contain prelude line {line}");
+            assert!(
+                !block.contains(line),
+                "block should not contain prelude line {line}"
+            );
         }
         assert!(!block.contains(".env"));
         assert!(!block.contains("__pycache__"));
@@ -145,7 +152,10 @@ mod tests {
         for line in STATIC_PRELUDE {
             let prelude_pos = result.find(line).expect("prelude line present");
             let block_pos = result.find(MARKER_START).expect("block present");
-            assert!(prelude_pos < block_pos, "{line} should precede managed block");
+            assert!(
+                prelude_pos < block_pos,
+                "{line} should precede managed block"
+            );
         }
     }
 
@@ -154,7 +164,10 @@ mod tests {
         let block = build_block();
         let result = append_block("node_modules/\n", &block);
         for line in STATIC_PRELUDE {
-            assert!(!result.contains(line), "append must not inject prelude {line}");
+            assert!(
+                !result.contains(line),
+                "append must not inject prelude {line}"
+            );
         }
         assert!(result.starts_with("node_modules/"));
         assert!(result.contains(MARKER_START));
@@ -169,9 +182,7 @@ mod tests {
 
     #[test]
     fn replace_existing_block_preserves_user_content() {
-        let original = format!(
-            "node_modules/\n{MARKER_START}\n.old/skills/\n{MARKER_END}\n.env\n"
-        );
+        let original = format!("node_modules/\n{MARKER_START}\n.old/skills/\n{MARKER_END}\n.env\n");
         let block = build_block();
         let result = replace_block(&original, &block);
 
@@ -183,9 +194,7 @@ mod tests {
 
     #[test]
     fn replace_preserves_surrounding_content() {
-        let original = format!(
-            "before\n{MARKER_START}\nold stuff\n{MARKER_END}\nafter\n"
-        );
+        let original = format!("before\n{MARKER_START}\nold stuff\n{MARKER_END}\nafter\n");
         let block = build_block();
         let result = replace_block(&original, &block);
 
@@ -196,18 +205,28 @@ mod tests {
     #[test]
     fn block_dirs_alphabetically_sorted() {
         let block = build_block();
-        let agents_pos = block.find(".agents/skills").expect(".agents/skills present");
-        let claude_pos = block.find(".claude/skills").expect(".claude/skills present");
+        let agents_pos = block
+            .find(".agents/skills")
+            .expect(".agents/skills present");
+        let claude_pos = block
+            .find(".claude/skills")
+            .expect(".claude/skills present");
         assert!(agents_pos < claude_pos);
     }
 
     #[test]
     fn block_folders_alphabetically_sorted_within_dir() {
         let block = build_block();
-        let agents = block.find(".claude/agents").expect(".claude/agents present");
-        let commands = block.find(".claude/commands").expect(".claude/commands present");
+        let agents = block
+            .find(".claude/agents")
+            .expect(".claude/agents present");
+        let commands = block
+            .find(".claude/commands")
+            .expect(".claude/commands present");
         let rules = block.find(".claude/rules").expect(".claude/rules present");
-        let skills = block.find(".claude/skills").expect(".claude/skills present");
+        let skills = block
+            .find(".claude/skills")
+            .expect(".claude/skills present");
         assert!(agents < commands);
         assert!(commands < rules);
         assert!(rules < skills);

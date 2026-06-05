@@ -186,10 +186,22 @@ mod tests {
     #[test]
     fn tally_change_kinds_independently() {
         let changes = [
-            SkillChange { name: "a".into(), kind: ChangeKind::Added },
-            SkillChange { name: "b".into(), kind: ChangeKind::Added },
-            SkillChange { name: "c".into(), kind: ChangeKind::Removed },
-            SkillChange { name: "d".into(), kind: ChangeKind::Modified },
+            SkillChange {
+                name: "a".into(),
+                kind: ChangeKind::Added,
+            },
+            SkillChange {
+                name: "b".into(),
+                kind: ChangeKind::Added,
+            },
+            SkillChange {
+                name: "c".into(),
+                kind: ChangeKind::Removed,
+            },
+            SkillChange {
+                name: "d".into(),
+                kind: ChangeKind::Modified,
+            },
         ];
         assert_eq!(tally_changes(&changes), (2, 1));
     }

@@ -1,8 +1,8 @@
 use crate::ace::{Ace, OutputMode};
+use crate::actions::project::{Prepare, PrepareResult, register_missing_mcp};
 use crate::backend::{Kind, OneShotRequest, PromptInput, SessionRequest};
 use crate::config::ace_toml::Trust;
-use crate::actions::project::{register_missing_mcp, Prepare, PrepareResult};
-use crate::templates::session::{build_session_prompt, SessionPromptInput};
+use crate::templates::session::{SessionPromptInput, build_session_prompt};
 
 use super::CmdError;
 
@@ -26,7 +26,10 @@ fn run_inner(
 
     let specifier = {
         let r = ace.require_resolved()?;
-        r.school_specifier.value.clone().ok_or(crate::school::SchoolError::NoSpecifier)?
+        r.school_specifier
+            .value
+            .clone()
+            .ok_or(crate::school::SchoolError::NoSpecifier)?
     };
 
     let prepare_result = prepare_school(ace, &specifier)?;
@@ -40,7 +43,9 @@ fn run_inner(
     let school_clone = ace.require_school()?.clone_path.clone();
 
     let (school_name, school_session_prompt) = {
-        let school = ace.school()?.ok_or(crate::school::SchoolError::NoSpecifier)?;
+        let school = ace
+            .school()?
+            .ok_or(crate::school::SchoolError::NoSpecifier)?;
         (school.name.clone(), school.session_prompt.clone())
     };
 
@@ -53,7 +58,12 @@ fn run_inner(
             .iter()
             .map(|(k, v)| (k.clone(), v.value.clone()))
             .collect();
-        (r.session_prompt.value.clone(), r.trust.value, r.resume.value, env)
+        (
+            r.session_prompt.value.clone(),
+            r.trust.value,
+            r.resume.value,
+            env,
+        )
     };
 
     let excluded_skills = ace.excluded_skills();
@@ -118,10 +128,7 @@ fn run_inner(
 ///
 /// Called by both bare `ace` and `ace setup`. Reloads state after linking so
 /// school.toml is available for MCP registration and downstream callers.
-pub(super) fn prepare_school(
-    ace: &mut Ace,
-    specifier: &str,
-) -> Result<PrepareResult, CmdError> {
+pub(super) fn prepare_school(ace: &mut Ace, specifier: &str) -> Result<PrepareResult, CmdError> {
     let project_dir = ace.project_dir().to_path_buf();
     let preliminary_backend = ace.backend()?.clone();
 
@@ -181,14 +188,14 @@ fn recover_backend(ace: &mut Ace, attempted: &str) -> Result<(), CmdError> {
 
 fn list_known_backend_names(ace: &Ace) -> Result<Vec<String>, CmdError> {
     let tree = ace.require_tree()?;
-    let mut names: Vec<String> = Kind::ALL
-        .iter()
-        .map(|k| k.name().to_string())
-        .collect();
+    let mut names: Vec<String> = Kind::ALL.iter().map(|k| k.name().to_string()).collect();
     if let Some(st) = &tree.school {
         names.extend(st.backends.iter().map(|d| d.name.clone()));
     }
-    for layer in [&tree.user, &tree.project, &tree.local].iter().filter_map(|o| o.as_ref()) {
+    for layer in [&tree.user, &tree.project, &tree.local]
+        .iter()
+        .filter_map(|o| o.as_ref())
+    {
         names.extend(layer.backends.iter().map(|d| d.name.clone()));
     }
     names.sort();

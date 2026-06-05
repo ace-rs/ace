@@ -1,12 +1,12 @@
 mod config;
 mod diff;
 mod explain;
-mod link;
-mod maverick;
 mod fmt;
 mod import;
 mod learn;
+mod link;
 mod main;
+mod maverick;
 mod mcp;
 mod paths;
 mod pull;
@@ -21,13 +21,13 @@ use std::collections::HashMap;
 use clap::{Parser, Subcommand};
 
 use crate::ace::{Ace, IoError};
+use crate::actions::project::PrepareError;
+use crate::actions::project::RegisterMcpError;
+use crate::actions::project::{LearnError, SetupError};
+use crate::actions::school::InitError;
+use crate::actions::school::{AddImportError, PullImportsError};
 use crate::config::ace_toml::{AceToml, Trust};
 use crate::config::{ConfigError, Scope};
-use crate::actions::school::{AddImportError, PullImportsError};
-use crate::actions::project::RegisterMcpError;
-use crate::actions::project::PrepareError;
-use crate::actions::school::InitError;
-use crate::actions::project::{LearnError, SetupError};
 use crate::git::GitError;
 
 #[derive(Parser)]
@@ -276,7 +276,11 @@ pub(crate) enum CmdError {
     /// construction (`usage`/`unavailable`/`failed`) — there is no
     /// un-classified catch-all to reach for.
     #[error("{message}")]
-    Adhoc { message: String, hints: Vec<String>, code: ExitCode },
+    Adhoc {
+        message: String,
+        hints: Vec<String>,
+        code: ExitCode,
+    },
 }
 
 impl CmdError {
@@ -296,7 +300,11 @@ impl CmdError {
     }
 
     fn adhoc(message: impl Into<String>, code: ExitCode) -> Self {
-        Self::Adhoc { message: message.into(), hints: Vec::new(), code }
+        Self::Adhoc {
+            message: message.into(),
+            hints: Vec::new(),
+            code,
+        }
     }
 
     /// Attach a single recovery hint, preserving the error's class.
@@ -307,9 +315,17 @@ impl CmdError {
     /// Attach recovery hints, rendered in order, preserving the error's class.
     pub fn with_hints(self, extra: Vec<String>) -> Self {
         match self {
-            Self::Adhoc { message, mut hints, code } => {
+            Self::Adhoc {
+                message,
+                mut hints,
+                code,
+            } => {
                 hints.extend(extra);
-                Self::Adhoc { message, hints, code }
+                Self::Adhoc {
+                    message,
+                    hints,
+                    code,
+                }
             }
             // Hints only attach to ad-hoc errors; typed variants carry their own.
             other => other,
@@ -497,16 +513,31 @@ pub fn run(ace: &mut Ace, cli: Cli) {
 
     match command {
         Command::Setup { specifier } => setup::run(ace, specifier.as_deref()),
-        Command::Import { source, skill, all, include_experimental, include_system } => {
-            import::run(ace, &source, skill.as_deref(), all, include_experimental, include_system)
-        }
+        Command::Import {
+            source,
+            skill,
+            all,
+            include_experimental,
+            include_system,
+        } => import::run(
+            ace,
+            &source,
+            skill.as_deref(),
+            all,
+            include_experimental,
+            include_system,
+        ),
         Command::Diff => diff::run(ace),
         Command::Fmt | Command::Format => fmt::run(ace),
         Command::Config { command } => config::run(ace, command),
         Command::Paths { key } => paths::run(ace, key.as_deref()),
         Command::Mcp { command } => mcp::run(ace, command),
         Command::School { command } => school::run(ace, command),
-        Command::Skills { command, all, names } => skills::run(ace, command, all, names),
+        Command::Skills {
+            command,
+            all,
+            names,
+        } => skills::run(ace, command, all, names),
         Command::Explain { name } => explain::run(ace, &name),
         Command::Pull => pull::run(ace),
         Command::Link => link::run(ace),
@@ -514,10 +545,17 @@ pub fn run(ace: &mut Ace, cli: Cli) {
         Command::New { backend_args } => main::run(ace, backend_args, false, cli.one_shot_prompt),
         Command::Auto => yolo::run(ace, crate::config::ace_toml::Trust::Auto),
         Command::Yolo => yolo::run(ace, crate::config::ace_toml::Trust::Yolo),
-        Command::Upgrade { silent, force, version } => upgrade::run(ace, silent, force, version),
+        Command::Upgrade {
+            silent,
+            force,
+            version,
+        } => upgrade::run(ace, silent, force, version),
         Command::Maverick => maverick::run(ace),
         Command::Version => {
-            println!("ace {}", concat!(env!("CARGO_PKG_VERSION"), " (", env!("ACE_GIT_HASH"), ")"));
+            println!(
+                "ace {}",
+                concat!(env!("CARGO_PKG_VERSION"), " (", env!("ACE_GIT_HASH"), ")")
+            );
         }
     }
 }
@@ -581,7 +619,9 @@ fn resolve_backend_override(cli: &Cli) -> Result<Option<String>, CmdError> {
     match selected.as_slice() {
         [] => Ok(None),
         [backend] => Ok(Some(backend.clone())),
-        _ => Err(CmdError::usage("cannot combine multiple backend override flags")),
+        _ => Err(CmdError::usage(
+            "cannot combine multiple backend override flags",
+        )),
     }
 }
 
@@ -656,7 +696,10 @@ mod tests {
     #[test]
     fn cmd_error_hints_school_delegates_to_leaf() {
         let err = CmdError::School(crate::school::SchoolError::NoSpecifier);
-        assert_eq!(err.hints(), vec!["run `ace setup` to choose a school".to_string()]);
+        assert_eq!(
+            err.hints(),
+            vec!["run `ace setup` to choose a school".to_string()]
+        );
     }
 
     #[test]
@@ -675,11 +718,18 @@ mod tests {
 
     #[test]
     fn cmd_error_with_hints_preserves_order() {
-        let err = CmdError::failed("boom")
-            .with_hints(vec!["first".to_string(), "second".to_string(), "third".to_string()]);
+        let err = CmdError::failed("boom").with_hints(vec![
+            "first".to_string(),
+            "second".to_string(),
+            "third".to_string(),
+        ]);
         assert_eq!(
             err.hints(),
-            vec!["first".to_string(), "second".to_string(), "third".to_string()]
+            vec![
+                "first".to_string(),
+                "second".to_string(),
+                "third".to_string()
+            ]
         );
     }
 
@@ -692,13 +742,19 @@ mod tests {
     // -- exit-code contract (docs/decisions/2026-05-30-exit-codes.md) --
 
     fn git_err() -> GitError {
-        GitError::Exec { cmd: "status".into(), source: std::io::Error::other("boom") }
+        GitError::Exec {
+            cmd: "status".into(),
+            source: std::io::Error::other("boom"),
+        }
     }
 
     #[test]
     fn adhoc_constructors_carry_their_class() {
         assert_eq!(CmdError::usage("x").exit_code(), ExitCode::Usage);
-        assert_eq!(CmdError::unavailable("x").exit_code(), ExitCode::Unavailable);
+        assert_eq!(
+            CmdError::unavailable("x").exit_code(),
+            ExitCode::Unavailable
+        );
         assert_eq!(CmdError::failed("x").exit_code(), ExitCode::Operational);
     }
 
@@ -710,21 +766,36 @@ mod tests {
 
     #[test]
     fn cancellation_maps_to_130() {
-        assert_eq!(CmdError::Prompt(IoError::Cancelled).exit_code(), ExitCode::Cancelled);
+        assert_eq!(
+            CmdError::Prompt(IoError::Cancelled).exit_code(),
+            ExitCode::Cancelled
+        );
         assert_eq!(ExitCode::Cancelled.code(), 130);
     }
 
     #[test]
     fn preconditions_map_to_unavailable() {
         use crate::school::SchoolError;
-        assert_eq!(CmdError::School(SchoolError::NoSpecifier).exit_code(), ExitCode::Unavailable);
-        assert_eq!(CmdError::School(SchoolError::NotInitialized).exit_code(), ExitCode::Unavailable);
+        assert_eq!(
+            CmdError::School(SchoolError::NoSpecifier).exit_code(),
+            ExitCode::Unavailable
+        );
+        assert_eq!(
+            CmdError::School(SchoolError::NotInitialized).exit_code(),
+            ExitCode::Unavailable
+        );
         assert_eq!(
             CmdError::Backend(crate::backend::BackendError::Unknown("x".into())).exit_code(),
             ExitCode::Unavailable
         );
-        assert_eq!(CmdError::Setup(SetupError::NotInGitRepo).exit_code(), ExitCode::Unavailable);
-        assert_eq!(CmdError::Config(ConfigError::NoConfig).exit_code(), ExitCode::Unavailable);
+        assert_eq!(
+            CmdError::Setup(SetupError::NotInGitRepo).exit_code(),
+            ExitCode::Unavailable
+        );
+        assert_eq!(
+            CmdError::Config(ConfigError::NoConfig).exit_code(),
+            ExitCode::Unavailable
+        );
     }
 
     #[test]
@@ -740,7 +811,10 @@ mod tests {
     fn authored_config_defects_map_to_usage() {
         // Decision 3: malformed config the user wrote is their Usage error.
         let parse = toml::from_str::<toml::Table>("x = ").expect_err("bad toml");
-        assert_eq!(CmdError::Config(ConfigError::Parse(parse)).exit_code(), ExitCode::Usage);
+        assert_eq!(
+            CmdError::Config(ConfigError::Parse(parse)).exit_code(),
+            ExitCode::Usage
+        );
         assert_eq!(
             CmdError::Config(ConfigError::TraversalInPath("..".into())).exit_code(),
             ExitCode::Usage

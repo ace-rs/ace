@@ -2,12 +2,12 @@ use std::path::Path;
 
 use crate::ace::Ace;
 use crate::backend::Backend;
+use crate::config::ConfigError;
 use crate::config::paths::ace_data_dir;
 use crate::config::school_paths;
-use crate::config::ConfigError;
 
 use super::link_skills;
-use super::{clone, Link, Pull, PullOutcome, SkillChange, UpdateGitignore};
+use super::{Link, Pull, PullOutcome, SkillChange, UpdateGitignore, clone};
 
 #[derive(Debug, thiserror::Error)]
 pub enum PrepareError {
@@ -99,9 +99,11 @@ impl Prepare<'_> {
         }
         link_skills::emit_warnings(ace, &prepared, &result);
 
-        UpdateGitignore { project_dir: self.project_dir }
-            .run(ace)
-            .map_err(PrepareError::Write)?;
+        UpdateGitignore {
+            project_dir: self.project_dir,
+        }
+        .run(ace)
+        .map_err(PrepareError::Write)?;
 
         Ok(PrepareResult {
             changes,

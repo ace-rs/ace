@@ -14,7 +14,8 @@ pub(super) fn is_ready() -> bool {
 }
 
 pub(super) fn exec_session(launch: &[String], req: SessionRequest) -> Result<(), std::io::Error> {
-    let (program, prefix) = launch.split_first()
+    let (program, prefix) = launch
+        .split_first()
         .map(|(p, rest)| (p.as_str(), rest))
         .unwrap_or(("codex", &[][..]));
     let mut cmd = Command::new(program);
@@ -30,8 +31,12 @@ pub(super) fn exec_session(launch: &[String], req: SessionRequest) -> Result<(),
     Err(crate::platform::exec_replace(cmd))
 }
 
-pub(super) fn exec_one_shot(launch: &[String], req: OneShotRequest) -> Result<Output, std::io::Error> {
-    let (program, prefix) = launch.split_first()
+pub(super) fn exec_one_shot(
+    launch: &[String],
+    req: OneShotRequest,
+) -> Result<Output, std::io::Error> {
+    let (program, prefix) = launch
+        .split_first()
         .map(|(p, rest)| (p.as_str(), rest))
         .unwrap_or(("codex", &[][..]));
     let mut cmd = Command::new(program);
@@ -95,8 +100,10 @@ fn build_one_shot_args(req: &OneShotRequest) -> Vec<String> {
 fn trust_args(trust: Trust) -> &'static [&'static str] {
     match trust {
         Trust::Auto => &[
-            "--ask-for-approval", "on-request",
-            "--sandbox", "danger-full-access",
+            "--ask-for-approval",
+            "on-request",
+            "--sandbox",
+            "danger-full-access",
         ],
         Trust::Yolo => &["--dangerously-bypass-approvals-and-sandbox"],
         Trust::Default => &[],
@@ -144,9 +151,7 @@ pub(super) fn mcp_remove(name: &str, _project_dir: &std::path::Path) -> Result<(
     ensure_home_dir()?;
 
     let args = build_mcp_remove_args(name);
-    let output = Command::new("codex")
-        .args(&args)
-        .output();
+    let output = Command::new("codex").args(&args).output();
 
     let output = match output {
         Ok(o) => o,
@@ -161,18 +166,19 @@ pub(super) fn mcp_remove(name: &str, _project_dir: &std::path::Path) -> Result<(
     Err(stderr.trim().to_string())
 }
 
-pub(super) fn mcp_check(names: &[String], _project_dir: &std::path::Path) -> Result<Vec<McpStatus>, String> {
+pub(super) fn mcp_check(
+    names: &[String],
+    _project_dir: &std::path::Path,
+) -> Result<Vec<McpStatus>, String> {
     ensure_home_dir()?;
 
     let prompt = build_check_prompt(names);
 
-    let schema = tempfile::NamedTempFile::new()
-        .map_err(|e| format!("schema temp file: {e}"))?;
-    std::fs::write(schema.path(), CHECK_SCHEMA)
-        .map_err(|e| format!("write schema: {e}"))?;
+    let schema = tempfile::NamedTempFile::new().map_err(|e| format!("schema temp file: {e}"))?;
+    std::fs::write(schema.path(), CHECK_SCHEMA).map_err(|e| format!("write schema: {e}"))?;
 
-    let output_file = tempfile::NamedTempFile::new()
-        .map_err(|e| format!("output temp file: {e}"))?;
+    let output_file =
+        tempfile::NamedTempFile::new().map_err(|e| format!("output temp file: {e}"))?;
 
     let output = Command::new("codex")
         .args([
@@ -212,8 +218,7 @@ fn config_path() -> Option<PathBuf> {
 }
 
 fn ensure_dir(path: &Path) -> Result<(), String> {
-    std::fs::create_dir_all(path)
-        .map_err(|e| format!("create {}: {e}", path.display()))
+    std::fs::create_dir_all(path).map_err(|e| format!("create {}: {e}", path.display()))
 }
 
 fn ensure_home_dir() -> Result<PathBuf, String> {
@@ -242,8 +247,7 @@ fn add_to_config(entry: &McpDecl) -> Result<(), String> {
     };
 
     let existing = if path.exists() {
-        std::fs::read_to_string(&path)
-            .map_err(|e| format!("read {}: {e}", path.display()))?
+        std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?
     } else {
         String::new()
     };
@@ -251,12 +255,11 @@ fn add_to_config(entry: &McpDecl) -> Result<(), String> {
     let output = merge_mcp_entry(&existing, entry)?;
 
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("create {}: {e}", parent.display()))?;
+        std::fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
     }
 
-    let mut file = std::fs::File::create(&path)
-        .map_err(|e| format!("create {}: {e}", path.display()))?;
+    let mut file =
+        std::fs::File::create(&path).map_err(|e| format!("create {}: {e}", path.display()))?;
     file.write_all(output.as_bytes())
         .map_err(|e| format!("write {}: {e}", path.display()))?;
 
@@ -278,11 +281,7 @@ fn build_mcp_add_args(entry: &McpDecl) -> Option<Vec<String>> {
 }
 
 fn build_mcp_remove_args(name: &str) -> Vec<String> {
-    vec![
-        "mcp".to_string(),
-        "remove".to_string(),
-        name.to_string(),
-    ]
+    vec!["mcp".to_string(), "remove".to_string(), name.to_string()]
 }
 
 fn build_check_prompt(names: &[String]) -> String {
@@ -320,8 +319,7 @@ fn remove_from_config(name: &str) -> Result<(), String> {
     };
 
     let existing = if path.exists() {
-        std::fs::read_to_string(&path)
-            .map_err(|e| format!("read {}: {e}", path.display()))?
+        std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?
     } else {
         return Ok(());
     };
@@ -329,12 +327,11 @@ fn remove_from_config(name: &str) -> Result<(), String> {
     let output = remove_mcp_entry(&existing, name)?;
 
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("create {}: {e}", parent.display()))?;
+        std::fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
     }
 
-    let mut file = std::fs::File::create(&path)
-        .map_err(|e| format!("create {}: {e}", path.display()))?;
+    let mut file =
+        std::fs::File::create(&path).map_err(|e| format!("create {}: {e}", path.display()))?;
     file.write_all(output.as_bytes())
         .map_err(|e| format!("write {}: {e}", path.display()))?;
 
@@ -353,10 +350,7 @@ fn parse_mcp_names(toml_text: &str) -> HashSet<String> {
 
     servers
         .iter()
-        .filter(|(_, cfg)| cfg
-            .get("enabled")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true))
+        .filter(|(_, cfg)| cfg.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true))
         .map(|(name, _)| name.clone())
         .collect()
 }
@@ -364,9 +358,7 @@ fn parse_mcp_names(toml_text: &str) -> HashSet<String> {
 fn merge_mcp_entry(existing_toml: &str, entry: &McpDecl) -> Result<String, String> {
     let mut root = parse_or_empty_table(existing_toml)?;
 
-    let root_table = root
-        .as_table_mut()
-        .ok_or("config root is not a table")?;
+    let root_table = root.as_table_mut().ok_or("config root is not a table")?;
 
     let mcp_servers = root_table
         .entry("mcp_servers".to_string())
@@ -479,7 +471,10 @@ mod tests {
     fn session_args_default_includes_developer_instructions() {
         let args = build_session_args(&req());
         assert!(args.iter().any(|a| a == "-c"));
-        assert!(args.iter().any(|a| a.starts_with("developer_instructions=")));
+        assert!(
+            args.iter()
+                .any(|a| a.starts_with("developer_instructions="))
+        );
     }
 
     #[test]
@@ -487,8 +482,12 @@ mod tests {
         let args = build_one_shot_args(&one_shot(PromptInput::Inline("hello".into())));
         assert_eq!(args.first().map(String::as_str), Some("exec"));
         assert_eq!(args.last().map(String::as_str), Some("hello"));
-        assert!(!args.iter().any(|a| a.starts_with("developer_instructions=")),
-            "one-shot must not carry session-only flags");
+        assert!(
+            !args
+                .iter()
+                .any(|a| a.starts_with("developer_instructions=")),
+            "one-shot must not carry session-only flags"
+        );
     }
 
     #[test]
@@ -514,7 +513,12 @@ mod tests {
     fn trust_auto_bypasses_sandbox_with_on_request_approval() {
         assert_eq!(
             trust_args(Trust::Auto),
-            &["--ask-for-approval", "on-request", "--sandbox", "danger-full-access"],
+            &[
+                "--ask-for-approval",
+                "on-request",
+                "--sandbox",
+                "danger-full-access"
+            ],
         );
     }
 
@@ -570,7 +574,13 @@ url = "https://api.githubcopilot.com/mcp/"
         let args = build_mcp_add_args(&entry).expect("should use CLI");
         assert_eq!(
             args,
-            vec!["mcp", "add", "linear", "--url", "https://mcp.linear.app/mcp"]
+            vec![
+                "mcp",
+                "add",
+                "linear",
+                "--url",
+                "https://mcp.linear.app/mcp"
+            ]
         );
     }
 
@@ -633,7 +643,10 @@ url = "https://api.githubcopilot.com/mcp/"
 
         let output = merge_mcp_entry("", &entry).expect("should merge");
         let parsed: toml::Value = toml::from_str(&output).expect("valid toml");
-        assert_eq!(parsed["mcp_servers"]["linear"]["url"].as_str(), Some("https://mcp.linear.app/mcp"));
+        assert_eq!(
+            parsed["mcp_servers"]["linear"]["url"].as_str(),
+            Some("https://mcp.linear.app/mcp")
+        );
     }
 
     #[test]

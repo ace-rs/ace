@@ -7,10 +7,7 @@ fn paths_lists_all_keys() {
     let env = TestEnv::new();
     env.setup_embedded("top-gun");
 
-    let output = env.ace()
-        .args(["paths"])
-        .output()
-        .expect("ace paths");
+    let output = env.ace().args(["paths"]).output().expect("ace paths");
 
     assert!(output.status.success(), "ace paths should succeed");
 
@@ -26,7 +23,8 @@ fn paths_single_key() {
     let env = TestEnv::new();
     env.setup_embedded("top-gun");
 
-    let output = env.ace()
+    let output = env
+        .ace()
         .args(["paths", "project"])
         .output()
         .expect("ace paths project");
@@ -34,7 +32,10 @@ fn paths_single_key() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(!stdout.contains('\t'), "single key should not have tab separator");
+    assert!(
+        !stdout.contains('\t'),
+        "single key should not have tab separator"
+    );
     assert!(!stdout.contains("cache"), "should not list other keys");
 }
 
@@ -43,7 +44,8 @@ fn paths_school_key() {
     let env = TestEnv::new();
     env.setup_embedded("top-gun");
 
-    let output = env.ace()
+    let output = env
+        .ace()
         .args(["paths", "school"])
         .output()
         .expect("ace paths school");

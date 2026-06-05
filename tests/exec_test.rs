@@ -12,7 +12,10 @@ fn exec_records_session() {
     let records = env.read_flaude_exec_records();
     assert_eq!(records.len(), 1, "should record one exec call");
     assert_eq!(records[0].trust, "default", "default trust level");
-    assert!(!records[0].session_prompt.is_empty(), "session prompt should be non-empty");
+    assert!(
+        !records[0].session_prompt.is_empty(),
+        "session prompt should be non-empty"
+    );
 }
 
 #[test]
@@ -93,7 +96,10 @@ fn exec_backcompat_yolo_true() {
 
     let records = env.read_flaude_exec_records();
     assert_eq!(records.len(), 1, "should record one exec call");
-    assert_eq!(records[0].trust, "yolo", "yolo=true backcompat should record trust=yolo");
+    assert_eq!(
+        records[0].trust, "yolo",
+        "yolo=true backcompat should record trust=yolo"
+    );
 }
 
 #[test]
@@ -144,7 +150,11 @@ fn exec_backend_flag_overrides_configured_backend() {
 
     let records = env.read_flaude_exec_records();
     assert_eq!(records.len(), 1);
-    assert_eq!(records[0].cmd, vec!["alt-binary"], "should use overridden backend cmd");
+    assert_eq!(
+        records[0].cmd,
+        vec!["alt-binary"],
+        "should use overridden backend cmd"
+    );
 }
 
 // -- resume flag --
@@ -171,7 +181,10 @@ fn exec_new_does_not_resume() {
     let records = env.read_flaude_exec_records();
     assert_eq!(records.len(), 1);
     assert!(!records[0].resume, "ace new should set resume=false");
-    assert!(!records[0].session_prompt.is_empty(), "new session should include prompt");
+    assert!(
+        !records[0].session_prompt.is_empty(),
+        "new session should include prompt"
+    );
 }
 
 // -- one-shot has no trust/resume --
@@ -191,7 +204,10 @@ fn one_shot_omits_trust_and_resume() {
     // FlaudeRecord defaults: trust="" and resume=false when keys are absent.
     assert_eq!(records[0].trust, "", "one-shot should not carry trust");
     assert!(!records[0].resume, "one-shot should not carry resume");
-    assert_eq!(records[0].session_prompt, "", "one-shot should not carry session_prompt");
+    assert_eq!(
+        records[0].session_prompt, "",
+        "one-shot should not carry session_prompt"
+    );
 }
 
 // -- env merging --
@@ -221,7 +237,10 @@ fn custom_backend_env_reaches_exec() {
 fn project_env_merges_into_exec() {
     let env = TestEnv::new();
     env.setup_flaude_school("name = \"test-school\"\n");
-    env.write_file("ace.toml", "school = \".\"\nbackend = \"flaude\"\n\n[env]\nFOO = \"bar\"\n");
+    env.write_file(
+        "ace.toml",
+        "school = \".\"\nbackend = \"flaude\"\n\n[env]\nFOO = \"bar\"\n",
+    );
 
     env.ace().assert().success();
 
@@ -242,7 +261,8 @@ fn one_shot_exit_code_propagates() {
     let env = TestEnv::new();
     env.setup_flaude_school("name = \"test-school\"\n");
 
-    let output = env.ace()
+    let output = env
+        .ace()
         .env("FLAUDE_ONE_SHOT_EXIT_CODE", "42")
         .args(["-p", "test"])
         .output()
@@ -257,7 +277,8 @@ fn one_shot_stdout_passthrough() {
     let env = TestEnv::new();
     env.setup_flaude_school("name = \"test-school\"\n");
 
-    let output = env.ace()
+    let output = env
+        .ace()
         .env("FLAUDE_ONE_SHOT_STDOUT", "hello from agent")
         .args(["-p", "test"])
         .output()
@@ -265,5 +286,8 @@ fn one_shot_stdout_passthrough() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("hello from agent"), "stdout should pass through, got: {stdout}");
+    assert!(
+        stdout.contains("hello from agent"),
+        "stdout should pass through, got: {stdout}"
+    );
 }

@@ -2,8 +2,8 @@ use std::path::Path;
 
 use crate::ace::Ace;
 use crate::backend::registry::BackendVars;
-use crate::config::school_toml;
 use crate::config::ConfigError;
+use crate::config::school_toml;
 use crate::templates::{self, UnknownPlaceholder};
 
 pub struct Validate<'a> {
@@ -49,7 +49,10 @@ impl Validate<'_> {
 
 fn format_issue(site: &str, u: &UnknownPlaceholder) -> String {
     match &u.suggestion {
-        Some(s) => format!("{site}: unknown placeholder '{}', did you mean '{}'?", u.name, s),
+        Some(s) => format!(
+            "{site}: unknown placeholder '{}', did you mean '{}'?",
+            u.name, s
+        ),
         None => format!("{site}: unknown placeholder '{}'", u.name),
     }
 }

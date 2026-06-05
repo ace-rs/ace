@@ -72,15 +72,19 @@ fn show(ace: &Ace) -> Result<(), CmdError> {
         env: env_flat,
         trust: r.trust.value,
         resume: if r.resume.value { None } else { Some(false) },
-        skip_update: if r.skip_update.value { Some(true) } else { None },
+        skip_update: if r.skip_update.value {
+            Some(true)
+        } else {
+            None
+        },
         ..AceToml::default()
     };
 
-    let output = toml::to_string_pretty(&effective)
-        .map_err(|e| CmdError::failed(e.to_string()))?;
+    let output = toml::to_string_pretty(&effective).map_err(|e| CmdError::failed(e.to_string()))?;
     print!("{output}");
 
-    let school_output = ace.school()?
+    let school_output = ace
+        .school()?
         .map(toml::to_string_pretty)
         .transpose()
         .map_err(|e| CmdError::failed(e.to_string()))?;
@@ -106,9 +110,11 @@ fn get(ace: &mut Ace, key: &str) -> Result<(), CmdError> {
         ConfigKey::Resume => r.resume.value.to_string(),
         ConfigKey::SkipUpdate => r.skip_update.value.to_string(),
         ConfigKey::SessionPrompt => r.session_prompt.value.clone(),
-        ConfigKey::Env(ref env_key) => {
-            r.env.get(env_key).map(|v| v.value.clone()).unwrap_or_default()
-        }
+        ConfigKey::Env(ref env_key) => r
+            .env
+            .get(env_key)
+            .map(|v| v.value.clone())
+            .unwrap_or_default(),
     };
 
     ace.data(&value);
@@ -120,7 +126,8 @@ fn set(ace: &mut Ace, key: &str, value: &str) -> Result<(), CmdError> {
     let config_key = ConfigKey::parse(key)
         .ok_or_else(|| CmdError::usage(format!("unknown config key: {key}")))?;
 
-    let scope = ace.scope_override()
+    let scope = ace
+        .scope_override()
         .unwrap_or_else(|| Scope::default_for_key(config_key.scope_key()));
 
     let paths = ace.require_paths()?;
@@ -179,8 +186,7 @@ fn set(ace: &mut Ace, key: &str, value: &str) -> Result<(), CmdError> {
 fn explain(ace: &Ace, key: Option<&str>) -> Result<(), CmdError> {
     let parsed = key
         .map(|k| {
-            ConfigKey::parse(k)
-                .ok_or_else(|| CmdError::usage(format!("unknown config key: {k}")))
+            ConfigKey::parse(k).ok_or_else(|| CmdError::usage(format!("unknown config key: {k}")))
         })
         .transpose()?;
 
@@ -197,7 +203,11 @@ fn explain(ace: &Ace, key: Option<&str>) -> Result<(), CmdError> {
 
     if want(&ConfigKey::School) {
         let layers = scalar_layers(&tree, &overrides, |c| {
-            if c.school.is_empty() { None } else { Some(c.school.clone()) }
+            if c.school.is_empty() {
+                None
+            } else {
+                Some(c.school.clone())
+            }
         });
         let winner_value = resolved.school_specifier.value.clone().unwrap_or_default();
         blocks.push(format_block(
@@ -227,7 +237,11 @@ fn explain(ace: &Ace, key: Option<&str>) -> Result<(), CmdError> {
 
     if want(&ConfigKey::Trust) {
         let layers = scalar_layers(&tree, &overrides, |c| {
-            if c.trust.is_default() && !c.yolo { None } else { Some(effective_trust(c).label().to_string()) }
+            if c.trust.is_default() && !c.yolo {
+                None
+            } else {
+                Some(effective_trust(c).label().to_string())
+            }
         });
         blocks.push(format_block(
             "trust",
@@ -364,20 +378,18 @@ fn format_block(
 
     let mut out = format!("{key} = {winner_value}  [{}]\n", winner_from.label());
     let school_row = (Source::School, school_contrib.map(str::to_string));
-    let rows = [
-        &layers[0],
-        &layers[1],
-        &layers[2],
-        &school_row,
-        &layers[3],
-    ];
+    let rows = [&layers[0], &layers[1], &layers[2], &school_row, &layers[3]];
     for (src, val) in rows {
         let label = format!("{}:", src.label());
         let value_str = match val {
             Some(v) => quoted(v),
             None => "(unset)".to_string(),
         };
-        let marker = if *src == winner_from { "  ← winner" } else { "" };
+        let marker = if *src == winner_from {
+            "  ← winner"
+        } else {
+            ""
+        };
         out.push_str(&format!("  {label:<10}{value_str}{marker}\n"));
     }
     out
@@ -389,7 +401,11 @@ fn quoted(s: &str) -> String {
 
 /// Honour the deprecated `yolo = true` field as `Trust::Yolo` for display.
 fn effective_trust(c: &AceToml) -> Trust {
-    if c.yolo && c.trust.is_default() { Trust::Yolo } else { c.trust }
+    if c.yolo && c.trust.is_default() {
+        Trust::Yolo
+    } else {
+        c.trust
+    }
 }
 
 /// Names that resolve as a backend selector: built-ins + any `[[backends]]`
@@ -402,7 +418,10 @@ fn known_backend_names(tree: &Tree) -> HashSet<String> {
             names.insert(d.name.clone());
         }
     }
-    for layer in [&tree.user, &tree.project, &tree.local].iter().filter_map(|o| o.as_ref()) {
+    for layer in [&tree.user, &tree.project, &tree.local]
+        .iter()
+        .filter_map(|o| o.as_ref())
+    {
         for d in &layer.backends {
             names.insert(d.name.clone());
         }

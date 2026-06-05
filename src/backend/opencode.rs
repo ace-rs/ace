@@ -6,7 +6,10 @@ use super::{McpDecl, McpStatus, OneShotRequest, SessionRequest};
 
 pub(super) fn is_ready() -> bool {
     let auth = auth_path();
-    auth.exists() && std::fs::metadata(&auth).map(|m| m.len() > 0).unwrap_or(false)
+    auth.exists()
+        && std::fs::metadata(&auth)
+            .map(|m| m.len() > 0)
+            .unwrap_or(false)
 }
 
 pub(super) fn exec_session(launch: &[String], req: SessionRequest) -> Result<(), std::io::Error> {
@@ -29,7 +32,10 @@ pub(super) fn exec_session(launch: &[String], req: SessionRequest) -> Result<(),
     Err(crate::platform::exec_replace(cmd))
 }
 
-pub(super) fn exec_one_shot(launch: &[String], req: OneShotRequest) -> Result<Output, std::io::Error> {
+pub(super) fn exec_one_shot(
+    launch: &[String],
+    req: OneShotRequest,
+) -> Result<Output, std::io::Error> {
     let (program, prefix) = launch
         .split_first()
         .map(|(p, rest)| (p.as_str(), rest))
@@ -66,17 +72,18 @@ pub(super) fn mcp_list(project_dir: &Path) -> HashSet<String> {
 pub(super) fn mcp_add(entry: &McpDecl, project_dir: &Path) -> Result<(), String> {
     let path = project_dir.join("opencode.json");
     let existing = if path.exists() {
-        std::fs::read_to_string(&path)
-            .map_err(|e| format!("read {}: {e}", path.display()))?
+        std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?
     } else if project_dir.join("opencode.jsonc").exists() {
-        return Err("opencode.jsonc found but ACE only supports opencode.json — rename or convert it".to_string());
+        return Err(
+            "opencode.jsonc found but ACE only supports opencode.json — rename or convert it"
+                .to_string(),
+        );
     } else {
         String::new()
     };
 
     let output = merge_mcp_entry(&existing, entry)?;
-    std::fs::write(&path, output)
-        .map_err(|e| format!("write {}: {e}", path.display()))
+    std::fs::write(&path, output).map_err(|e| format!("write {}: {e}", path.display()))
 }
 
 pub(super) fn mcp_remove(name: &str, project_dir: &Path) -> Result<(), String> {
@@ -85,12 +92,11 @@ pub(super) fn mcp_remove(name: &str, project_dir: &Path) -> Result<(), String> {
         return Ok(());
     }
 
-    let existing = std::fs::read_to_string(&path)
-        .map_err(|e| format!("read {}: {e}", path.display()))?;
+    let existing =
+        std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
 
     let output = remove_mcp_entry(&existing, name)?;
-    std::fs::write(&path, output)
-        .map_err(|e| format!("write {}: {e}", path.display()))
+    std::fs::write(&path, output).map_err(|e| format!("write {}: {e}", path.display()))
 }
 
 /// Best-effort — OpenCode has no structured MCP health check surface.
@@ -103,7 +109,9 @@ pub(super) fn mcp_check(_names: &[String], _project_dir: &Path) -> Result<Vec<Mc
 /// Warn if opencode.jsonc exists but opencode.json does not.
 fn warn_jsonc(project_dir: &Path) {
     if project_dir.join("opencode.jsonc").exists() {
-        eprintln!("warning: opencode.jsonc found but ACE only supports opencode.json — rename or convert it");
+        eprintln!(
+            "warning: opencode.jsonc found but ACE only supports opencode.json — rename or convert it"
+        );
     }
 }
 
@@ -184,8 +192,7 @@ fn merge_mcp_entry(existing_json: &str, entry: &McpDecl) -> Result<String, Strin
     let mut root: serde_json::Value = if existing_json.trim().is_empty() {
         serde_json::json!({})
     } else {
-        serde_json::from_str(existing_json)
-            .map_err(|e| format!("parse opencode.json: {e}"))?
+        serde_json::from_str(existing_json).map_err(|e| format!("parse opencode.json: {e}"))?
     };
 
     let servers = root
@@ -195,7 +202,10 @@ fn merge_mcp_entry(existing_json: &str, entry: &McpDecl) -> Result<String, Strin
         .or_insert_with(|| serde_json::json!({}));
 
     let mut server = serde_json::Map::new();
-    server.insert("url".to_string(), serde_json::Value::String(entry.url.clone()));
+    server.insert(
+        "url".to_string(),
+        serde_json::Value::String(entry.url.clone()),
+    );
 
     if !entry.headers.is_empty() {
         let mut headers = serde_json::Map::new();
@@ -212,20 +222,18 @@ fn merge_mcp_entry(existing_json: &str, entry: &McpDecl) -> Result<String, Strin
         .ok_or("mcpServers is not an object")?
         .insert(entry.name.clone(), serde_json::Value::Object(server));
 
-    serde_json::to_string_pretty(&root)
-        .map_err(|e| format!("serialize opencode.json: {e}"))
+    serde_json::to_string_pretty(&root).map_err(|e| format!("serialize opencode.json: {e}"))
 }
 
 fn remove_mcp_entry(existing_json: &str, name: &str) -> Result<String, String> {
-    let mut root: serde_json::Value = serde_json::from_str(existing_json)
-        .map_err(|e| format!("parse opencode.json: {e}"))?;
+    let mut root: serde_json::Value =
+        serde_json::from_str(existing_json).map_err(|e| format!("parse opencode.json: {e}"))?;
 
     if let Some(servers) = root.get_mut("mcpServers").and_then(|v| v.as_object_mut()) {
         servers.remove(name);
     }
 
-    serde_json::to_string_pretty(&root)
-        .map_err(|e| format!("serialize opencode.json: {e}"))
+    serde_json::to_string_pretty(&root).map_err(|e| format!("serialize opencode.json: {e}"))
 }
 
 #[cfg(test)]
@@ -275,14 +283,18 @@ mod tests {
         let mut r = req();
         r.extra_args = vec!["--model".to_string(), "anthropic/claude-sonnet".to_string()];
         let args = build_session_args(&r);
-        assert_eq!(args, vec!["--agent", "ace", "--model", "anthropic/claude-sonnet"]);
+        assert_eq!(
+            args,
+            vec!["--agent", "ace", "--model", "anthropic/claude-sonnet"]
+        );
     }
 
     // -- one-shot args --
 
     #[test]
     fn one_shot_args_inline() {
-        let args = build_one_shot_args(&one_shot(super::super::PromptInput::Inline("hello".into())));
+        let args =
+            build_one_shot_args(&one_shot(super::super::PromptInput::Inline("hello".into())));
         assert_eq!(args, vec!["run", "--agent", "ace", "hello"]);
     }
 
@@ -297,7 +309,17 @@ mod tests {
         let mut r = one_shot(super::super::PromptInput::Inline("hi".into()));
         r.extra_args = vec!["--model".to_string(), "anthropic/claude-sonnet".to_string()];
         let args = build_one_shot_args(&r);
-        assert_eq!(args, vec!["run", "--agent", "ace", "--model", "anthropic/claude-sonnet", "hi"]);
+        assert_eq!(
+            args,
+            vec![
+                "run",
+                "--agent",
+                "ace",
+                "--model",
+                "anthropic/claude-sonnet",
+                "hi"
+            ]
+        );
     }
 
     // -- parse_mcp_names --
@@ -352,7 +374,8 @@ mod tests {
 
     #[test]
     fn merge_preserves_existing() {
-        let existing = r#"{"mcpServers":{"github":{"url":"https://github.com/mcp"}},"other":"data"}"#;
+        let existing =
+            r#"{"mcpServers":{"github":{"url":"https://github.com/mcp"}},"other":"data"}"#;
         let entry = McpDecl {
             name: "linear".to_string(),
             url: "https://mcp.linear.app/mcp".to_string(),
@@ -362,8 +385,14 @@ mod tests {
 
         let output = merge_mcp_entry(existing, &entry).expect("should merge");
         let parsed: serde_json::Value = serde_json::from_str(&output).expect("valid json");
-        assert_eq!(parsed["mcpServers"]["github"]["url"].as_str(), Some("https://github.com/mcp"));
-        assert_eq!(parsed["mcpServers"]["linear"]["url"].as_str(), Some("https://mcp.linear.app/mcp"));
+        assert_eq!(
+            parsed["mcpServers"]["github"]["url"].as_str(),
+            Some("https://github.com/mcp")
+        );
+        assert_eq!(
+            parsed["mcpServers"]["linear"]["url"].as_str(),
+            Some("https://mcp.linear.app/mcp")
+        );
         assert_eq!(parsed["other"].as_str(), Some("data"));
     }
 
@@ -429,10 +458,17 @@ mod tests {
     fn mcp_list_returns_empty_for_jsonc_only() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let project_dir = tmp.path().canonicalize().expect("canonicalize");
-        std::fs::write(project_dir.join("opencode.jsonc"), r#"{"mcpServers":{"linear":{"url":"x"}}}"#).expect("write");
+        std::fs::write(
+            project_dir.join("opencode.jsonc"),
+            r#"{"mcpServers":{"linear":{"url":"x"}}}"#,
+        )
+        .expect("write");
 
         let names = mcp_list(&project_dir);
-        assert!(names.is_empty(), "should return empty when only jsonc exists");
+        assert!(
+            names.is_empty(),
+            "should return empty when only jsonc exists"
+        );
     }
 
     // -- write_agent_file --

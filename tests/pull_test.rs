@@ -122,8 +122,10 @@ fn self_heal_does_not_duplicate_index_entry() {
 
     env.ace().assert().success();
 
-    let index = std::fs::read_to_string(env.path("cache/ace/index.toml"))
-        .expect("read index.toml");
+    let index = std::fs::read_to_string(env.path("cache/ace/index.toml")).expect("read index.toml");
     let count = index.matches("specifier = \"test/school\"").count();
-    assert_eq!(count, 1, "index should have exactly one entry, got:\n{index}");
+    assert_eq!(
+        count, 1,
+        "index should have exactly one entry, got:\n{index}"
+    );
 }

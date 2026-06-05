@@ -19,10 +19,7 @@ repo = "ace-rs/school"
 /// before that. Using `setup_embedded` would run a hidden `ace setup .` that
 /// eats the migration before our test invocation gets a chance.
 fn run_ace_paths(env: &TestEnv) -> std::process::Output {
-    env.ace()
-        .args(["paths"])
-        .output()
-        .expect("ace paths")
+    env.ace().args(["paths"]).output().expect("ace paths")
 }
 
 #[test]

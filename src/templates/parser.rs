@@ -20,13 +20,20 @@ pub struct Parser {
 
 impl Parser {
     pub fn new() -> Self {
-        Self { phase: Phase::Text, open_pos: 0, name_start: 0, lit_start: 0 }
+        Self {
+            phase: Phase::Text,
+            open_pos: 0,
+            name_start: 0,
+            lit_start: 0,
+        }
     }
 
     /// Drive the full parse loop, pushing segments into `tpl`.
     pub fn parse_all<'a>(&mut self, input: &'a str, tpl: &mut Template<'a>) {
         for (i, byte) in input.bytes().enumerate() {
-            let Some((open, ns, ne)) = self.feed(i, byte) else { continue };
+            let Some((open, ns, ne)) = self.feed(i, byte) else {
+                continue;
+            };
 
             let name = input[ns..ne].trim();
             if !is_valid_name(name) {

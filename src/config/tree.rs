@@ -1,10 +1,10 @@
 use std::path::Path;
 
+use super::ConfigError;
 use super::ace_toml::{self, AceToml};
 use super::paths::AcePaths;
 use super::school_paths;
 use super::school_toml::{self, SchoolToml};
-use super::ConfigError;
 
 /// Raw config layers parsed from disk. `None` means "no file present" — distinct
 /// from "present but empty" so diagnostics can tell the two apart. Derived
@@ -29,7 +29,12 @@ impl Tree {
             return Err(ConfigError::NoConfig);
         }
 
-        Ok(Tree { user, project, local, school: None })
+        Ok(Tree {
+            user,
+            project,
+            local,
+            school: None,
+        })
     }
 
     /// Resolve school specifier from ace.toml layers (last non-empty wins).
@@ -71,4 +76,3 @@ fn load_optional(path: &Path) -> Result<Option<AceToml>, ConfigError> {
         Err(e) => Err(e),
     }
 }
-

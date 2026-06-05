@@ -3,9 +3,11 @@ use std::collections::HashSet;
 use clap::Subcommand;
 
 use crate::ace::Ace;
+use crate::actions::project::{
+    RegisterMcp, RemoveMcp, edit_mcp_config, register_mcp, register_missing_mcp,
+};
 use crate::backend::McpStatus;
 use crate::config::school_toml::McpDecl;
-use crate::actions::project::{edit_mcp_config, register_missing_mcp, RegisterMcp, RemoveMcp, register_mcp};
 
 use super::CmdError;
 
@@ -59,7 +61,8 @@ fn run_default(ace: &mut Ace) -> Result<(), CmdError> {
     // -- health check registered servers --
 
     let registered = backend.mcp_list(&project_dir);
-    let check_names: Vec<String> = entries.iter()
+    let check_names: Vec<String> = entries
+        .iter()
         .map(|e| e.name.clone())
         .filter(|n| registered.contains(n))
         .collect();
@@ -138,13 +141,17 @@ fn run_check(ace: &mut Ace) -> Result<(), CmdError> {
     for entry in &entries {
         if !registered.contains(&entry.name) {
             ace.warn(&format!("{} (not registered)", entry.name));
-            ace.hint(&format!("run `ace mcp register {}` to register it", entry.name));
+            ace.hint(&format!(
+                "run `ace mcp register {}` to register it",
+                entry.name
+            ));
         }
     }
 
     // -- health check registered --
 
-    let check_names: Vec<String> = entries.iter()
+    let check_names: Vec<String> = entries
+        .iter()
         .map(|e| e.name.clone())
         .filter(|n| registered.contains(n))
         .collect();
@@ -189,7 +196,8 @@ fn run_reset(ace: &mut Ace, name: Option<String>) -> Result<(), CmdError> {
             vec![n]
         }
         None => {
-            let school_registered: Vec<String> = entries.iter()
+            let school_registered: Vec<String> = entries
+                .iter()
                 .map(|e| e.name.clone())
                 .filter(|n| registered.contains(n))
                 .collect();
@@ -202,8 +210,13 @@ fn run_reset(ace: &mut Ace, name: Option<String>) -> Result<(), CmdError> {
         }
     };
 
-    RemoveMcp{ backend: &backend, names: &names, project_dir: &project_dir }.run(ace)
-        .map_err(CmdError::failed)?;
+    RemoveMcp {
+        backend: &backend,
+        names: &names,
+        project_dir: &project_dir,
+    }
+    .run(ace)
+    .map_err(CmdError::failed)?;
 
     Ok(())
 }
@@ -217,17 +230,24 @@ fn run_register(ace: &mut Ace, name: String) -> Result<(), CmdError> {
 
     // Look up the school entry by name (do not apply the exclude filter — we
     // want this to work even when the entry is currently excluded).
-    let entry = ace.school()?
+    let entry = ace
+        .school()?
         .and_then(|s| s.mcp.iter().find(|e| e.name == name).cloned())
         .ok_or_else(|| {
-            CmdError::usage(format!("MCP '{name}' not defined in school")).with_hint("run `ace mcp`")
+            CmdError::usage(format!("MCP '{name}' not defined in school"))
+                .with_hint("run `ace mcp`")
         })?;
 
     let local_path = ace.require_paths()?.local.clone();
     edit_mcp_config::include(&local_path, &name)?;
 
     let entries = vec![entry];
-    RegisterMcp{ backend: &backend, entries: &entries, project_dir: &project_dir }.run(ace)?;
+    RegisterMcp {
+        backend: &backend,
+        entries: &entries,
+        project_dir: &project_dir,
+    }
+    .run(ace)?;
     Ok(())
 }
 
@@ -245,11 +265,11 @@ fn report_statuses(ace: &mut Ace, statuses: &[McpStatus]) {
 /// Load school MCP entries and backend from current state. Entries listed in
 /// `exclude_mcp` (union across user/project/local scopes) are filtered out
 /// before returning.
-pub(super) fn load_school_mcp(ace: &Ace) -> Result<(crate::backend::Backend, Vec<McpDecl>, std::path::PathBuf), CmdError> {
+pub(super) fn load_school_mcp(
+    ace: &Ace,
+) -> Result<(crate::backend::Backend, Vec<McpDecl>, std::path::PathBuf), CmdError> {
     let backend = ace.backend()?.clone();
-    let raw = ace.school()?
-        .map(|s| s.mcp.clone())
-        .unwrap_or_default();
+    let raw = ace.school()?.map(|s| s.mcp.clone()).unwrap_or_default();
     let excluded = ace.excluded_mcp();
     let entries = filter_excluded(raw, &excluded);
     let project_dir = ace.project_dir().to_path_buf();
@@ -258,7 +278,10 @@ pub(super) fn load_school_mcp(ace: &Ace) -> Result<(crate::backend::Backend, Vec
 
 /// Drop entries whose name appears in `excluded`. Order-preserving.
 fn filter_excluded(entries: Vec<McpDecl>, excluded: &HashSet<String>) -> Vec<McpDecl> {
-    entries.into_iter().filter(|e| !excluded.contains(&e.name)).collect()
+    entries
+        .into_iter()
+        .filter(|e| !excluded.contains(&e.name))
+        .collect()
 }
 
 #[cfg(test)]

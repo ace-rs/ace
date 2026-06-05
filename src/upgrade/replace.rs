@@ -64,7 +64,10 @@ mod tests {
     #[test]
     fn old_path_appends_old() {
         let exe = PathBuf::from("C:\\Program Files\\ace.exe");
-        assert_eq!(old_path(&exe), PathBuf::from("C:\\Program Files\\ace.exe.old"));
+        assert_eq!(
+            old_path(&exe),
+            PathBuf::from("C:\\Program Files\\ace.exe.old")
+        );
     }
 
     #[cfg(unix)]
@@ -99,17 +102,23 @@ mod tests {
     #[test]
     fn homebrew_managed_detects_arm_prefix() {
         assert!(is_homebrew_managed(Path::new("/opt/homebrew/bin/ace")));
-        assert!(is_homebrew_managed(Path::new("/opt/homebrew/Cellar/ace/0.6.0/bin/ace")));
+        assert!(is_homebrew_managed(Path::new(
+            "/opt/homebrew/Cellar/ace/0.6.0/bin/ace"
+        )));
     }
 
     #[test]
     fn homebrew_managed_detects_intel_prefix() {
-        assert!(is_homebrew_managed(Path::new("/usr/local/Cellar/ace/0.6.0/bin/ace")));
+        assert!(is_homebrew_managed(Path::new(
+            "/usr/local/Cellar/ace/0.6.0/bin/ace"
+        )));
     }
 
     #[test]
     fn homebrew_managed_detects_linux_prefix() {
-        assert!(is_homebrew_managed(Path::new("/home/linuxbrew/.linuxbrew/bin/ace")));
+        assert!(is_homebrew_managed(Path::new(
+            "/home/linuxbrew/.linuxbrew/bin/ace"
+        )));
     }
 
     #[test]
@@ -128,6 +137,9 @@ mod tests {
         replace_binary(&exe_path, b"new").unwrap();
 
         let staging = staging_path(&exe_path);
-        assert!(!staging.exists(), "staging file should be removed after rename");
+        assert!(
+            !staging.exists(),
+            "staging file should be removed after rename"
+        );
     }
 }

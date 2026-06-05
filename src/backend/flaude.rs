@@ -4,7 +4,9 @@ use std::process::Output;
 
 use super::{McpDecl, McpStatus, OneShotRequest, PromptInput, SessionRequest};
 
-pub(super) fn is_ready() -> bool { true }
+pub(super) fn is_ready() -> bool {
+    true
+}
 
 pub(super) fn exec_session(launch: &[String], req: SessionRequest) -> Result<(), std::io::Error> {
     let Some(path) = exec_record_path() else {
@@ -33,7 +35,10 @@ pub(super) fn exec_session(launch: &[String], req: SessionRequest) -> Result<(),
     Ok(())
 }
 
-pub(super) fn exec_one_shot(launch: &[String], req: OneShotRequest) -> Result<Output, std::io::Error> {
+pub(super) fn exec_one_shot(
+    launch: &[String],
+    req: OneShotRequest,
+) -> Result<Output, std::io::Error> {
     use std::io::Write;
 
     let prompt_repr = match &req.prompt {
@@ -75,7 +80,11 @@ pub(super) fn exec_one_shot(launch: &[String], req: OneShotRequest) -> Result<Ou
         .unwrap_or(0);
     let status = synthesize_status(exit_code)?;
 
-    Ok(Output { status, stdout, stderr })
+    Ok(Output {
+        status,
+        stdout,
+        stderr,
+    })
 }
 
 #[cfg(unix)]
@@ -111,8 +120,7 @@ pub(super) fn mcp_list(_project_dir: &std::path::Path) -> HashSet<String> {
 pub(super) fn mcp_add(entry: &McpDecl, _project_dir: &std::path::Path) -> Result<(), String> {
     use std::io::Write;
 
-    let record_path = mcp_record_path()
-        .ok_or_else(|| "HOME not set".to_string())?;
+    let record_path = mcp_record_path().ok_or_else(|| "HOME not set".to_string())?;
 
     let mut headers: Vec<(&String, &String)> = entry.headers.iter().collect();
     headers.sort_by_key(|(k, _)| k.as_str());
@@ -141,8 +149,7 @@ pub(super) fn mcp_remove(name: &str, _project_dir: &std::path::Path) -> Result<(
 
     // -- append removal record --
 
-    let record_path = mcp_record_path()
-        .ok_or_else(|| "HOME not set".to_string())?;
+    let record_path = mcp_record_path().ok_or_else(|| "HOME not set".to_string())?;
 
     let record = serde_json::json!({
         "action": "mcp_remove",
@@ -176,9 +183,16 @@ pub(super) fn mcp_remove(name: &str, _project_dir: &std::path::Path) -> Result<(
     Ok(())
 }
 
-pub(super) fn mcp_check(names: &[String], _project_dir: &std::path::Path) -> Result<Vec<McpStatus>, String> {
-    Ok(names.iter()
-        .map(|n| McpStatus { name: n.clone(), ok: true })
+pub(super) fn mcp_check(
+    names: &[String],
+    _project_dir: &std::path::Path,
+) -> Result<Vec<McpStatus>, String> {
+    Ok(names
+        .iter()
+        .map(|n| McpStatus {
+            name: n.clone(),
+            ok: true,
+        })
         .collect())
 }
 

@@ -45,12 +45,20 @@ pub fn register_missing(
             to_register.push(entry.clone());
         } else {
             edit_mcp_config::exclude(local_path, &entry.name)?;
-            ace.hint(&format!("'{}' added to exclude_mcp in ace.local.toml", entry.name));
+            ace.hint(&format!(
+                "'{}' added to exclude_mcp in ace.local.toml",
+                entry.name
+            ));
         }
     }
 
     if to_register.iter().any(|e| !registered.contains(&e.name)) {
-        RegisterMcp { backend, entries: &to_register, project_dir }.run(ace)?;
+        RegisterMcp {
+            backend,
+            entries: &to_register,
+            project_dir,
+        }
+        .run(ace)?;
     }
     Ok(())
 }
@@ -81,10 +89,12 @@ impl RegisterMcp<'_> {
             let resolved = resolve_headers(entry, ace)?;
             let target = resolved.as_ref().unwrap_or(entry);
 
-            self.backend.mcp_add(target, self.project_dir)
+            self.backend
+                .mcp_add(target, self.project_dir)
                 .map_err(|e| RegisterMcpError::Register(format!("{}: {e}", entry.name)))?;
 
-            let msg = registration_message(self.backend.kind, &entry.name, entry.headers.is_empty());
+            let msg =
+                registration_message(self.backend.kind, &entry.name, entry.headers.is_empty());
             ace.done(&msg);
         }
 
@@ -133,7 +143,9 @@ pub(crate) fn resolve_headers(entry: &McpDecl, ace: &mut Ace) -> Result<Option<M
 
     // -- substitute into headers --
 
-    let resolved_headers = entry.headers.iter()
+    let resolved_headers = entry
+        .headers
+        .iter()
         .map(|(k, v)| {
             let tpl = Template::parse(v);
             (k.clone(), tpl.substitute(&values))
@@ -149,7 +161,11 @@ pub(crate) fn resolve_headers(entry: &McpDecl, ace: &mut Ace) -> Result<Option<M
 }
 
 fn instruction_hint(entry: &McpDecl) -> Option<&str> {
-    if entry.instructions.is_empty() { None } else { Some(&entry.instructions) }
+    if entry.instructions.is_empty() {
+        None
+    } else {
+        Some(&entry.instructions)
+    }
 }
 
 fn collect_placeholders(headers: &HashMap<String, String>) -> Vec<String> {
@@ -225,13 +241,19 @@ mod tests {
     #[test]
     fn message_oauth_mentions_authorize() {
         let msg = registration_message(Kind::Claude, "linear", true);
-        assert!(msg.contains("authorize"), "OAuth message should mention authorize prompt");
+        assert!(
+            msg.contains("authorize"),
+            "OAuth message should mention authorize prompt"
+        );
     }
 
     #[test]
     fn message_with_headers_omits_authorize() {
         let msg = registration_message(Kind::Claude, "sentry", false);
-        assert!(!msg.contains("authorize"), "PAT message should not mention authorize");
+        assert!(
+            !msg.contains("authorize"),
+            "PAT message should not mention authorize"
+        );
         assert!(msg.contains("sentry"));
     }
 

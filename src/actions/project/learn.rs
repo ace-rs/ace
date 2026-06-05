@@ -11,7 +11,7 @@ use std::process::ExitStatus;
 
 use crate::ace::{Ace, IoError};
 use crate::backend::{BackendError, OneShotRequest, PromptInput};
-use crate::config::{ace_toml, ConfigError};
+use crate::config::{ConfigError, ace_toml};
 use crate::school::SchoolError;
 use crate::skills::SkillError;
 use crate::templates::{self, Template};

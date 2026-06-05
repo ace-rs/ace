@@ -7,10 +7,7 @@ use common::TestEnv;
 #[test]
 fn upgrade_help() {
     let env = TestEnv::new();
-    env.ace()
-        .args(["upgrade", "--help"])
-        .assert()
-        .success();
+    env.ace().args(["upgrade", "--help"]).assert().success();
 }
 
 // -- skip_update config key --
@@ -91,11 +88,7 @@ fn config_shows_skip_update_when_set() {
     env.setup_embedded("phoenix");
     env.write_file("ace.toml", "school = \".\"\nskip_update = true\n");
 
-    let output = env
-        .ace()
-        .args(["config"])
-        .output()
-        .expect("ace config");
+    let output = env.ace().args(["config"]).output().expect("ace config");
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);

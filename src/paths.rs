@@ -87,8 +87,10 @@ mod tests {
     use std::collections::HashMap;
 
     fn env_from(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<OsString> {
-        let map: HashMap<String, String> =
-            pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+        let map: HashMap<String, String> = pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
         move |k: &str| map.get(k).map(OsString::from)
     }
 
@@ -116,8 +118,14 @@ mod tests {
 
     #[test]
     fn config_dir_uses_xdg_when_set() {
-        let get = env_from(&[("XDG_CONFIG_HOME", "/tmp/xdg-foo"), ("HOME", "/tmp/home-foo")]);
-        assert_eq!(user_config_dir_from(get), Some(PathBuf::from("/tmp/xdg-foo")));
+        let get = env_from(&[
+            ("XDG_CONFIG_HOME", "/tmp/xdg-foo"),
+            ("HOME", "/tmp/home-foo"),
+        ]);
+        assert_eq!(
+            user_config_dir_from(get),
+            Some(PathBuf::from("/tmp/xdg-foo"))
+        );
     }
 
     #[test]
@@ -148,8 +156,14 @@ mod tests {
 
     #[test]
     fn cache_dir_uses_xdg_when_set() {
-        let get = env_from(&[("XDG_CACHE_HOME", "/tmp/xdg-cache"), ("HOME", "/tmp/home-foo")]);
-        assert_eq!(user_cache_dir_from(get), Some(PathBuf::from("/tmp/xdg-cache")));
+        let get = env_from(&[
+            ("XDG_CACHE_HOME", "/tmp/xdg-cache"),
+            ("HOME", "/tmp/home-foo"),
+        ]);
+        assert_eq!(
+            user_cache_dir_from(get),
+            Some(PathBuf::from("/tmp/xdg-cache"))
+        );
     }
 
     #[test]
@@ -180,8 +194,14 @@ mod tests {
 
     #[test]
     fn data_dir_uses_xdg_when_set() {
-        let get = env_from(&[("XDG_DATA_HOME", "/tmp/xdg-data"), ("HOME", "/tmp/home-foo")]);
-        assert_eq!(user_data_dir_from(get), Some(PathBuf::from("/tmp/xdg-data")));
+        let get = env_from(&[
+            ("XDG_DATA_HOME", "/tmp/xdg-data"),
+            ("HOME", "/tmp/home-foo"),
+        ]);
+        assert_eq!(
+            user_data_dir_from(get),
+            Some(PathBuf::from("/tmp/xdg-data"))
+        );
     }
 
     #[test]

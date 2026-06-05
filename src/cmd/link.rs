@@ -1,6 +1,6 @@
 use crate::ace::Ace;
-use crate::actions::project::link_skills;
 use crate::actions::project::Link;
+use crate::actions::project::link_skills;
 use crate::config::paths::ace_data_dir;
 use crate::config::school_paths;
 
@@ -12,7 +12,8 @@ pub fn run(ace: &mut Ace) {
 }
 
 fn run_inner(ace: &mut Ace) -> Result<(), CmdError> {
-    let specifier = ace.require_resolved()?
+    let specifier = ace
+        .require_resolved()?
         .school_specifier
         .value
         .clone()

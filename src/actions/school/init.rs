@@ -4,7 +4,7 @@ use crate::ace::Ace;
 use crate::actions::project::UpdateGitignore;
 use crate::actions::school::pull_imports::{PullImports, PullImportsError};
 use crate::config::school_toml::{self, ImportDecl};
-use crate::config::{ace_toml, ConfigError};
+use crate::config::{ConfigError, ace_toml};
 use crate::templates;
 
 /// Default school imported by every fresh school. Provides `ace-school` and
@@ -70,40 +70,43 @@ impl Init<'_> {
             ace.done("Created ace.toml");
         }
 
-        let vals = std::collections::HashMap::from([
-            ("school_name".to_string(), self.name.to_string()),
-        ]);
+        let vals =
+            std::collections::HashMap::from([("school_name".to_string(), self.name.to_string())]);
 
         let instructions = self.project_dir.join(self.instructions_file);
         if !instructions.exists() {
             let tpl = templates::Template::parse(templates::builtins::SCHOOL_INSTRUCTIONS_MD);
-            std::fs::write(&instructions, tpl.substitute(&vals))
-                .map_err(InitError::Write)?;
+            std::fs::write(&instructions, tpl.substitute(&vals)).map_err(InitError::Write)?;
             ace.done(&format!("Created {}", self.instructions_file));
         }
 
         let readme = self.project_dir.join("README.md");
         if !readme.exists() {
             let tpl = templates::Template::parse(templates::builtins::SCHOOL_README);
-            std::fs::write(&readme, tpl.substitute(&vals))
-                .map_err(InitError::Write)?;
+            std::fs::write(&readme, tpl.substitute(&vals)).map_err(InitError::Write)?;
             ace.done("Created README.md");
         }
 
-        UpdateGitignore { project_dir: self.project_dir }
-            .run(ace)
-            .map_err(InitError::Write)?;
+        UpdateGitignore {
+            project_dir: self.project_dir,
+        }
+        .run(ace)
+        .map_err(InitError::Write)?;
 
-        PullImports { school_root: self.project_dir }.run(ace)?;
+        PullImports {
+            school_root: self.project_dir,
+        }
+        .run(ace)?;
 
         Ok(())
     }
 }
 
 fn ensure_standard_import(toml: &mut school_toml::SchoolToml) {
-    let already = toml.imports.iter().any(|i|
-        i.source == STANDARD_SCHOOL_SOURCE && i.patterns() == vec!["*"]
-    );
+    let already = toml
+        .imports
+        .iter()
+        .any(|i| i.source == STANDARD_SCHOOL_SOURCE && i.patterns() == vec!["*"]);
     if !already {
         toml.imports.push(ImportDecl {
             source: STANDARD_SCHOOL_SOURCE.to_string(),

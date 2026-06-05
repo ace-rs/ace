@@ -80,15 +80,25 @@ fn spawn_background_upgrade() {
 
 pub fn target_triple() -> &'static str {
     #[cfg(all(target_arch = "x86_64", target_os = "linux"))]
-    { "x86_64-unknown-linux-gnu" }
+    {
+        "x86_64-unknown-linux-gnu"
+    }
     #[cfg(all(target_arch = "aarch64", target_os = "linux"))]
-    { "aarch64-unknown-linux-gnu" }
+    {
+        "aarch64-unknown-linux-gnu"
+    }
     #[cfg(all(target_arch = "x86_64", target_os = "macos"))]
-    { "x86_64-apple-darwin" }
+    {
+        "x86_64-apple-darwin"
+    }
     #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
-    { "aarch64-apple-darwin" }
+    {
+        "aarch64-apple-darwin"
+    }
     #[cfg(all(target_arch = "x86_64", target_os = "windows"))]
-    { "x86_64-pc-windows-gnu" }
+    {
+        "x86_64-pc-windows-gnu"
+    }
 }
 
 #[cfg(test)]

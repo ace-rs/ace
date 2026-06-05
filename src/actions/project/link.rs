@@ -1,8 +1,8 @@
 use std::path::Path;
 
 use crate::ace::Ace;
-use crate::actions::project::link_skills::{self, create_dir_symlink, is_symlink, DesiredLink};
 use crate::actions::project::PrepareError;
+use crate::actions::project::link_skills::{self, DesiredLink, create_dir_symlink, is_symlink};
 
 /// Folders that ACE links from the school clone into the project.
 pub const SCHOOL_FOLDERS: &[&str] = &["skills", "rules", "commands", "agents"];
@@ -56,13 +56,23 @@ impl Link<'_> {
                 continue;
             }
 
-            let previous_dir = self.project_dir.join(self.backend_dir).join(format!("previous-{name}"));
+            let previous_dir = self
+                .project_dir
+                .join(self.backend_dir)
+                .join(format!("previous-{name}"));
             let adopted = adopt_previous(&project_dir, &previous_dir)?;
             let linked = ensure_symlink(&project_dir, &school_dir)?;
-            folders.push(FolderResult { name, linked, adopted });
+            folders.push(FolderResult {
+                name,
+                linked,
+                adopted,
+            });
         }
 
-        Ok(LinkResult { folders, skill_warnings })
+        Ok(LinkResult {
+            folders,
+            skill_warnings,
+        })
     }
 }
 
@@ -120,10 +130,7 @@ fn ensure_symlink(link_path: &Path, target: &Path) -> Result<bool, PrepareError>
 }
 
 /// On first setup (no symlinks yet), rename the whole dir to `previous-{name}/`.
-fn adopt_previous(
-    project_dir: &Path,
-    previous_dir: &Path,
-) -> Result<bool, PrepareError> {
+fn adopt_previous(project_dir: &Path, previous_dir: &Path) -> Result<bool, PrepareError> {
     // Symlink or absent — nothing to adopt.
     if is_symlink(project_dir) || !project_dir.exists() {
         return Ok(false);
@@ -182,15 +189,23 @@ mod tests {
             fix
         }
 
-        fn school(&self) -> PathBuf { self.root.join("school") }
-        fn project(&self) -> PathBuf { self.root.join("project") }
+        fn school(&self) -> PathBuf {
+            self.root.join("school")
+        }
+        fn project(&self) -> PathBuf {
+            self.root.join("project")
+        }
 
-        fn school_folder(&self, name: &str) -> PathBuf { self.school().join(name) }
+        fn school_folder(&self, name: &str) -> PathBuf {
+            self.school().join(name)
+        }
         fn project_folder(&self, name: &str) -> PathBuf {
             self.project().join(".claude").join(name)
         }
         fn previous_folder(&self, name: &str) -> PathBuf {
-            self.project().join(".claude").join(format!("previous-{name}"))
+            self.project()
+                .join(".claude")
+                .join(format!("previous-{name}"))
         }
 
         fn add_school_entry(&self, folder: &str, name: &str) {
@@ -199,7 +214,11 @@ mod tests {
         }
 
         fn add_school_entry_with_content(
-            &self, folder: &str, name: &str, file: &str, content: &str,
+            &self,
+            folder: &str,
+            name: &str,
+            file: &str,
+            content: &str,
         ) {
             let dir = self.school_folder(folder).join(name);
             std::fs::create_dir_all(&dir).expect("create school entry dir");
@@ -257,7 +276,12 @@ mod tests {
         assert!(result.linked("rules"));
 
         let link = fix.project_folder("rules");
-        assert!(link.symlink_metadata().expect("link exists").file_type().is_symlink());
+        assert!(
+            link.symlink_metadata()
+                .expect("link exists")
+                .file_type()
+                .is_symlink()
+        );
 
         let target = std::fs::read_link(&link).expect("read link");
         assert_eq!(target, fix.school_folder("rules"));
@@ -269,10 +293,8 @@ mod tests {
         fix.add_school_entry("rules", "indent");
 
         let project_rules = fix.project_folder("rules");
-        std::fs::create_dir_all(project_rules.parent().expect("has parent"))
-            .expect("mkdir parent");
-        create_dir_symlink(&fix.school_folder("rules"), &project_rules)
-            .expect("create symlink");
+        std::fs::create_dir_all(project_rules.parent().expect("has parent")).expect("mkdir parent");
+        create_dir_symlink(&fix.school_folder("rules"), &project_rules).expect("create symlink");
 
         let result = fix.link().expect("should skip existing");
         assert!(!result.linked("rules"));
@@ -284,8 +306,7 @@ mod tests {
         fix.add_school_entry("rules", "indent");
 
         let project_rules = fix.project_folder("rules");
-        std::fs::create_dir_all(project_rules.parent().expect("has parent"))
-            .expect("mkdir parent");
+        std::fs::create_dir_all(project_rules.parent().expect("has parent")).expect("mkdir parent");
         create_dir_symlink(&fix.root.join("nonexistent"), &project_rules)
             .expect("create stale symlink");
 
@@ -336,18 +357,25 @@ mod tests {
         let skills_dir = fix.project_folder("skills");
         assert!(skills_dir.is_dir(), "skills should be a real dir");
         assert!(
-            !skills_dir.symlink_metadata().expect("exists").file_type().is_symlink(),
+            !skills_dir
+                .symlink_metadata()
+                .expect("exists")
+                .file_type()
+                .is_symlink(),
             "skills dir must not be a symlink"
         );
 
         for name in ["rust-coding", "go-coding"] {
             let link = skills_dir.join(name);
             assert!(
-                link.symlink_metadata().expect("exists").file_type().is_symlink(),
+                link.symlink_metadata()
+                    .expect("exists")
+                    .file_type()
+                    .is_symlink(),
                 "{name} should be a symlink"
             );
-            let content = std::fs::read_to_string(link.join("SKILL.md"))
-                .expect("read through link");
+            let content =
+                std::fs::read_to_string(link.join("SKILL.md")).expect("read through link");
             assert!(!content.is_empty());
         }
     }
@@ -369,16 +397,28 @@ mod tests {
             target: fix.school_folder("skills").join("rust-coding"),
         }];
 
-        let result = fix.link_with_skills(&desired).expect("migration should succeed");
+        let result = fix
+            .link_with_skills(&desired)
+            .expect("migration should succeed");
         assert!(result.linked("skills"));
 
         assert!(
-            !project_skills.symlink_metadata().expect("exists").file_type().is_symlink(),
+            !project_skills
+                .symlink_metadata()
+                .expect("exists")
+                .file_type()
+                .is_symlink(),
             "legacy symlink must have been migrated to a real dir"
         );
 
         let per_skill = project_skills.join("rust-coding");
-        assert!(per_skill.symlink_metadata().expect("exists").file_type().is_symlink());
+        assert!(
+            per_skill
+                .symlink_metadata()
+                .expect("exists")
+                .file_type()
+                .is_symlink()
+        );
     }
 
     #[test]
@@ -460,13 +500,8 @@ mod tests {
                 // Test helper uses `school_root` for both managed-root args;
                 // all skill targets live under it, so the prefix check still
                 // classifies managed links correctly without a real data dir.
-                let result = link_skills::reconcile(
-                    school_root,
-                    school_root,
-                    &proj_dir,
-                    skills,
-                )
-                .map_err(PrepareError::Write)?;
+                let result = link_skills::reconcile(school_root, school_root, &proj_dir, skills)
+                    .map_err(PrepareError::Write)?;
                 folders.push(FolderResult {
                     name,
                     linked: result.changed(),
@@ -479,9 +514,16 @@ mod tests {
             let prev_dir = project_dir.join(".claude").join(format!("previous-{name}"));
             let adopted = adopt_previous(&proj_dir, &prev_dir)?;
             let linked = ensure_symlink(&proj_dir, &school_dir)?;
-            folders.push(FolderResult { name, linked, adopted });
+            folders.push(FolderResult {
+                name,
+                linked,
+                adopted,
+            });
         }
 
-        Ok(LinkResult { folders, skill_warnings })
+        Ok(LinkResult {
+            folders,
+            skill_warnings,
+        })
     }
 }

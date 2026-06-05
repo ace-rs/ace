@@ -7,17 +7,20 @@ fn config_shows_effective() {
     let env = TestEnv::new();
     env.setup_embedded("top-gun");
 
-    let output = env.ace()
-        .args(["config"])
-        .output()
-        .expect("ace config");
+    let output = env.ace().args(["config"]).output().expect("ace config");
 
     assert!(output.status.success(), "ace config should succeed");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     // Should contain the school specifier and backend field.
-    assert!(stdout.contains("school"), "output should contain school field");
-    assert!(stdout.contains("backend"), "output should contain backend field");
+    assert!(
+        stdout.contains("school"),
+        "output should contain school field"
+    );
+    assert!(
+        stdout.contains("backend"),
+        "output should contain backend field"
+    );
 }
 
 #[test]
@@ -25,16 +28,19 @@ fn config_includes_school_toml() {
     let env = TestEnv::new();
     env.setup_embedded("top-gun");
 
-    let output = env.ace()
-        .args(["config"])
-        .output()
-        .expect("ace config");
+    let output = env.ace().args(["config"]).output().expect("ace config");
 
     assert!(output.status.success());
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("# school.toml"), "should include school.toml section header");
-    assert!(stdout.contains("top-gun"), "should include school name from school.toml");
+    assert!(
+        stdout.contains("# school.toml"),
+        "should include school.toml section header"
+    );
+    assert!(
+        stdout.contains("top-gun"),
+        "should include school name from school.toml"
+    );
 }
 
 #[test]
@@ -44,15 +50,15 @@ fn config_shows_trust_from_local() {
 
     env.write_file("ace.local.toml", "trust = \"auto\"\n");
 
-    let output = env.ace()
-        .args(["config"])
-        .output()
-        .expect("ace config");
+    let output = env.ace().args(["config"]).output().expect("ace config");
 
     assert!(output.status.success(), "ace config should succeed");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("trust = \"auto\""), "trust should appear in effective config");
+    assert!(
+        stdout.contains("trust = \"auto\""),
+        "trust should appear in effective config"
+    );
 }
 
 #[test]
@@ -62,15 +68,15 @@ fn config_backcompat_yolo_becomes_trust() {
 
     env.write_file("ace.local.toml", "yolo = true\n");
 
-    let output = env.ace()
-        .args(["config"])
-        .output()
-        .expect("ace config");
+    let output = env.ace().args(["config"]).output().expect("ace config");
 
     assert!(output.status.success(), "ace config should succeed");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("trust = \"yolo\""), "yolo=true should resolve to trust=yolo");
+    assert!(
+        stdout.contains("trust = \"yolo\""),
+        "yolo=true should resolve to trust=yolo"
+    );
 }
 
 #[test]
@@ -78,10 +84,7 @@ fn config_no_ace_toml() {
     let env = TestEnv::new();
     // No ace.toml — require_state should fail.
 
-    env.ace()
-        .args(["config"])
-        .assert()
-        .failure();
+    env.ace().args(["config"]).assert().failure();
 }
 
 #[test]
@@ -89,7 +92,8 @@ fn config_backend_flag_overrides_effective_backend() {
     let env = TestEnv::new();
     env.setup_flaude_school("name = \"phoenix\"\n");
 
-    let output = env.ace()
+    let output = env
+        .ace()
         .args(["--backend", "codex", "config"])
         .output()
         .expect("ace config");
@@ -97,7 +101,10 @@ fn config_backend_flag_overrides_effective_backend() {
     assert!(output.status.success(), "ace config should succeed");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("backend = \"codex\""), "backend override should appear in effective config");
+    assert!(
+        stdout.contains("backend = \"codex\""),
+        "backend override should appear in effective config"
+    );
 }
 
 #[test]
@@ -105,7 +112,8 @@ fn config_backend_short_flag_overrides_effective_backend() {
     let env = TestEnv::new();
     env.setup_flaude_school("name = \"phoenix\"\n");
 
-    let output = env.ace()
+    let output = env
+        .ace()
         .args(["-b", "codex", "config"])
         .output()
         .expect("ace config");
@@ -113,7 +121,10 @@ fn config_backend_short_flag_overrides_effective_backend() {
     assert!(output.status.success(), "ace config should succeed");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("backend = \"codex\""), "short backend override should appear in effective config");
+    assert!(
+        stdout.contains("backend = \"codex\""),
+        "short backend override should appear in effective config"
+    );
 }
 
 #[test]
@@ -121,7 +132,8 @@ fn config_backend_alias_flag_overrides_effective_backend() {
     let env = TestEnv::new();
     env.setup_flaude_school("name = \"phoenix\"\n");
 
-    let output = env.ace()
+    let output = env
+        .ace()
         .args(["--codex", "config"])
         .output()
         .expect("ace config");
@@ -129,7 +141,10 @@ fn config_backend_alias_flag_overrides_effective_backend() {
     assert!(output.status.success(), "ace config should succeed");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("backend = \"codex\""), "backend alias should appear in effective config");
+    assert!(
+        stdout.contains("backend = \"codex\""),
+        "backend alias should appear in effective config"
+    );
 }
 
 #[test]
@@ -141,7 +156,9 @@ fn config_backend_alias_conflicts_with_backend_flag() {
         .args(["--backend", "codex", "--claude", "config"])
         .assert()
         .failure()
-        .stderr(predicates::str::contains("cannot combine multiple backend override flags"));
+        .stderr(predicates::str::contains(
+            "cannot combine multiple backend override flags",
+        ));
 }
 
 // -- config get --
@@ -151,7 +168,8 @@ fn config_get_backend() {
     let env = TestEnv::new();
     env.setup_flaude_school("name = \"phoenix\"\n");
 
-    let output = env.ace()
+    let output = env
+        .ace()
         .args(["config", "get", "backend"])
         .output()
         .expect("ace config get backend");
@@ -166,7 +184,8 @@ fn config_get_school() {
     let env = TestEnv::new();
     env.setup_embedded("top-gun");
 
-    let output = env.ace()
+    let output = env
+        .ace()
         .args(["config", "get", "school"])
         .output()
         .expect("ace config get school");
@@ -181,7 +200,8 @@ fn config_get_trust_default() {
     let env = TestEnv::new();
     env.setup_embedded("phoenix");
 
-    let output = env.ace()
+    let output = env
+        .ace()
         .args(["config", "get", "trust"])
         .output()
         .expect("ace config get trust");
@@ -197,7 +217,8 @@ fn config_get_env_key() {
     env.setup_embedded("phoenix");
     env.write_file("ace.toml", "school = \".\"\n\n[env]\nFOO = \"bar\"\n");
 
-    let output = env.ace()
+    let output = env
+        .ace()
         .args(["config", "get", "env.FOO"])
         .output()
         .expect("ace config get env.FOO");
@@ -337,7 +358,9 @@ fn scope_flags_conflict() {
         .args(["--user", "--local", "config", "set", "trust", "auto"])
         .assert()
         .failure()
-        .stderr(predicates::str::contains("cannot combine multiple scope flags"));
+        .stderr(predicates::str::contains(
+            "cannot combine multiple scope flags",
+        ));
 }
 
 // -- user layer resolution --
@@ -350,7 +373,8 @@ fn user_layer_provides_defaults() {
     // Set backend at user level
     env.write_file("config/ace/ace.toml", "backend = \"codex\"\n");
 
-    let output = env.ace()
+    let output = env
+        .ace()
         .args(["config", "get", "backend"])
         .output()
         .expect("ace config get backend");
@@ -373,7 +397,8 @@ fn local_layer_overrides_user_layer_trust() {
     env.write_file("config/ace/ace.toml", "trust = \"auto\"\n");
     env.write_file("ace.local.toml", "trust = \"yolo\"\n");
 
-    let output = env.ace()
+    let output = env
+        .ace()
         .args(["config", "get", "trust"])
         .output()
         .expect("ace config get trust");
@@ -390,7 +415,8 @@ fn user_layer_trust_used_when_no_local() {
 
     env.write_file("config/ace/ace.toml", "trust = \"auto\"\n");
 
-    let output = env.ace()
+    let output = env
+        .ace()
         .args(["config", "get", "trust"])
         .output()
         .expect("ace config get trust");
@@ -408,12 +434,12 @@ fn config_show_survives_unknown_backend() {
     env.setup_embedded("phoenix");
     env.write_file("ace.local.toml", "backend = \"no-such-backend\"\n");
 
-    let output = env.ace()
-        .args(["config"])
-        .output()
-        .expect("ace config");
+    let output = env.ace().args(["config"]).output().expect("ace config");
 
-    assert!(output.status.success(), "ace config show should succeed even with unknown backend");
+    assert!(
+        output.status.success(),
+        "ace config show should succeed even with unknown backend"
+    );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         stdout.contains("backend = \"no-such-backend\""),
@@ -427,12 +453,16 @@ fn config_get_backend_survives_unknown_backend() {
     env.setup_embedded("phoenix");
     env.write_file("ace.local.toml", "backend = \"no-such-backend\"\n");
 
-    let output = env.ace()
+    let output = env
+        .ace()
         .args(["config", "get", "backend"])
         .output()
         .expect("ace config get backend");
 
-    assert!(output.status.success(), "ace config get backend should succeed even with unknown backend");
+    assert!(
+        output.status.success(),
+        "ace config get backend should succeed even with unknown backend"
+    );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(stdout.trim(), "no-such-backend");
 }
@@ -447,7 +477,8 @@ fn config_explain_shows_all_keys() {
     env.setup_embedded("phoenix");
     env.write_file("ace.local.toml", "trust = \"auto\"\n");
 
-    let output = env.ace()
+    let output = env
+        .ace()
         .args(["config", "explain"])
         .output()
         .expect("ace config explain");
@@ -470,16 +501,23 @@ fn config_explain_filters_to_one_key() {
     let env = TestEnv::new();
     env.setup_flaude_school("name = \"phoenix\"\n");
 
-    let output = env.ace()
+    let output = env
+        .ace()
         .args(["config", "explain", "backend"])
         .output()
         .expect("ace config explain backend");
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("backend = \"flaude\""), "backend winner shown");
+    assert!(
+        stdout.contains("backend = \"flaude\""),
+        "backend winner shown"
+    );
     assert!(stdout.contains("[project]"), "project layer set backend");
-    assert!(stdout.contains("school:"), "school row present in backend block");
+    assert!(
+        stdout.contains("school:"),
+        "school row present in backend block"
+    );
     assert!(!stdout.contains("trust"), "other keys filtered out");
     assert!(!stdout.contains("session_prompt"));
 }
@@ -501,7 +539,8 @@ fn config_explain_default_collapses_when_no_layer_set() {
     let env = TestEnv::new();
     env.setup_embedded("phoenix");
 
-    let output = env.ace()
+    let output = env
+        .ace()
         .args(["config", "explain", "trust"])
         .output()
         .expect("ace config explain trust");
@@ -521,10 +560,7 @@ fn yolo_with_user_scope() {
     let env = TestEnv::new();
     env.setup_embedded("phoenix");
 
-    env.ace()
-        .args(["--user", "yolo"])
-        .assert()
-        .success();
+    env.ace().args(["--user", "yolo"]).assert().success();
 
     env.assert_contains("config/ace/ace.toml", "trust = \"yolo\"");
 }
@@ -534,10 +570,7 @@ fn auto_with_user_scope() {
     let env = TestEnv::new();
     env.setup_embedded("phoenix");
 
-    env.ace()
-        .args(["--user", "auto"])
-        .assert()
-        .success();
+    env.ace().args(["--user", "auto"]).assert().success();
 
     env.assert_contains("config/ace/ace.toml", "trust = \"auto\"");
 }
@@ -549,15 +582,22 @@ fn override_trust_flag_wins() {
     let env = TestEnv::new();
     env.setup_embedded("phoenix");
 
-    let output = env.ace()
+    let output = env
+        .ace()
         .args(["--trust", "auto", "config", "explain", "trust"])
         .output()
         .expect("ace --trust auto config explain trust");
 
     assert!(output.status.success(), "should succeed");
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("trust = \"auto\""), "winner shown: {stdout}");
-    assert!(stdout.contains("[override]"), "winner source label: {stdout}");
+    assert!(
+        stdout.contains("trust = \"auto\""),
+        "winner shown: {stdout}"
+    );
+    assert!(
+        stdout.contains("[override]"),
+        "winner source label: {stdout}"
+    );
 }
 
 #[test]
@@ -565,7 +605,8 @@ fn override_auto_shorthand() {
     let env = TestEnv::new();
     env.setup_embedded("phoenix");
 
-    let output = env.ace()
+    let output = env
+        .ace()
         .args(["--auto", "config", "explain", "trust"])
         .output()
         .expect("ace --auto config explain trust");
@@ -581,7 +622,8 @@ fn override_yolo_shorthand() {
     let env = TestEnv::new();
     env.setup_embedded("phoenix");
 
-    let output = env.ace()
+    let output = env
+        .ace()
         .args(["--yolo", "config", "explain", "trust"])
         .output()
         .expect("ace --yolo config explain trust");
@@ -620,10 +662,20 @@ fn override_trust_combine_errors() {
 fn override_session_prompt_flag_wins() {
     let env = TestEnv::new();
     env.setup_embedded("phoenix");
-    env.write_file("ace.toml", "school = \"phoenix\"\nsession_prompt = \"from project\"\n");
+    env.write_file(
+        "ace.toml",
+        "school = \"phoenix\"\nsession_prompt = \"from project\"\n",
+    );
 
-    let output = env.ace()
-        .args(["--session-prompt", "live", "config", "explain", "session_prompt"])
+    let output = env
+        .ace()
+        .args([
+            "--session-prompt",
+            "live",
+            "config",
+            "explain",
+            "session_prompt",
+        ])
         .output()
         .expect("ace --session-prompt config explain");
 
@@ -638,12 +690,17 @@ fn override_env_adds_entry() {
     let env = TestEnv::new();
     env.setup_embedded("phoenix");
 
-    let output = env.ace()
+    let output = env
+        .ace()
         .args(["--env", "BAR=baz", "config", "explain", "env.BAR"])
         .output()
         .expect("ace --env config explain");
 
-    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("env.BAR = \"baz\""), "{stdout}");
     assert!(stdout.contains("[override]"), "{stdout}");
@@ -653,9 +710,13 @@ fn override_env_adds_entry() {
 fn override_env_overrides_existing() {
     let env = TestEnv::new();
     env.setup_embedded("phoenix");
-    env.write_file("ace.toml", "school = \"phoenix\"\n\n[env]\nFOO = \"from project\"\n");
+    env.write_file(
+        "ace.toml",
+        "school = \"phoenix\"\n\n[env]\nFOO = \"from project\"\n",
+    );
 
-    let output = env.ace()
+    let output = env
+        .ace()
         .args(["--env", "FOO=from-cli", "config", "explain", "env.FOO"])
         .output()
         .expect("ace --env config explain");
@@ -671,7 +732,8 @@ fn override_env_repeated() {
     let env = TestEnv::new();
     env.setup_embedded("phoenix");
 
-    let out_a = env.ace()
+    let out_a = env
+        .ace()
         .args(["--env", "A=1", "--env", "B=2", "config", "explain", "env.A"])
         .output()
         .expect("explain env.A");
@@ -680,7 +742,8 @@ fn override_env_repeated() {
     assert!(stdout_a.contains("env.A = \"1\""), "{stdout_a}");
     assert!(stdout_a.contains("[override]"), "{stdout_a}");
 
-    let out_b = env.ace()
+    let out_b = env
+        .ace()
         .args(["--env", "A=1", "--env", "B=2", "config", "explain", "env.B"])
         .output()
         .expect("explain env.B");

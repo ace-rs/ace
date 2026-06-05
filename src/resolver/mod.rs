@@ -10,8 +10,8 @@ mod source;
 
 #[allow(unused_imports)]
 pub use imports::{
-    resolve_imports, DiscoveryBySource, ImportCollision, ImportVerdict, ImportsResolution,
-    ResolvedImport, UnknownImportPattern,
+    DiscoveryBySource, ImportCollision, ImportVerdict, ImportsResolution, ResolvedImport,
+    UnknownImportPattern, resolve_imports,
 };
 pub use merge::merge;
 pub use resolved::Resolved;

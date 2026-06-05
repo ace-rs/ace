@@ -10,10 +10,7 @@ pub struct SchoolPaths {
     pub root: PathBuf,
 }
 
-pub fn resolve(
-    project_dir: &std::path::Path,
-    specifier: &str,
-) -> Result<SchoolPaths, ConfigError> {
+pub fn resolve(project_dir: &std::path::Path, specifier: &str) -> Result<SchoolPaths, ConfigError> {
     let (source, path) = parse_specifier(specifier)?;
     let (base, clone_path) = if source == "." {
         (project_dir.to_path_buf(), None)
@@ -97,7 +94,10 @@ mod tests {
 
         for input in cases {
             let result = parse_specifier(input);
-            assert!(result.is_err(), "parse_specifier({input:?}) should fail but got: {result:?}");
+            assert!(
+                result.is_err(),
+                "parse_specifier({input:?}) should fail but got: {result:?}"
+            );
         }
     }
 
@@ -112,9 +112,11 @@ mod tests {
         ];
 
         for (spec, expected_root) in cases {
-            let p = resolve(&project, spec)
-                .expect("resolve should succeed for embedded spec");
-            assert!(p.clone_path.is_none(), "embedded school should have no clone path for {spec:?}");
+            let p = resolve(&project, spec).expect("resolve should succeed for embedded spec");
+            assert!(
+                p.clone_path.is_none(),
+                "embedded school should have no clone path for {spec:?}"
+            );
             assert_eq!(&p.root, expected_root, "root mismatch for {spec:?}");
         }
     }
@@ -123,25 +125,37 @@ mod tests {
     fn resolve_remote() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let project = tmp.path().join("myproject");
-        let data_root = super::super::paths::ace_data_dir()
-            .expect("ace_data_dir should resolve in tests");
+        let data_root =
+            super::super::paths::ace_data_dir().expect("ace_data_dir should resolve in tests");
         let cases: &[(&str, &str, &str)] = &[
             ("ace-rs/school", "ace/ace-rs/school", "ace/ace-rs/school"),
-            ("sith/holocron:school", "ace/sith/holocron", "ace/sith/holocron/school"),
+            (
+                "sith/holocron:school",
+                "ace/sith/holocron",
+                "ace/sith/holocron/school",
+            ),
         ];
 
         for (spec, clone_suffix, root_suffix) in cases {
-            let p = resolve(&project, spec)
-                .expect("resolve should succeed for remote spec");
+            let p = resolve(&project, spec).expect("resolve should succeed for remote spec");
 
-            let clone = p.clone_path.as_ref()
+            let clone = p
+                .clone_path
+                .as_ref()
                 .expect("clone_path should be Some for remote spec");
             assert!(
                 clone.starts_with(&data_root),
                 "clone {clone:?} should live under data dir {data_root:?}"
             );
-            assert!(clone.ends_with(clone_suffix), "clone {clone:?} should end with {clone_suffix:?}");
-            assert!(p.root.ends_with(root_suffix), "root {:?} should end with {root_suffix:?}", p.root);
+            assert!(
+                clone.ends_with(clone_suffix),
+                "clone {clone:?} should end with {clone_suffix:?}"
+            );
+            assert!(
+                p.root.ends_with(root_suffix),
+                "root {:?} should end with {root_suffix:?}",
+                p.root
+            );
         }
     }
 

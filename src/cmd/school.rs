@@ -3,12 +3,12 @@ use std::fs;
 use clap::Subcommand;
 
 use crate::ace::Ace;
-use crate::config::skill_meta;
-use crate::config::school_toml;
 use crate::ace::OutputMode;
+use crate::actions::school::Validate;
 use crate::actions::school::{Init, InitError};
 use crate::actions::school::{PullImports, PullImportsResult};
-use crate::actions::school::Validate;
+use crate::config::school_toml;
+use crate::config::skill_meta;
 
 use super::CmdError;
 
@@ -56,7 +56,10 @@ pub fn run(ace: &mut Ace, command: Command) {
 
 fn run_validate(ace: &mut Ace) -> Result<(), CmdError> {
     let school_root = ace.require_school()?.root.clone();
-    let count = Validate { school_root: &school_root }.run(ace)?;
+    let count = Validate {
+        school_root: &school_root,
+    }
+    .run(ace)?;
     match count {
         0 => {
             ace.done("school.toml looks good");
@@ -79,7 +82,8 @@ fn run_init(ace: &mut Ace, name: Option<String>, force: bool) -> Result<(), CmdE
         None => {
             let toml_path = project_dir.join("school.toml");
             let existing = if force && toml_path.exists() {
-                school_toml::load(&toml_path).ok()
+                school_toml::load(&toml_path)
+                    .ok()
                     .map(|s| s.name)
                     .filter(|n| !n.is_empty())
             } else {
@@ -126,9 +130,7 @@ fn run_skills(ace: &mut Ace) -> Result<(), CmdError> {
     }
 
     let mut skills: Vec<(String, String, usize)> = Vec::new(); // (name, desc, words)
-    let mut entries: Vec<_> = fs::read_dir(&skills_dir)?
-        .filter_map(|e| e.ok())
-        .collect();
+    let mut entries: Vec<_> = fs::read_dir(&skills_dir)?.filter_map(|e| e.ok()).collect();
     entries.sort_by_key(|e| e.file_name());
 
     for entry in entries {
@@ -195,7 +197,10 @@ fn count_skill_words(skill_dir: &std::path::Path) -> usize {
 fn run_pull(ace: &mut Ace) -> Result<(), CmdError> {
     let school_root = ace.require_school()?.root.clone();
 
-    let result = PullImports{ school_root: &school_root }.run(ace)?;
+    let result = PullImports {
+        school_root: &school_root,
+    }
+    .run(ace)?;
     match result {
         PullImportsResult::NoImports => ace.info("no imports to pull"),
         PullImportsResult::Updated { .. } => {}
