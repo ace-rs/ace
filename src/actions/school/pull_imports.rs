@@ -68,7 +68,13 @@ impl PullImports<'_> {
                     return Err(e.into());
                 }
             };
-            discovery.insert(source, discover_skills(&cached)?);
+            let (skills, prunes) = discover_skills(&cached)?;
+            for reason in &prunes {
+                ace.warn(&format!(
+                    "skipping malformed skill identity from {source}: {reason}"
+                ));
+            }
+            discovery.insert(source, skills);
         }
 
         // Hand off to the imports resolver: per-decl matches, cross-decl merge

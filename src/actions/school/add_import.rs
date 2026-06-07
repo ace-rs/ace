@@ -31,10 +31,7 @@ pub enum AddImportError {
 
 /// Result of a successful import — or a request for the caller to pick a skill.
 pub enum AddImportResult {
-    Done {
-        #[allow(dead_code)] // part of result API
-        skill: String,
-    },
+    Done,
     NeedsSelection(Vec<Skill<Discovered>>),
 }
 
@@ -50,7 +47,10 @@ impl AddImport<'_> {
             }
         };
 
-        let skills = discover_skills(&cached)?;
+        let (skills, prunes) = discover_skills(&cached)?;
+        for reason in &prunes {
+            ace.warn(&format!("skipping malformed skill identity: {reason}"));
+        }
         if skills.is_empty() {
             return Err(AddImportError::NoSkills(self.source.to_string()));
         }
@@ -70,9 +70,7 @@ impl AddImport<'_> {
         self.install_skill(selected)?;
 
         ace.done(&format!("Imported skill: {}", selected.locator));
-        Ok(AddImportResult::Done {
-            skill: selected.locator.to_string(),
-        })
+        Ok(AddImportResult::Done)
     }
 
     /// Install a specific discovered skill after selection.

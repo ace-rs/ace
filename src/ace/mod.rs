@@ -5,21 +5,21 @@ use std::path::{Path, PathBuf};
 use once_cell::unsync::OnceCell;
 
 use crate::backend::registry::TemplateCtx;
-use crate::backend::{Backend, BackendError, registry};
+use crate::backend::{registry, Backend, BackendError};
 use crate::config;
 use crate::config::ace_toml::AceToml;
 use crate::config::paths::AcePaths;
+use crate::config::resolve;
+use crate::config::resolve::Resolved;
 use crate::config::school_paths::SchoolPaths;
 use crate::config::tree::Tree;
 use crate::config::{ConfigError, Scope};
 use crate::git::Git;
-use crate::config::resolve;
-use crate::config::resolve::Resolved;
 use crate::school::{School, SchoolError};
 use crate::skills::{Decided, SkillError, Skills};
 
 use io::Io;
-pub use io::{IoError, OutputMode, logo};
+pub use io::{logo, IoError, OutputMode};
 
 /// Lazy-cached session view. All read accessors take `&self` and populate
 /// their cell on first call via `OnceCell`. Mutations (overrides, reload)
@@ -249,7 +249,12 @@ impl Ace {
         self.skills.get_or_try_init(|| {
             let school_root = &self.require_school()?.root;
             let tree = self.require_tree()?;
-            let (validated, rejected) = Skills::discover(school_root)?.validate();
+            // Discovery prunes (malformed identities) are surfaced at the
+            // write/import boundaries (link/setup, pull, import). This getter is
+            // `&self`-cached and takes no action on a pruned skill, so it neither
+            // re-warns nor needs to.
+            let (discovered, _prunes) = Skills::discover(school_root)?;
+            let (validated, rejected) = discovered.validate();
             Ok(validated.resolve(tree).with_rejected(rejected))
         })
     }

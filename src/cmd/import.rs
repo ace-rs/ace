@@ -67,7 +67,7 @@ fn run_inner(
     .run(ace)?;
 
     match result {
-        AddImportResult::Done { .. } => {}
+        AddImportResult::Done => {}
         AddImportResult::NeedsSelection(skills) => {
             let names: Vec<String> = skills.iter().map(|s| s.locator.to_string()).collect();
             let selected = ace.prompt_select("Multiple skills found, pick one:", names)?;

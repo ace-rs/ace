@@ -160,10 +160,12 @@ pub fn prepare(
     tree: &Tree,
     backend_features: u32,
 ) -> io::Result<PreparedSkills> {
-    let (validated, rejected) = Skills::discover(school_root)?.validate();
+    let (discovered, prunes) = Skills::discover(school_root)?;
+    let (validated, rejected) = discovered.validate();
     let skills = validated.resolve(tree).with_rejected(rejected);
     let (desired, collision_warnings) = build_desired(skills.included(), backend_features);
     Ok(PreparedSkills {
+        prunes,
         desired,
         skills,
         collision_warnings,
@@ -262,6 +264,9 @@ pub struct PreparedSkills {
     /// Warnings produced by the backend emit rule: structural rejection,
     /// dirname collisions, etc. Surfaced via `emit_warnings`.
     pub collision_warnings: Vec<String>,
+    /// Structural prunes from discovery — malformed skill identities the
+    /// `Locator` ctor refused (path-safety signal). Surfaced via `emit_warnings`.
+    pub prunes: Vec<name::RejectReason>,
 }
 
 /// Reconcile per-skill symlinks under `project_skills_dir`.
@@ -360,6 +365,9 @@ pub fn emit_warnings(ace: &mut Ace, prepared: &PreparedSkills, link_result: &Lin
     }
     for warning in &prepared.collision_warnings {
         ace.warn(warning);
+    }
+    for reason in &prepared.prunes {
+        ace.warn(&format!("skipping malformed skill identity: {reason}"));
     }
     for rejected in prepared.skills.rejected() {
         ace.warn(&format!(

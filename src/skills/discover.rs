@@ -33,6 +33,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use super::identity::Locator;
+use super::name::RejectReason;
 use super::{Discovered, Skill};
 
 /// Hidden directory names that mark tier sub-trees under `skills/`. These are
@@ -94,24 +95,39 @@ fn atom(
 }
 
 /// Discover skills under `root` per the 2-stage cascade. See module docs.
-pub fn discover_skills(root: &Path) -> Result<Vec<Skill<Discovered>>, std::io::Error> {
+///
+/// Returns the discovered skills plus a list of *structural prunes*: paths that
+/// looked like skills but whose identity failed structural validation at
+/// `Locator` construction (e.g. a backslash segment). Discovery is `Ace`-less,
+/// so it cannot warn directly — it hands each [`RejectReason`] (which carries the
+/// offending name and the cause) back to the caller, which surfaces it. A prune
+/// is a path-safety signal, not a skill verdict, so it is kept out of the skill
+/// list rather than carried as a `Rejected`.
+pub fn discover_skills(
+    root: &Path,
+) -> Result<(Vec<Skill<Discovered>>, Vec<RejectReason>), std::io::Error> {
+    let mut prunes: Vec<RejectReason> = Vec::new();
+
     // Stage 1: direct skill at root.
     if root.join("SKILL.md").is_file() {
         let basename = root.file_name().and_then(|n| n.to_str()).unwrap_or("skill");
-        // Structural path-safety prune: a root basename that isn't a sound path
-        // component (e.g. backslash on unix) is dropped. Discovery is Ace-less,
-        // so this is a silent skip rather than a surfaced warning.
-        let Ok(locator) = Locator::try_from_basename(basename) else {
-            return Ok(Vec::new());
-        };
-        let (internal, frontmatter_name) = read_frontmatter_flags(&root.join("SKILL.md"));
-        return Ok(vec![atom(
-            locator,
-            root.to_path_buf(),
-            Tier::Curated,
-            internal,
-            frontmatter_name,
-        )]);
+        match Locator::try_from_basename(basename) {
+            Ok(locator) => {
+                let (internal, frontmatter_name) = read_frontmatter_flags(&root.join("SKILL.md"));
+                let skill = atom(
+                    locator,
+                    root.to_path_buf(),
+                    Tier::Curated,
+                    internal,
+                    frontmatter_name,
+                );
+                return Ok((vec![skill], prunes));
+            }
+            Err(reason) => {
+                prunes.push(reason);
+                return Ok((Vec::new(), prunes));
+            }
+        }
     }
 
     let mut skills = Vec::new();
@@ -135,6 +151,7 @@ pub fn discover_skills(root: &Path) -> Result<Vec<Skill<Discovered>>, std::io::E
                 *exclude_tier_subdirs,
                 &mut skills,
                 &mut seen,
+                &mut prunes,
             )?;
         }
     }
@@ -144,12 +161,20 @@ pub fn discover_skills(root: &Path) -> Result<Vec<Skill<Discovered>>, std::io::E
         for backend_dir in BACKEND_DIRS {
             let dir = root.join(backend_dir);
             if dir.is_dir() {
-                walk_priority_dir(&dir, &dir, Tier::Curated, false, &mut skills, &mut seen)?;
+                walk_priority_dir(
+                    &dir,
+                    &dir,
+                    Tier::Curated,
+                    false,
+                    &mut skills,
+                    &mut seen,
+                    &mut prunes,
+                )?;
             }
         }
     }
 
-    Ok(skills)
+    Ok((skills, prunes))
 }
 
 /// Recursively walk a priority dir, collecting any directory that contains a
@@ -167,15 +192,21 @@ fn walk_priority_dir(
     exclude_tier_subdirs: bool,
     skills: &mut Vec<Skill<Discovered>>,
     seen: &mut HashSet<String>,
+    prunes: &mut Vec<RejectReason>,
 ) -> Result<(), std::io::Error> {
     if dir.join("SKILL.md").is_file() {
         let rel = match dir.strip_prefix(prefix) {
             Ok(rel) if !rel.as_os_str().is_empty() => rel,
             _ => return Ok(()), // priority root itself is not a skill; stage 1 territory
         };
-        // Structural path-safety prune (silent; discovery is Ace-less).
-        let Ok(locator) = Locator::try_from_path(rel) else {
-            return Ok(());
+        // Structural path-safety prune: record the reason for the caller to
+        // surface as a warning, and skip this dir.
+        let locator = match Locator::try_from_path(rel) {
+            Ok(locator) => locator,
+            Err(reason) => {
+                prunes.push(reason);
+                return Ok(());
+            }
         };
         if seen.insert(locator.to_string()) {
             let (internal, frontmatter_name) = read_frontmatter_flags(&dir.join("SKILL.md"));
@@ -215,7 +246,15 @@ fn walk_priority_dir(
         if SKIP_DIRS.contains(&name) {
             continue;
         }
-        walk_priority_dir(&path, prefix, tier, exclude_tier_subdirs, skills, seen)?;
+        walk_priority_dir(
+            &path,
+            prefix,
+            tier,
+            exclude_tier_subdirs,
+            skills,
+            seen,
+            prunes,
+        )?;
     }
     Ok(())
 }
@@ -302,7 +341,7 @@ mod tests {
     #[test]
     fn empty_dir_returns_no_skills() {
         let tmp = tempfile::tempdir().expect("create temp dir");
-        let skills = discover_skills(tmp.path()).expect("discover_skills");
+        let (skills, _) = discover_skills(tmp.path()).expect("discover_skills");
         assert!(skills.is_empty());
     }
 
@@ -313,7 +352,7 @@ mod tests {
         fs::write(tmp.path().join("skills/loose.md"), "").expect("write file");
         fs::write(tmp.path().join("skills/SKILL.md"), "").expect("write SKILL.md");
 
-        let skills = discover_skills(tmp.path()).expect("discover_skills");
+        let (skills, _) = discover_skills(tmp.path()).expect("discover_skills");
         // The `skills/SKILL.md` at the top of the priority dir is stage-1
         // territory for the `skills/` root, but we deliberately ignore an
         // empty identity (priority root itself). Result: no skills.
@@ -328,7 +367,7 @@ mod tests {
         let tmp = tempfile::tempdir().expect("create temp dir");
         fs::create_dir_all(tmp.path().join("skills/no-marker")).expect("create dir");
 
-        let skills = discover_skills(tmp.path()).expect("discover_skills");
+        let (skills, _) = discover_skills(tmp.path()).expect("discover_skills");
         assert!(skills.is_empty());
     }
 
@@ -339,7 +378,7 @@ mod tests {
             make_skill_at(tmp.path(), &format!("skills/{name}"));
         }
 
-        let skills = discover_skills(tmp.path()).expect("discover_skills");
+        let (skills, _) = discover_skills(tmp.path()).expect("discover_skills");
         let mut names: Vec<_> = skills.iter().map(|s| s.locator.as_str()).collect();
         names.sort();
         assert_eq!(names, vec!["alpha", "beta", "gamma"]);
@@ -350,7 +389,7 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         make_skill_at(tmp.path(), "skills/my-skill");
 
-        let skills = discover_skills(tmp.path()).expect("discover_skills");
+        let (skills, _) = discover_skills(tmp.path()).expect("discover_skills");
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].tier, Tier::Curated);
     }
@@ -360,7 +399,7 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let path = make_skill_at(tmp.path(), "skills/.curated/foo");
 
-        let skills = discover_skills(tmp.path()).expect("discover_skills");
+        let (skills, _) = discover_skills(tmp.path()).expect("discover_skills");
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].locator, "foo");
         assert_eq!(skills[0].path, path);
@@ -372,7 +411,7 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         make_skill_at(tmp.path(), "skills/.experimental/shell");
 
-        let skills = discover_skills(tmp.path()).expect("discover_skills");
+        let (skills, _) = discover_skills(tmp.path()).expect("discover_skills");
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].locator, "shell");
         assert_eq!(skills[0].tier, Tier::Experimental);
@@ -383,7 +422,7 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         make_skill_at(tmp.path(), "skills/.system/skill-creator");
 
-        let skills = discover_skills(tmp.path()).expect("discover_skills");
+        let (skills, _) = discover_skills(tmp.path()).expect("discover_skills");
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].locator, "skill-creator");
         assert_eq!(skills[0].tier, Tier::System);
@@ -395,7 +434,7 @@ mod tests {
         make_skill_at(tmp.path(), "skills/dup");
         let curated = make_skill_at(tmp.path(), "skills/.curated/dup");
 
-        let skills = discover_skills(tmp.path()).expect("discover_skills");
+        let (skills, _) = discover_skills(tmp.path()).expect("discover_skills");
         assert_eq!(skills.len(), 1);
         assert_eq!(
             skills[0].path, curated,
@@ -410,7 +449,7 @@ mod tests {
         let curated = make_skill_at(tmp.path(), "skills/.curated/ios-taste");
         make_skill_at(tmp.path(), "skills/.experimental/ios-taste");
 
-        let skills = discover_skills(tmp.path()).expect("discover_skills");
+        let (skills, _) = discover_skills(tmp.path()).expect("discover_skills");
         assert_eq!(skills.len(), 1);
         assert_eq!(
             skills[0].path, curated,
@@ -425,7 +464,7 @@ mod tests {
         let experimental = make_skill_at(tmp.path(), "skills/.experimental/dup");
         make_skill_at(tmp.path(), "skills/.system/dup");
 
-        let skills = discover_skills(tmp.path()).expect("discover_skills");
+        let (skills, _) = discover_skills(tmp.path()).expect("discover_skills");
         assert_eq!(skills.len(), 1);
         assert_eq!(
             skills[0].path, experimental,
@@ -442,7 +481,7 @@ mod tests {
         make_skill_at(tmp.path(), "skills/.experimental/exp");
         make_skill_at(tmp.path(), "skills/.system/sys");
 
-        let skills = discover_skills(tmp.path()).expect("discover_skills");
+        let (skills, _) = discover_skills(tmp.path()).expect("discover_skills");
         let mut by_name: Vec<(&str, Tier)> = skills
             .iter()
             .map(|s| (s.locator.as_str(), s.tier))
@@ -467,7 +506,7 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         make_skill_at(tmp.path(), "orphan");
 
-        let skills = discover_skills(tmp.path()).expect("discover_skills");
+        let (skills, _) = discover_skills(tmp.path()).expect("discover_skills");
         assert!(skills.is_empty());
     }
 
@@ -476,7 +515,7 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         make_skill_at(tmp.path(), "skills/.weird/thing");
 
-        let skills = discover_skills(tmp.path()).expect("discover_skills");
+        let (skills, _) = discover_skills(tmp.path()).expect("discover_skills");
         assert!(skills.is_empty());
     }
 
@@ -489,7 +528,7 @@ mod tests {
         fs::create_dir_all(&root).expect("mkdir root");
         fs::write(root.join("SKILL.md"), "# root skill").expect("write");
 
-        let skills = discover_skills(&root).expect("discover");
+        let (skills, _) = discover_skills(&root).expect("discover");
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].locator, "my-repo");
         assert_eq!(skills[0].path, root);
@@ -504,7 +543,7 @@ mod tests {
         fs::write(root.join("SKILL.md"), "# root skill").expect("write root SKILL.md");
         make_skill_at(&root, "skills/inner");
 
-        let skills = discover_skills(&root).expect("discover");
+        let (skills, _) = discover_skills(&root).expect("discover");
         assert_eq!(skills.len(), 1, "stage 1 must short-circuit");
         assert_eq!(skills[0].locator, "mono");
     }
@@ -515,7 +554,7 @@ mod tests {
         make_skill_at(tmp.path(), "skills/typescript/coding");
         make_skill_at(tmp.path(), "skills/rust/coding");
 
-        let skills = discover_skills(tmp.path()).expect("discover");
+        let (skills, _) = discover_skills(tmp.path()).expect("discover");
         let mut names: Vec<_> = skills.iter().map(|s| s.locator.as_str()).collect();
         names.sort();
         assert_eq!(names, vec!["rust/coding", "typescript/coding"]);
@@ -529,7 +568,7 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         make_skill_at(tmp.path(), "skills/.curated/group/leaf");
 
-        let skills = discover_skills(tmp.path()).expect("discover");
+        let (skills, _) = discover_skills(tmp.path()).expect("discover");
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].locator, "group/leaf");
         assert_eq!(skills[0].tier, Tier::Curated);
@@ -540,7 +579,7 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         make_skill_at(tmp.path(), ".claude/skills/foo");
 
-        let skills = discover_skills(tmp.path()).expect("discover");
+        let (skills, _) = discover_skills(tmp.path()).expect("discover");
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].locator, "foo");
         assert_eq!(skills[0].tier, Tier::Curated);
@@ -551,7 +590,7 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         make_skill_at(tmp.path(), ".codex/skills/typescript/coding");
 
-        let skills = discover_skills(tmp.path()).expect("discover");
+        let (skills, _) = discover_skills(tmp.path()).expect("discover");
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].locator, "typescript/coding");
     }
@@ -562,7 +601,7 @@ mod tests {
         let canonical = make_skill_at(tmp.path(), "skills/foo");
         make_skill_at(tmp.path(), ".claude/skills/foo");
 
-        let skills = discover_skills(tmp.path()).expect("discover");
+        let (skills, _) = discover_skills(tmp.path()).expect("discover");
         assert_eq!(
             skills.len(),
             1,
@@ -577,7 +616,7 @@ mod tests {
         make_skill_at(tmp.path(), ".claude/skills/alpha");
         make_skill_at(tmp.path(), ".codex/skills/beta");
 
-        let skills = discover_skills(tmp.path()).expect("discover");
+        let (skills, _) = discover_skills(tmp.path()).expect("discover");
         let mut names: Vec<_> = skills.iter().map(|s| s.locator.as_str()).collect();
         names.sort();
         assert_eq!(names, vec!["alpha", "beta"]);
@@ -590,9 +629,25 @@ mod tests {
         make_skill_at(tmp.path(), "skills/target/junk");
         make_skill_at(tmp.path(), "skills/real");
 
-        let skills = discover_skills(tmp.path()).expect("discover");
+        let (skills, _) = discover_skills(tmp.path()).expect("discover");
         let names: Vec<_> = skills.iter().map(|s| s.locator.as_str()).collect();
         assert_eq!(names, vec!["real"]);
+    }
+
+    #[test]
+    fn structurally_unsafe_identity_is_pruned_with_reason() {
+        // A backslash in a path component is structurally unsafe (Windows path
+        // separator). Discovery prunes it AND returns the reason, so the caller
+        // can surface a warning — it must never be silently dropped.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_skill_at(tmp.path(), "skills/foo\\bar");
+        make_skill_at(tmp.path(), "skills/good");
+
+        let (skills, prunes) = discover_skills(tmp.path()).expect("discover");
+        let names: Vec<_> = skills.iter().map(|s| s.locator.as_str()).collect();
+        assert_eq!(names, vec!["good"]);
+        assert_eq!(prunes.len(), 1);
+        assert!(matches!(prunes[0], RejectReason::Backslash { .. }));
     }
 
     #[test]
@@ -604,7 +659,7 @@ mod tests {
             "name: secret\ndescription: hidden\ninternal: true",
         );
 
-        let skills = discover_skills(tmp.path()).expect("discover");
+        let (skills, _) = discover_skills(tmp.path()).expect("discover");
         assert_eq!(skills.len(), 1);
         assert!(skills[0].internal, "internal: true should be detected");
     }
@@ -614,7 +669,7 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         make_skill_at(tmp.path(), "skills/public");
 
-        let skills = discover_skills(tmp.path()).expect("discover");
+        let (skills, _) = discover_skills(tmp.path()).expect("discover");
         assert_eq!(skills.len(), 1);
         assert!(!skills[0].internal);
     }
@@ -627,7 +682,7 @@ mod tests {
         make_skill_at(tmp.path(), "skills/foo");
         make_skill_at(tmp.path(), "skills/foo/sub");
 
-        let skills = discover_skills(tmp.path()).expect("discover");
+        let (skills, _) = discover_skills(tmp.path()).expect("discover");
         let names: Vec<_> = skills.iter().map(|s| s.locator.as_str()).collect();
         assert_eq!(names, vec!["foo"]);
     }
@@ -640,7 +695,7 @@ mod tests {
         make_skill_at(tmp.path(), "skills/python/coding");
         make_skill_at(tmp.path(), "skills/rust/coding");
 
-        let skills = discover_skills(tmp.path()).expect("discover");
+        let (skills, _) = discover_skills(tmp.path()).expect("discover");
         let mut names: Vec<_> = skills.iter().map(|s| s.locator.as_str()).collect();
         names.sort();
         assert_eq!(names, vec!["python/coding", "rust/coding"]);

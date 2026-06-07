@@ -257,11 +257,12 @@ pub struct Diagnostics {
 
 impl Skills<Discovered> {
     /// Walk the school's `skills/` tree. See `discover::discover_skills` for
-    /// the tier priority order.
-    pub fn discover(school_root: &Path) -> io::Result<Self> {
-        Ok(Self::from_discovered(&discover::discover_skills(
-            school_root,
-        )?))
+    /// the tier priority order. Returns the discovered set plus any structural
+    /// prunes (malformed identities) for the caller to surface — see
+    /// `discover_skills`.
+    pub fn discover(school_root: &Path) -> io::Result<(Self, Vec<name::RejectReason>)> {
+        let (skills, prunes) = discover::discover_skills(school_root)?;
+        Ok((Self::from_discovered(&skills), prunes))
     }
 
     pub fn from_discovered(discovered: &[Skill<Discovered>]) -> Self {

@@ -23,7 +23,10 @@ pub fn count(ace: &Ace) -> usize {
     let Ok(paths) = ace.require_school() else {
         return 0;
     };
-    let Ok(skills) = crate::skills::Skills::<crate::skills::Discovered>::discover(&paths.root)
+    // Count-only helper for the learn nudge; prunes (malformed identities)
+    // surface at the write/import boundaries, not here.
+    let Ok((skills, _prunes)) =
+        crate::skills::Skills::<crate::skills::Discovered>::discover(&paths.root)
     else {
         return 0;
     };
