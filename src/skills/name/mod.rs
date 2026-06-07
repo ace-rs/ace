@@ -142,7 +142,6 @@ pub enum NameContext {
     /// on it) — used only to phrase the display-hygiene *warning* raised when
     /// an admitted skill carries a spoofable frontmatter name.
     FrontmatterName,
-    BackendLinkName,
 }
 
 impl NameContext {
@@ -150,7 +149,6 @@ impl NameContext {
         match self {
             NameContext::IdentitySegment => "identity segment",
             NameContext::FrontmatterName => "frontmatter name",
-            NameContext::BackendLinkName => "backend link name",
         }
     }
 }
@@ -288,23 +286,23 @@ mod tests {
     #[test]
     fn structural_validation_rejects_path_tricks() {
         assert!(matches!(
-            structural_ok("..", NameContext::BackendLinkName),
+            structural_ok("..", NameContext::IdentitySegment),
             Err(RejectReason::DotSegment { .. }),
         ));
         assert!(matches!(
-            structural_ok(".env", NameContext::BackendLinkName),
+            structural_ok(".env", NameContext::IdentitySegment),
             Err(RejectReason::LeadingDot { .. }),
         ));
         assert!(matches!(
-            structural_ok("foo/bar", NameContext::BackendLinkName),
+            structural_ok("foo/bar", NameContext::IdentitySegment),
             Err(RejectReason::Slash { .. }),
         ));
         assert!(matches!(
-            structural_ok("foo\\bar", NameContext::BackendLinkName),
+            structural_ok("foo\\bar", NameContext::IdentitySegment),
             Err(RejectReason::Backslash { .. }),
         ));
         assert!(matches!(
-            structural_ok("foo\0bar", NameContext::BackendLinkName),
+            structural_ok("foo\0bar", NameContext::IdentitySegment),
             Err(RejectReason::Nul { position: 3, .. }),
         ));
     }

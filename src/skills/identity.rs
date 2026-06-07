@@ -1,13 +1,15 @@
 //! Typed skill identity ([`Locator`]) and the pattern matcher
 //! ([`pattern_matches`]) that decides whether a user pattern selects it.
 //!
-//! [`Locator`] — a path-shaped identity produced **only** by the discovery
-//! layer after the prefix-strip rule has been applied (see
-//! `docs/spec/skills/model.md` § Type-safety invariant). Constructors are
-//! `pub(crate)` — visible across the binary so typed test fixtures in
-//! `crate::actions::*` can construct fakes, but unreachable from any
-//! hypothetical external library consumer. Discovery is the only production
-//! entry point; the looser visibility is a convention, not a hard wall.
+//! [`Locator`] — a path-shaped identity produced after the prefix-strip rule
+//! (see `docs/spec/skills/model.md` § Type-safety invariant). The production
+//! doors are the *fallible* [`Locator::try_from_path`] / [`try_from_basename`]:
+//! they structurally validate every segment, so a constructed `Locator` is a
+//! sound path-component sequence by construction. Character admissibility is a
+//! separate axis, settled later at `validate` (proven by `Skill<Validated>`).
+//! Discovery is the only production caller; the infallible `from_*` fixtures are
+//! `#[cfg(test)]`. The newtype itself is the real guard against pattern→identity
+//! collapse — there is no implicit `String`→`Locator` conversion.
 //!
 //! Patterns stay raw `&str` — they are selection *input*, never a skill state.
 //! [`pattern_matches`] applies the `selection.md` § Match handle rules and is
@@ -19,6 +21,7 @@ use std::fmt;
 use std::ops::Deref;
 use std::path::Path;
 
+use super::name::{structural_ok, NameContext, RejectReason};
 use crate::glob;
 
 /// A skill's identity path. Produced only by discovery (the prefix-strip
@@ -28,24 +31,47 @@ use crate::glob;
 pub struct Locator(String);
 
 impl Locator {
-    /// Construct a `Locator` from a path relative to a discovery prefix.
-    /// Components are joined with `/` for cross-platform stability.
-    /// `pub(in crate::skills)` so only the discovery layer can call it.
-    pub(crate) fn from_relative_path(rel: &Path) -> Self {
+    /// Construct a `Locator` from a path relative to a discovery prefix,
+    /// validating each component's structure. Components are joined with `/`
+    /// for cross-platform stability. The sole production door from a discovery
+    /// path: a returned `Locator` is structurally sound by construction
+    /// (see `docs/spec/skills/model.md` § Type-safety invariant). Structural
+    /// failure (e.g. a backslash in a segment) is `Err`; the caller prunes.
+    /// Character admissibility is a *separate* axis settled later at `validate`.
+    pub(crate) fn try_from_path(rel: &Path) -> Result<Self, RejectReason> {
         let mut parts: Vec<&str> = Vec::new();
         for comp in rel.iter() {
             if let Some(s) = comp.to_str() {
+                structural_ok(s, NameContext::IdentitySegment)?;
                 parts.push(s);
             }
         }
-        Self(parts.join("/"))
+        Ok(Self(parts.join("/")))
     }
 
-    /// Construct a `Locator` from a basename. Used by stage-1 discovery
-    /// (root-level `SKILL.md`) and by `[[imports]]` declarations that
-    /// supply an explicit identity key.
+    /// Construct a `Locator` from a (possibly slash-joined) basename, validating
+    /// each segment's structure. Used by stage-1 discovery (root-level
+    /// `SKILL.md`). Same structural guarantee as [`try_from_path`](Self::try_from_path).
+    pub(crate) fn try_from_basename(name: impl Into<String>) -> Result<Self, RejectReason> {
+        let name = name.into();
+        for segment in name.split('/') {
+            structural_ok(segment, NameContext::IdentitySegment)?;
+        }
+        Ok(Self(name))
+    }
+
+    /// Infallible test fixture — unwraps [`try_from_basename`](Self::try_from_basename).
+    /// `#[cfg(test)]` so production identities only ever come from the fallible
+    /// doors; test code crate-wide can still mint fakes cheaply.
+    #[cfg(test)]
     pub(crate) fn from_basename(name: impl Into<String>) -> Self {
-        Self(name.into())
+        Self::try_from_basename(name).expect("valid test locator")
+    }
+
+    /// Infallible test fixture — unwraps [`try_from_path`](Self::try_from_path).
+    #[cfg(test)]
+    pub(crate) fn from_relative_path(rel: &Path) -> Self {
+        Self::try_from_path(rel).expect("valid test locator")
     }
 
     /// Borrow the identity as a slash-joined `&str`.
@@ -265,12 +291,21 @@ mod tests {
     }
 
     #[test]
-    fn skill_id_constructor_is_module_private() {
-        // Compile-time check: external code cannot call from_basename or
-        // from_relative_path. Verified by the fact that this module
-        // (crate::skills::identity) CAN call them; tests outside
-        // crate::skills cannot. No runtime assertion is possible — the
-        // type invariant is enforced by Rust's privacy at compile time.
-        let _ = Locator::from_basename("ok");
+    fn try_from_basename_validates_structure() {
+        // The production door is fallible: a clean basename constructs, a
+        // structurally-unsafe one (backslash) is rejected. There is no
+        // implicit `String`→`Locator` conversion — construction is explicit
+        // and structurally checked, which is the real invariant (not privacy).
+        assert!(Locator::try_from_basename("ok").is_ok());
+        assert!(matches!(
+            Locator::try_from_basename("bad\\seg"),
+            Err(RejectReason::Backslash { .. })
+        ));
+    }
+
+    #[test]
+    fn try_from_path_rejects_structurally_unsafe_segment() {
+        assert!(Locator::try_from_path(&PathBuf::from("ts").join("coding")).is_ok());
+        assert!(Locator::try_from_path(&PathBuf::from("a\\b")).is_err());
     }
 }

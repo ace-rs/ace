@@ -6,7 +6,7 @@
 
 use std::fmt::Write;
 
-use crate::skills::{Decided, Entry, Skill, Skills, Source};
+use crate::skills::{name, Decided, Entry, Skill, Skills, Source};
 
 /// Tab-separated table with header. Matches `ace paths` style for machine parsing.
 pub fn render_table(skills: &Skills<Decided>, show_excluded: bool) -> String {
@@ -15,7 +15,7 @@ pub fn render_table(skills: &Skills<Decided>, show_excluded: bool) -> String {
         let _ = writeln!(
             out,
             "{}\t{}\t{}\t{}",
-            crate::skills::name::render(skill.locator.as_str()),
+            name::render(skill.locator.as_str()),
             skill.tier.label(),
             skill.status().label(),
             reason_for(skill),
@@ -26,7 +26,7 @@ pub fn render_table(skills: &Skills<Decided>, show_excluded: bool) -> String {
             let _ = writeln!(
                 out,
                 "{}\t{}\trejected\t{}",
-                crate::skills::name::render(rejected.locator.as_str()),
+                name::render(rejected.locator.as_str()),
                 rejected.tier.label(),
                 rejected.reason,
             );
@@ -39,7 +39,7 @@ pub fn render_table(skills: &Skills<Decided>, show_excluded: bool) -> String {
 pub fn render_names(skills: &Skills<Decided>, show_excluded: bool) -> String {
     let mut out = String::new();
     for skill in visible(skills, show_excluded) {
-        out.push_str(crate::skills::name::render(skill.locator.as_str()).as_ref());
+        out.push_str(name::render(skill.locator.as_str()).as_ref());
         out.push('\n');
     }
     out
@@ -70,7 +70,7 @@ fn format_reason(e: &Entry) -> String {
             "{}: {} \"{}\"",
             e.source.label(),
             e.field.label(),
-            crate::skills::name::render(&e.pattern),
+            name::render(&e.pattern),
         ),
     }
 }

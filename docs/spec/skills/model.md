@@ -112,13 +112,19 @@ A skill moves through three lifecycle stages — **discovered**, **validated**, 
 (its selection resolved) — and the type system encodes that ordering so a wrong-stage
 operation cannot be written.
 
-- **Identity is typed and carried end-to-end.** Identity values are constructed **only** by
-  the discovery layer, after the prefix-strip rule. Code outside discovery cannot synthesize
-  an identity from a raw string, and that typed identity rides every stage unchanged rather
-  than collapsing back to a string — the resolver and emit boundaries cannot accept a raw
-  user string in an identity slot. The dual holds for the other direction: a user-supplied
-  selection pattern stays a plain string — validated at the resolver boundary, never minted
-  into an identity (see [selection.md → Match handle](selection.md#match-handle)).
+- **Identity is typed, structurally sound by construction, and carried end-to-end.** Identity
+  is a distinct newtype, not a string: there is no implicit `String`→identity conversion, so a
+  raw value cannot slip into an identity slot, and the typed identity rides every stage unchanged
+  rather than collapsing back to a string. Construction goes through *fallible* doors that
+  structurally validate every segment (non-empty, no NUL/slash/backslash, not a dot-segment or
+  leading-dot, within length) — so holding an identity proves it is a sound path-component
+  sequence. Structural failure is pruned at the door; it is not a skill verdict. Discovery is the
+  sole production minter by convention (the prefix-strip rule is the only path that mints one);
+  this is a layering convention, not a visibility wall. Character *admissibility* is a separate
+  axis, not enforced at construction (the partition must be able to represent inadmissible
+  identities to report them) — see **Validation** below. The dual holds for the other direction:
+  a user-supplied selection pattern stays a plain string — validated at the resolver boundary,
+  never minted into an identity (see [selection.md → Match handle](selection.md#match-handle)).
 - **Validation is a gate, not a flag.** Validation *partitions* the discovered set into the
   admissible and the rejected (see [Name Admission](#name-admission)); only the admissible
   half advances. The boundaries then accept narrower proofs: **persist** takes any

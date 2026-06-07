@@ -98,9 +98,15 @@ pub fn discover_skills(root: &Path) -> Result<Vec<Skill<Discovered>>, std::io::E
     // Stage 1: direct skill at root.
     if root.join("SKILL.md").is_file() {
         let basename = root.file_name().and_then(|n| n.to_str()).unwrap_or("skill");
+        // Structural path-safety prune: a root basename that isn't a sound path
+        // component (e.g. backslash on unix) is dropped. Discovery is Ace-less,
+        // so this is a silent skip rather than a surfaced warning.
+        let Ok(locator) = Locator::try_from_basename(basename) else {
+            return Ok(Vec::new());
+        };
         let (internal, frontmatter_name) = read_frontmatter_flags(&root.join("SKILL.md"));
         return Ok(vec![atom(
-            Locator::from_basename(basename),
+            locator,
             root.to_path_buf(),
             Tier::Curated,
             internal,
@@ -167,7 +173,10 @@ fn walk_priority_dir(
             Ok(rel) if !rel.as_os_str().is_empty() => rel,
             _ => return Ok(()), // priority root itself is not a skill; stage 1 territory
         };
-        let locator = Locator::from_relative_path(rel);
+        // Structural path-safety prune (silent; discovery is Ace-less).
+        let Ok(locator) = Locator::try_from_path(rel) else {
+            return Ok(());
+        };
         if seen.insert(locator.to_string()) {
             let (internal, frontmatter_name) = read_frontmatter_flags(&dir.join("SKILL.md"));
             skills.push(atom(
@@ -659,15 +668,11 @@ mod tests {
 
     #[test]
     fn frontmatter_warning_silent_on_clean_or_absent_name() {
-        assert!(
-            discovered_with_name("coding", Some("ts-coding"))
-                .frontmatter_warning()
-                .is_none()
-        );
-        assert!(
-            discovered_with_name("coding", None)
-                .frontmatter_warning()
-                .is_none()
-        );
+        assert!(discovered_with_name("coding", Some("ts-coding"))
+            .frontmatter_warning()
+            .is_none());
+        assert!(discovered_with_name("coding", None)
+            .frontmatter_warning()
+            .is_none());
     }
 }

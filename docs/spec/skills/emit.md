@@ -78,16 +78,19 @@ if (features & FEATURE_NESTED_SKILLS) && segments(identity) <= MAX_SKILL_DEPTH:
 else:
     # flatten emit
     skillName = basename(skill.identity)             # path is the only naming axis
-    structural_check(skillName)
     write to <backend>/skills/<skillName>/
 ```
 
-Structural validation applies to every emitted path segment regardless of branch — that's
-a filesystem concern, not a flatten concern. Character admission already happened during
-discovery / resolution.
+Every emitted path segment is a structurally sound filesystem component **by construction**:
+an identity cannot exist unless each of its segments cleared the structural checks at
+`Locator` construction (see [model.md § Type-safety invariant](model.md#type-safety-invariant)),
+and the flatten `skillName` is one of those segments. So emit performs no structural check —
+the type it receives already carries the guarantee. Character admission likewise already
+happened, at the `validate` partition.
 
-On the flatten branch, the resolved `skillName` is rejected (warn-and-drop) when it would
-escape the skills dir, shadow a dotfile, or exceed filesystem limits:
+The structural checks established at construction exclude exactly the segments that would be
+unsafe as a backend path component — escaping the skills dir, shadowing a dotfile, or
+exceeding filesystem limits:
 
 - contains `/` (would synthesize a fake nested layout on a flat backend) or `\` (path
   separator on Windows)
@@ -95,9 +98,9 @@ escape the skills dir, shadow a dotfile, or exceed filesystem limits:
 - starts with `.` (would shadow a real dotfile like `.gitignore` /`.env`)
 - exceeds 255 bytes (per-component filesystem cap)
 
-Imported skills aren't user-controlled, so ACE handles hostile frontmatter at the emit
-boundary rather than asking for an upstream rename. Identity-path slashes are legitimate
-on the nested branch and never reach this check.
+Because these are excluded at construction, a structurally-unsafe segment can never reach
+emit; there is no emit-time drop. Identity-path slashes are legitimate on the nested branch
+(they separate already-sound segments) and never constitute a single-component violation.
 
 On the flatten branch the emitted name is `basename(identity)` — the leaf segment of the
 path. ACE **deliberately diverges** from `vercel-labs/skills` `src/installer.ts:247`, which
@@ -112,7 +115,9 @@ paths are unique by construction in school storage.
 
 When two skills on the flatten branch resolve to the same `skillName`:
 
-- **Tiebreaker** — alphabetical by source path. Winner emits.
+- **Tiebreaker** — alphabetical by identity path. Winner emits. (Within one school,
+  identity order matches source-path order; identity is the stable, clone-location-independent
+  key.)
 - **Loser** — omitted from the backend entirely.
 - **Warning** — identifies both source paths and provides remediation hints. Since the
   name is `basename(identity)`, the collision is two identity paths sharing a leaf on a
@@ -130,7 +135,7 @@ ACE's internal model (discoverable, globbable via match handles per
 ACE's collision policy diverges from skills.sh on this branch:
 
 - **Loud warning** at every `skillName` collision — skills.sh drops silently.
-- **Deterministic tiebreaker** — alphabetical by source path. skills.sh's effective
+- **Deterministic tiebreaker** — alphabetical by identity path. skills.sh's effective
   tiebreaker is first-encountered, which can churn as source repos reorder.
 
 ### Mixed-depth schools
@@ -164,29 +169,31 @@ read the skill, adapt, and resolve compatibility gaps themselves"):
 Per [model.md § Name Admission](model.md#name-admission), the boundary policy is:
 
 - **School-storage writes** (`ace school pull`) — preserve verbatim.
-- **Backend-emit writes** — structurally validate the link name. ACE emits per-skill
-  symlinks rather than materialized SKILL.md copies (see
+- **Backend-emit writes** — no per-write check. ACE emits per-skill symlinks rather than
+  materialized SKILL.md copies (see
   [sync.md § Symlinks over copies](sync.md#symlinks-over-copies)), so the only string ACE
-  synthesizes at the backend boundary is the directory name of each symlink. Discovery has
-  already rejected inadmissible character content; emit keeps only the filesystem
-  backstop.
+  synthesizes at the backend boundary is the directory name of each symlink — a basename of
+  an identity, which is structurally sound by construction. Discovery already rejected
+  inadmissible character content; nothing is left for emit to validate.
 - **ACE's own display** — render untrusted text through `SanitizedString`.
 
 The Unicode-class whitelist (allow `L*`, `M*`, `N*`, `P*`, `S*`, `Zs`; reject `C*`, `Zl`,
-and `Zp`) applies at discovery admission. Emit does not mutate characters. It only rejects
-structurally unsafe path components (slash on the flatten branch, backslash, dot-segments,
-leading-dot names, NUL, and overlong components).
+and `Zp`) applies at the `validate` partition. Structural soundness of every path component
+(no slash/backslash, no dot-segment, no leading dot, no NUL, within length) is established at
+`Locator` construction. Emit neither mutates characters nor re-checks structure — both
+guarantees ride in on the types it receives.
 
 ### Type-safety invariant
 
 Writes under `<school>/skills/…` and link names under `<backend>/skills/…` accept only:
 
-- Identities — constructed by the discovery layer, gated by validation (per
+- Identities — minted by the fallible construction door, which structurally validates every
+  segment, and gated for character admissibility by the `validate` partition (per
   [model.md](model.md#type-safety-invariant)) — and
-- Structurally checked path components for any value ACE synthesizes at the backend
-  boundary — currently the link directory name. School storage takes raw bytes by design
-  (passthrough preserves the school author's responsibility and protects ACE consumers
-  downstream through discovery admission).
+- The link directory name ACE synthesizes at the backend boundary, which is a `basename` of
+  such an identity and therefore a sound single component by construction. School storage
+  takes raw bytes by design (passthrough preserves the school author's responsibility and
+  protects ACE consumers downstream through discovery/validation).
 
 The boundary type carries the proof. Code cannot write an unverified path or a
 structurally unsafe link name to the backend by construction.

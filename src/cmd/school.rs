@@ -203,7 +203,7 @@ fn run_pull(ace: &mut Ace) -> Result<(), CmdError> {
     .run(ace)?;
     match result {
         PullImportsResult::NoImports => ace.info("no imports to pull"),
-        PullImportsResult::Updated { .. } => {}
+        PullImportsResult::Updated => {}
     }
 
     // Imports may have grown the school skill count — offer learn.

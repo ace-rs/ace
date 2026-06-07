@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 use crate::ace::Ace;
 use crate::actions::project::link::LinkResult;
 use crate::config::tree::Tree;
-use crate::skills::{Decided, Skills};
+use crate::skills::{name, Decided, Skill, Skills};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DesiredLink {
@@ -154,7 +154,7 @@ pub enum ClassifyInput {
 ///
 /// When two included skills produce the same backend dirname, the
 /// loser is dropped per spec § Loser-drop on collision (alphabetical
-/// by source path tiebreaker) and a warning is recorded.
+/// by identity tiebreaker) and a warning is recorded.
 pub fn prepare(
     school_root: &Path,
     tree: &Tree,
@@ -176,13 +176,19 @@ pub fn prepare(
 /// - Nested-capable backend (`FEATURE_NESTED_SKILLS` set) AND identity
 ///   depth ≤ `MAX_SKILL_DEPTH` → emit verbatim at the identity path, no
 ///   collision check (paths are unique in school storage).
-/// - Otherwise → flatten branch: `skillName = basename(identity)`, structural
-///   check, alphabetical-by-source-path tiebreak, loser-drop + warn on collision.
+/// - Otherwise → flatten branch: `skillName = basename(identity)`,
+///   alphabetical-by-identity tiebreak, loser-drop + warn on collision.
+///
+/// Structural safety of every path segment is guaranteed at `Locator`
+/// construction (see `docs/spec/skills/emit.md` § Admission at write
+/// boundaries), so emit re-checks nothing: the leaf and every nested segment
+/// are sound path components by the type they arrive in. Only the flat-collapse
+/// collision remains an emit-time concern.
 ///
 /// See `docs/spec/skills/emit.md` § Backend emit rule.
 fn build_desired<'a, I>(included: I, backend_features: u32) -> (Vec<DesiredLink>, Vec<String>)
 where
-    I: Iterator<Item = &'a crate::skills::Skill<crate::skills::Decided>>,
+    I: Iterator<Item = &'a Skill<Decided>>,
 {
     use crate::backend::{FEATURE_NESTED_SKILLS, MAX_SKILL_DEPTH};
 
@@ -191,21 +197,14 @@ where
 
     // Split skills by branch. Nested-emit skills carry their identity path
     // verbatim and never collide (paths are unique in school storage). The
-    // remainder go through the flatten branch with structural validation +
-    // alphabetical tiebreak + loser-drop per `emit.md` § Loser-drop on collision.
+    // remainder go through the flatten branch with alphabetical-by-identity
+    // tiebreak + loser-drop per `emit.md` § Loser-drop on collision.
     let mut nested: Vec<DesiredLink> = Vec::new();
-    let mut to_flatten: Vec<&crate::skills::Skill<crate::skills::Decided>> = Vec::new();
+    let mut to_flatten: Vec<&Skill<Decided>> = Vec::new();
     for skill in included {
         let identity = skill.locator.as_str();
         let depth = identity.split('/').count();
         if nested_capable && depth <= MAX_SKILL_DEPTH {
-            if let Err(reason) = structural_path_ok(identity) {
-                warnings.push(format!(
-                    "skill `{}` produces unsafe backend path ({reason}); dropping",
-                    crate::skills::name::render(identity),
-                ));
-                continue;
-            }
             nested.push(DesiredLink {
                 name: identity.to_string(),
                 target: skill.path.clone(),
@@ -228,20 +227,10 @@ where
         std::collections::HashMap::new();
 
     for (link_name, path, identity) in candidates {
-        if let Err(reason) = crate::skills::name::structural_ok(
-            &link_name,
-            crate::skills::name::NameContext::BackendLinkName,
-        ) {
-            warnings.push(format!(
-                "skill `{}` produces unsafe backend name ({reason}); dropping",
-                crate::skills::name::render(identity),
-            ));
-            continue;
-        }
         if let Some((_, winner_identity)) = by_link.get(&link_name) {
             warnings.push(format!(
                 "backend-name collision at `{link_name}`: `{winner_identity}` wins over \
-                 `{identity}` (alphabetical-by-source-path). Loser is dropped from the backend. \
+                 `{identity}` (alphabetical by identity). Loser is dropped from the backend. \
                  Two identities share a leaf on a flat backend — restructure the skill paths or \
                  use `[[imports]]` `exclude_skills` to express disjoint sets.",
             ));
@@ -264,16 +253,6 @@ where
 /// returns the whole identity; for nested returns the leaf.
 fn basename_of(identity: &str) -> &str {
     identity.rsplit('/').next().unwrap_or(identity)
-}
-
-fn structural_path_ok(identity: &str) -> Result<(), crate::skills::name::RejectReason> {
-    for segment in identity.split('/') {
-        crate::skills::name::structural_ok(
-            segment,
-            crate::skills::name::NameContext::BackendLinkName,
-        )?;
-    }
-    Ok(())
 }
 
 #[derive(Debug)]
@@ -385,7 +364,7 @@ pub fn emit_warnings(ace: &mut Ace, prepared: &PreparedSkills, link_result: &Lin
     for rejected in prepared.skills.rejected() {
         ace.warn(&format!(
             "skill `{}` rejected: {}",
-            crate::skills::name::render(rejected.locator.as_str()),
+            name::render(rejected.locator.as_str()),
             rejected.reason,
         ));
     }
@@ -393,7 +372,7 @@ pub fn emit_warnings(ace: &mut Ace, prepared: &PreparedSkills, link_result: &Lin
     for unknown in &diagnostics.unknown_patterns {
         ace.warn(&format!(
             "skill pattern matched no skill: {} (in {:?} {:?})",
-            crate::skills::name::render(&unknown.pattern),
+            name::render(&unknown.pattern),
             unknown.source,
             unknown.field,
         ));
@@ -401,7 +380,7 @@ pub fn emit_warnings(ace: &mut Ace, prepared: &PreparedSkills, link_result: &Lin
     for invalid in &diagnostics.invalid_patterns {
         ace.warn(&format!(
             "ignoring unsupported skill pattern {}: {} (in {:?} {:?})",
-            crate::skills::name::render(&invalid.pattern),
+            name::render(&invalid.pattern),
             invalid.reason,
             invalid.source,
             invalid.field,
@@ -410,7 +389,7 @@ pub fn emit_warnings(ace: &mut Ace, prepared: &PreparedSkills, link_result: &Lin
     for collision in &diagnostics.collisions {
         ace.warn(&format!(
             "skill {} appears in both include_skills and exclude_skills at {:?} scope",
-            crate::skills::name::render(&collision.skill),
+            name::render(&collision.skill),
             collision.source,
         ));
     }
@@ -781,7 +760,7 @@ mod tests {
     #[test]
     fn collision_drops_loser_alphabetically() {
         // Two nested skills produce the same leaf `coding`. Alphabetical
-        // by source path: `python/coding` wins over `typescript/coding`.
+        // by identity: `python/coding` wins over `typescript/coding`.
         let skills = [
             included_skill("typescript/coding", "/s/typescript/coding"),
             included_skill("python/coding", "/s/python/coding"),
@@ -890,20 +869,18 @@ mod tests {
         assert_eq!(desired[1].target, PathBuf::from("/s/a/b/c/d/e/f"));
     }
 
-    // -- emit structural backstop (spec: emit.md § Backend-emit writes) --
+    // -- emit char/path passthrough (spec: emit.md § Admission at write boundaries) --
     //
-    // The emit name is `basename(identity)` — a single path segment by
-    // construction, so slash / multi-level traversal threats are neutralized
-    // by the basename split, not by a check. What survives is a leaf that is
-    // itself structurally unsafe (leading dot, bare dot-segment, NUL, length,
-    // backslash). Character admission is discovery's job; emit re-checks
-    // structure only, as a filesystem-edge backstop independent of admission.
+    // Structural safety of every segment is guaranteed at `Locator` construction,
+    // so emit runs no structural check and never mutates characters. Structurally
+    // unsafe leaves (NUL, dot-segment, leading-dot, overlong, backslash) cannot be
+    // constructed, so they can never reach emit — there is nothing left to drop here.
 
     #[test]
     fn emit_does_not_mutate_chars() {
-        // Emit is a structural backstop, not a character gate — it never
-        // rewrites Unicode content. A bidi char in the leaf passes structure
-        // and emits verbatim; rejecting it is discovery-admission's job.
+        // Emit never rewrites Unicode content: a bidi char is structurally valid
+        // (so it constructs) and emits verbatim. Rejecting hostile characters is
+        // discovery-admission's job, not emit's.
         let skills = [included_skill(
             "good\u{202E}coding",
             "/s/good\u{202E}coding",
@@ -911,74 +888,6 @@ mod tests {
         let (desired, warnings) = build_desired(skills.iter(), 0);
         assert_eq!(desired[0].name, "good\u{202E}coding");
         assert!(warnings.is_empty());
-    }
-
-    #[test]
-    fn nul_in_leaf_warns_and_drops() {
-        let skills = [included_skill("foo\0bar", "/s/foo")];
-        let (desired, warnings) = build_desired(skills.iter(), 0);
-        assert!(desired.is_empty());
-        assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].contains("NUL"));
-    }
-
-    #[test]
-    fn dot_segment_leaf_warns_and_drops() {
-        // A leaf that is bare `.` or `..` traverses: `<skills>/.` is the dir
-        // itself; `<skills>/..` is the parent. Chars pass admission; structure
-        // does not.
-        for spoof in [".", ".."] {
-            let skills = [included_skill(spoof, "/s/foo")];
-            let (desired, warnings) = build_desired(skills.iter(), 0);
-            assert!(desired.is_empty(), "{spoof:?} should be dropped");
-            assert_eq!(warnings.len(), 1);
-            assert!(
-                warnings[0].contains("dot segment"),
-                "warning was: {}",
-                warnings[0]
-            );
-        }
-    }
-
-    #[test]
-    fn leading_dot_leaf_warns_and_drops() {
-        // `.gitignore`, `.env`, etc. — would shadow real dotfiles in the
-        // backend skills dir. Drop defensively.
-        for spoof in [".gitignore", ".env", ".ssh", ".hidden"] {
-            let skills = [included_skill(spoof, "/s/foo")];
-            let (desired, warnings) = build_desired(skills.iter(), 0);
-            assert!(desired.is_empty(), "{spoof:?} should be dropped");
-            assert!(
-                warnings[0].contains("starts with a dot"),
-                "warning was: {}",
-                warnings[0]
-            );
-        }
-    }
-
-    #[test]
-    fn oversized_leaf_warns_and_drops() {
-        // Filesystem per-component cap is 255 bytes; reject earlier.
-        let huge = "a".repeat(300);
-        let skills = [included_skill(&huge, "/s/foo")];
-        let (desired, warnings) = build_desired(skills.iter(), 0);
-        assert!(desired.is_empty());
-        assert!(warnings[0].contains("255"), "warning was: {}", warnings[0]);
-    }
-
-    #[test]
-    fn backslash_in_leaf_warns_and_drops() {
-        // Backslash is a legal filename char on unix but a path separator
-        // on Windows. Reject defensively — symbol with no legitimate use
-        // in a flat-backend skill name.
-        let skills = [included_skill("foo\\bar", "/s/foo")];
-        let (desired, warnings) = build_desired(skills.iter(), 0);
-        assert!(desired.is_empty());
-        assert!(
-            warnings[0].contains("contains `\\`"),
-            "warning was: {}",
-            warnings[0]
-        );
     }
 
     #[test]

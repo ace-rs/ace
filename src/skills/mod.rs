@@ -203,7 +203,8 @@ impl Skill<Discovered> {
 
 /// Hint paired with [`Skill::frontmatter_warning`]. The name is display-only,
 /// so the fix is upstream or selection-side, never an ACE edit.
-pub const FRONTMATTER_WARNING_HINT: &str = "ACE emits the path basename and renders the name sanitized, but the backend reads \
+pub const FRONTMATTER_WARNING_HINT: &str =
+    "ACE emits the path basename and renders the name sanitized, but the backend reads \
      the frontmatter raw — verify the source or drop the skill via `exclude_skills`";
 
 /// Selection verdict of a *decided* skill. A `Skill<Decided>` is admissible
@@ -264,42 +265,17 @@ impl Skills<Discovered> {
     }
 
     pub fn from_discovered(discovered: &[Skill<Discovered>]) -> Self {
-        Self::from_discovered_inner(discovered, None)
+        Self::from_skills(discovered.to_vec())
     }
 
-    /// Like `from_discovered`, but tags every skill with an origin source label
-    /// (e.g. `"owner/repo"`). Used by `pull_imports` to build a multi-source
-    /// accumulator where each skill remembers where it came from.
-    pub fn from_discovered_with_source(discovered: &[Skill<Discovered>], source: &str) -> Self {
-        Self::from_discovered_inner(discovered, Some(source.to_string()))
-    }
-
-    fn from_discovered_inner(discovered: &[Skill<Discovered>], source: Option<String>) -> Self {
-        let items = discovered
-            .iter()
-            .map(|d| Skill {
-                source: source.clone(),
-                ..d.clone()
-            })
-            .collect();
+    /// Wrap an owned set of discovered skills as-is, preserving each skill's
+    /// `source` label. Used by `pull_imports` after mapping resolved imports
+    /// back to their source-tagged discovery records.
+    pub fn from_skills(items: Vec<Skill<Discovered>>) -> Self {
         Self {
             items,
             diagnostics: Diagnostics::default(),
             rejected: Vec::new(),
-        }
-    }
-
-    /// Fold `other` into `self`, last-wins. Skills in `other` whose name
-    /// already exists in `self` silently replace the existing entry. This
-    /// ensures every pull converges to the latest version regardless of
-    /// declaration order — see `docs/spec/skills-sync.md` § Import Merge Strategy.
-    pub fn merge(&mut self, other: Skills<Discovered>) {
-        for skill in other.items {
-            if let Some(existing) = self.items.iter_mut().find(|s| s.locator == skill.locator) {
-                *existing = skill;
-            } else {
-                self.items.push(skill);
-            }
         }
     }
 
@@ -540,11 +516,9 @@ mod tests {
     fn validate_carries_source_onto_rejected() {
         // The rejected half keeps the skill's origin so pull's multi-source
         // reject warning can still name which source shipped the bad skill.
-        let (_validated, rejected) = Skills::<Discovered>::from_discovered_with_source(
-            &[discovered("bad\u{202E}name", Tier::Curated)],
-            "owner/repo",
-        )
-        .validate();
+        let mut skill = discovered("bad\u{202E}name", Tier::Curated);
+        skill.source = Some("owner/repo".to_string());
+        let (_validated, rejected) = Skills::from_skills(vec![skill]).validate();
 
         assert_eq!(rejected.len(), 1);
         assert_eq!(rejected[0].source.as_deref(), Some("owner/repo"));
@@ -682,72 +656,10 @@ mod tests {
     }
 
     #[test]
-    fn merge_disjoint_keeps_all() {
-        let mut acc = Skills::<Discovered>::from_discovered_with_source(
-            &[discovered("alpha", Tier::Curated)],
-            "owner/a",
-        );
-        let other = Skills::<Discovered>::from_discovered_with_source(
-            &[discovered("beta", Tier::Curated)],
-            "owner/b",
-        );
-
-        acc.merge(other);
-
-        let mut names: Vec<&str> = acc.names().collect();
-        names.sort();
-        assert_eq!(names, vec!["alpha", "beta"]);
-    }
-
-    #[test]
-    fn merge_collision_last_wins() {
-        let mut acc = Skills::<Discovered>::from_discovered_with_source(
-            &[discovered("skill-creator", Tier::System)],
-            "anthropics/skills",
-        );
-        let other = Skills::<Discovered>::from_discovered_with_source(
-            &[discovered("skill-creator", Tier::System)],
-            "ace-rs/school",
-        );
-
-        acc.merge(other);
-
-        let names: Vec<&str> = acc.names().collect();
-        assert_eq!(names, vec!["skill-creator"]);
-        // Last source wins.
-        let source = acc.items[0].source.as_deref();
-        assert_eq!(source, Some("ace-rs/school"));
-    }
-
-    #[test]
-    fn merge_collision_replaces_and_keeps_new_entries() {
-        let mut acc = Skills::<Discovered>::from_discovered_with_source(
-            &[
-                discovered("a", Tier::Curated),
-                discovered("b", Tier::Curated),
-            ],
-            "src/one",
-        );
-        let other = Skills::<Discovered>::from_discovered_with_source(
-            &[
-                discovered("a", Tier::Curated),
-                discovered("b", Tier::Curated),
-                discovered("c", Tier::Curated),
-            ],
-            "src/two",
-        );
-
-        acc.merge(other);
-
-        let mut names: Vec<&str> = acc.names().collect();
-        names.sort();
-        assert_eq!(names, vec!["a", "b", "c"]);
-        // All colliding entries replaced by src/two.
-        for item in &acc.items {
-            let id = item.locator.as_str();
-            if id == "a" || id == "b" || id == "c" {
-                assert_eq!(item.source.as_deref(), Some("src/two"));
-            }
-        }
+    fn from_skills_preserves_source_label() {
+        let mut skill = discovered("alpha", Tier::Curated);
+        skill.source = Some("owner/a".to_string());
+        let s = Skills::from_skills(vec![skill]);
+        assert_eq!(s.items[0].source.as_deref(), Some("owner/a"));
     }
 }

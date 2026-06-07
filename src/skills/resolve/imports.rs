@@ -95,25 +95,61 @@ pub struct InvalidImportPattern {
     pub reason: String,
 }
 
-/// Per-source set of discovered skills, keyed by the decl's `source`
-/// field. Same source can appear in multiple decls; the caller dedups
-/// the discovery work.
-pub type DiscoveryBySource<'a> = HashMap<&'a str, &'a [Skill<Discovered>]>;
+/// Discovered skills across all import sources, indexed for O(1) lookup by
+/// `(source, identity)`. Built incrementally as each source is fetched
+/// (a source can appear in multiple decls; [`has_source`](Self::has_source)
+/// lets the caller fetch each once), then consumed by [`resolve_imports`].
+/// Owns its skills, so the resolution it produces stays free-standing.
+#[derive(Debug, Default)]
+pub struct Discovery {
+    by_source: HashMap<String, SourceSkills>,
+}
+
+#[derive(Debug)]
+struct SourceSkills {
+    skills: Vec<Skill<Discovered>>,
+    /// identity → index into `skills`, so `lookup` is O(1) rather than a scan.
+    by_locator: HashMap<Locator, usize>,
+}
+
+impl Discovery {
+    pub fn has_source(&self, source: &str) -> bool {
+        self.by_source.contains_key(source)
+    }
+
+    /// Record one source's discovered skills, building its identity index.
+    pub fn insert(&mut self, source: &str, skills: Vec<Skill<Discovered>>) {
+        let by_locator = skills
+            .iter()
+            .enumerate()
+            .map(|(i, s)| (s.locator.clone(), i))
+            .collect();
+        self.by_source
+            .insert(source.to_string(), SourceSkills { skills, by_locator });
+    }
+
+    /// The discovered skill for `(source, identity)`, if any. O(1).
+    pub fn lookup(&self, source: &str, identity: &Locator) -> Option<&Skill<Discovered>> {
+        let src = self.by_source.get(source)?;
+        src.by_locator.get(identity).map(|&i| &src.skills[i])
+    }
+
+    fn source_skills(&self, source: &str) -> Option<&[Skill<Discovered>]> {
+        self.by_source.get(source).map(|s| s.skills.as_slice())
+    }
+}
 
 /// Run the imports resolver. Walks decls in declaration order, applies
 /// pattern + tier + internal filters per decl, and merges across decls
 /// with first-wins-and-warn on identity collisions.
-pub fn resolve_imports(
-    decls: &[ImportDecl],
-    discovery: &DiscoveryBySource<'_>,
-) -> ImportsResolution {
+pub fn resolve_imports(decls: &[ImportDecl], discovery: &Discovery) -> ImportsResolution {
     // Stage 1: per-decl matched sets (identity → matched skill ref).
     let mut per_decl: Vec<Vec<MatchedSkill>> = Vec::with_capacity(decls.len());
     let mut unknown_patterns: Vec<UnknownImportPattern> = Vec::new();
     let mut invalid_patterns: Vec<InvalidImportPattern> = Vec::new();
 
     for (idx, decl) in decls.iter().enumerate() {
-        let Some(discovered) = discovery.get(decl.source.as_str()) else {
+        let Some(discovered) = discovery.source_skills(&decl.source) else {
             // Caller is expected to provide discovery for every source
             // listed; if not, we surface every pattern as unknown.
             for pattern in decl.patterns() {
@@ -387,12 +423,12 @@ mod tests {
         }
     }
 
-    fn discovery<'a>(entries: &'a [(&str, &'a [Skill<Discovered>])]) -> DiscoveryBySource<'a> {
-        let mut map = HashMap::new();
+    fn discovery(entries: &[(&str, &[Skill<Discovered>])]) -> Discovery {
+        let mut d = Discovery::default();
         for (k, v) in entries {
-            map.insert(*k, *v);
+            d.insert(k, v.to_vec());
         }
-        map
+        d
     }
 
     fn included_identities(r: &ImportsResolution) -> Vec<&str> {

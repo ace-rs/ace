@@ -5,7 +5,7 @@ use crate::config;
 use crate::config::school_toml::ImportDecl;
 
 use crate::skills::discover::discover_skills;
-use crate::skills::{Discovered, FRONTMATTER_WARNING_HINT, Skill};
+use crate::skills::{name, Discovered, Skill, FRONTMATTER_WARNING_HINT};
 
 pub struct AddImport<'a> {
     pub source: &'a str,
@@ -127,7 +127,7 @@ fn warn_if_rejected(skill: &Skill<Discovered>, ace: &mut Ace) -> bool {
     if let Err(reason) = skill.admission() {
         ace.warn(&format!(
             "skipping inadmissible skill `{}`: {reason}",
-            crate::skills::name::render(skill.locator.as_str()),
+            name::render(skill.locator.as_str()),
         ));
         return false;
     }

@@ -1,13 +1,10 @@
-use std::collections::HashMap;
 use std::path::Path;
 
 use crate::ace::Ace;
 use crate::config;
-use crate::skills::resolve::{
-    DiscoveryBySource, ImportVerdict, ImportsResolution, resolve_imports,
-};
 use crate::skills::discover::discover_skills;
-use crate::skills::{Discovered, FRONTMATTER_WARNING_HINT, Skill, Skills};
+use crate::skills::resolve::{resolve_imports, Discovery, ImportVerdict, ImportsResolution};
+use crate::skills::{name, Discovered, Skill, Skills, FRONTMATTER_WARNING_HINT};
 
 pub struct PullImports<'a> {
     pub school_root: &'a Path,
@@ -29,10 +26,7 @@ pub enum PullImportsError {
 
 pub enum PullImportsResult {
     NoImports,
-    Updated {
-        #[allow(dead_code)] // part of result API
-        count: usize,
-    },
+    Updated,
 }
 
 impl PullImports<'_> {
@@ -57,19 +51,14 @@ impl PullImports<'_> {
 
         let skills_dir = self.school_root.join("skills");
 
-        // Discover each unique source once.
-        let unique_sources: Vec<&str> = {
-            let mut seen: Vec<&str> = Vec::new();
-            for d in &school.imports {
-                let s = d.source.as_str();
-                if !seen.contains(&s) {
-                    seen.push(s);
-                }
+        // Discover each source once, indexed for O(1) lookup. A source can
+        // appear in multiple decls; fetch it only the first time we see it.
+        let mut discovery = Discovery::default();
+        for decl in &school.imports {
+            let source = decl.source.as_str();
+            if discovery.has_source(source) {
+                continue;
             }
-            seen
-        };
-        let mut discovery: HashMap<String, Vec<Skill<Discovered>>> = HashMap::new();
-        for source in &unique_sources {
             ace.progress(&format!("Fetching {source}"));
             let cached = match crate::git::ensure_source_cache(source) {
                 Ok(p) => p,
@@ -79,51 +68,41 @@ impl PullImports<'_> {
                     return Err(e.into());
                 }
             };
-            discovery.insert(source.to_string(), discover_skills(&cached)?);
+            discovery.insert(source, discover_skills(&cached)?);
         }
 
-        // Hand off to the imports resolver. It picks per-decl matches,
-        // merges across decls (first-wins + warn), and emits provenance.
-        let discovery_refs: DiscoveryBySource = discovery
-            .iter()
-            .map(|(k, v)| (k.as_str(), v.as_slice()))
-            .collect();
-        let resolution = resolve_imports(&school.imports, &discovery_refs);
-
+        // Hand off to the imports resolver: per-decl matches, cross-decl merge
+        // (first-wins + warn), provenance.
+        let resolution = resolve_imports(&school.imports, &discovery);
         surface_import_diagnostics(ace, &resolution, &school.imports);
 
-        // Build the to-copy set from Included verdicts; map each back to
-        // its source's discovered record so we keep the full SKILL.md
-        // payload, tier, etc.
-        let mut accumulator: Skills<Discovered> = Skills::default();
+        // Map each Included verdict back to its source's discovered record
+        // (full SKILL.md payload, tier, frontmatter) via the indexed lookup,
+        // tagging it with the source it won under. `included()` is already
+        // unique by identity, so there is nothing to dedup.
+        let mut found: Vec<Skill<Discovered>> = Vec::new();
         for resolved in resolution.included() {
-            let Some(disc) = discovery.get(&resolved.source) else {
+            let Some(d) = discovery.lookup(&resolved.source, &resolved.identity) else {
                 continue;
             };
-            if let Some(d) = disc
-                .iter()
-                .find(|d| d.locator == resolved.identity)
-            {
-                if let Some(warning) = d.frontmatter_warning() {
-                    ace.warn(&warning);
-                    ace.hint(FRONTMATTER_WARNING_HINT);
-                }
-                let batch = Skills::<Discovered>::from_discovered_with_source(
-                    std::slice::from_ref(d),
-                    &resolved.source,
-                );
-                accumulator.merge(batch);
+            if let Some(warning) = d.frontmatter_warning() {
+                ace.warn(&warning);
+                ace.hint(FRONTMATTER_WARNING_HINT);
             }
+            found.push(Skill {
+                source: Some(resolved.source.clone()),
+                ..d.clone()
+            });
         }
 
-        // The admission gate: inadmissible identities partition off here rather
-        // than being filtered inline, so only validated skills reach `copy_into`.
-        let (validated, rejected) = accumulator.validate();
+        // The admission gate: inadmissible identities partition off here, so
+        // only validated skills reach `copy_into`.
+        let (validated, rejected) = Skills::from_skills(found).validate();
         for r in &rejected {
             let from = r.source.as_deref().unwrap_or("?");
             ace.warn(&format!(
                 "skipping inadmissible skill `{}` from {from}: {}",
-                crate::skills::name::render(r.locator.as_str()),
+                name::render(r.locator.as_str()),
                 r.reason,
             ));
         }
@@ -133,14 +112,13 @@ impl PullImports<'_> {
         let name_refs: Vec<&str> = winning_names.iter().map(String::as_str).collect();
         let changes = validated.copy_into(&skills_dir, &name_refs)?;
 
-        let count = changes.len();
         ace.done(&crate::skills::format_pull_summary(&changes));
         if rejected_count > 0 {
             return Err(PullImportsError::RejectedImports {
                 count: rejected_count,
             });
         }
-        Ok(PullImportsResult::Updated { count })
+        Ok(PullImportsResult::Updated)
     }
 }
 
