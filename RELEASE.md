@@ -36,8 +36,8 @@ From a clean working tree on `main`:
 ./release.sh 0.7.2     # bump, build, patch formula, commit, tag, push, publish
 ```
 
-Then notify the website agent (see §7) and post the Discord announcement
-(§8).
+Then author the GitHub release notes (§7), notify the website agent (§8),
+and post the Discord announcement (§9).
 
 ## 3. What each script does
 
@@ -130,7 +130,31 @@ brew install ace-rs/tap/ace
 The formula currently only carries the macOS aarch64 binary + sha. Other
 platforms are served by `install.sh` / `install.ps1`.
 
-## 7. Notify the website agent
+## 7. Author the GitHub release notes
+
+`release.sh` publishes with `gh release create --generate-notes`, which yields
+only a bare "Full Changelog" link. After publishing, replace it with a real
+summary:
+
+```sh
+gh release edit v<ver> --notes-file /tmp/ace-<ver>-ghnotes.md
+```
+
+Lead with the **most significant change, not the most user-visible one**. A
+core-subsystem rearchitecture headlines even when its surface impact is
+indirect — ACE *is* a skill-provisioning tool, so a skill-model overhaul is the
+story, not a "plus" line under smaller features. Watch for the inverse trap too:
+features that are actually downstream *manifestations* of the headline change
+(e.g. an admission-policy or validation tweak that the rearchitecture produced)
+belong under it, not promoted alongside it.
+
+The same headline summary feeds the website notify (§8) and the Discord post
+(§9) — author it once here, then adapt tone per surface. Write the body to
+`/tmp/ace-<ver>-ghnotes.md` (so the harness doesn't mangle
+backticks/angle-brackets) and keep the `Full Changelog` compare link at the
+bottom.
+
+## 8. Notify the website agent
 
 After every published GitHub release, send an `ace-connect` bridge message
 to the `ace-rs-www.claude` peer so the website (schools, commands,
@@ -147,7 +171,7 @@ lists more than a couple of changes, write the full notes to a tmp file
 (`/tmp/ace-<ver>-www.md`) and send a short body that links to it, rather
 than stuffing the whole changelog into one line.
 
-## 8. Discord announcement
+## 9. Discord announcement
 
 After the release is live and the website agent has been notified, draft a brief
 Discord message (3–6 lines, casual tone) highlighting the cool new user-visible
@@ -176,7 +200,7 @@ Notes on the template:
 - Keep the "Plus:" line to one sentence — anything longer belongs in the
   GitHub release notes, not Discord.
 
-## 9. Open gaps
+## 10. Open gaps
 
 - **Checksums / signing** — only the Homebrew sha256 is computed. Publishing
   a `SHA256SUMS` file alongside release assets and verifying it from
