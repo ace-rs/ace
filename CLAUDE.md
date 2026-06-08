@@ -29,6 +29,12 @@ the ACE tool.
 
 - Load `simplify`, `general-coding`, `rust-coding` before proposing changes.
   Simplification that violates a coding principle is a regression.
+- **Formatting**: the toolchain is pinned (`rust-toolchain.toml`, stable 1.96),
+  so `cargo fmt` is deterministic and idempotent across the tree — just run it.
+  No per-file `rustfmt`, no `--edition`/`--style-edition` flags (those were a
+  workaround for the old unpinned-nightly drift; the pin retired it). If you
+  remove or bump the pin, re-verify `cargo fmt --check` is clean before relying
+  on it again.
 - Error enums by layer: `ConfigError` (`src/config/`), action-scoped errors
   (`SetupError`/`PrepareError`/`InitError`/etc. in `src/actions/`), `CmdError`
   (`src/cmd/`). Pure-I/O actions return `std::io::Error` directly.
