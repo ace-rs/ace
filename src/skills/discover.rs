@@ -208,7 +208,7 @@ fn walk_priority_dir(
                 return Ok(());
             }
         };
-        if seen.insert(locator.to_string()) {
+        if seen.insert(locator.as_str().to_string()) {
             let (internal, frontmatter_name) = read_frontmatter_flags(&dir.join("SKILL.md"));
             skills.push(atom(
                 locator,

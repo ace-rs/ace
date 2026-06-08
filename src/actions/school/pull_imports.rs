@@ -136,16 +136,21 @@ fn surface_import_diagnostics(
     resolution: &ImportsResolution,
     decls: &[config::school_toml::ImportDecl],
 ) {
+    // Patterns and source labels are raw third-party `String`s (not `Locator`s,
+    // whose Display self-sanitizes), so they go through `name::render` here.
     for unknown in &resolution.unknown_patterns {
         ace.warn(&format!(
             "no skills matching `{}` in {}",
-            unknown.pattern, unknown.source,
+            name::render(&unknown.pattern),
+            name::render(&unknown.source),
         ));
     }
     for invalid in &resolution.invalid_patterns {
         ace.warn(&format!(
             "ignoring unsupported import pattern `{}` in {}: {}",
-            invalid.pattern, invalid.source, invalid.reason,
+            name::render(&invalid.pattern),
+            name::render(&invalid.source),
+            invalid.reason,
         ));
     }
     for collision in &resolution.collisions {
@@ -156,9 +161,9 @@ fn surface_import_diagnostics(
             "the school you're consuming has a cross-source collision at `{}`: \
              `{}` (decl #{}) wins over `{}` (decl #{}).",
             collision.identity,
-            collision.winner_source,
+            name::render(&collision.winner_source),
             collision.winner_decl_index,
-            collision.loser_source,
+            name::render(&collision.loser_source),
             collision.loser_decl_index,
         ));
         ace.hint(
@@ -180,9 +185,10 @@ fn surface_import_diagnostics(
                 .map(|d| d.source.as_str())
                 .unwrap_or("?");
             ace.warn(&format!(
-                "skill `{}` in {decl_label} is marked `internal: true`; \
+                "skill `{}` in {} is marked `internal: true`; \
                  set `include_internal = true` on the decl, or import it by explicit name",
                 resolved.identity,
+                name::render(decl_label),
             ));
         }
     }

@@ -111,7 +111,7 @@ impl AddImport<'_> {
             Some(existing) => existing.source = self.source.to_string(),
             None => school.imports.push(ImportDecl {
                 source: self.source.to_string(),
-                skills: vec![skill.locator.to_string()],
+                skills: vec![skill.locator.as_str().to_string()],
                 ..ImportDecl::default()
             }),
         }

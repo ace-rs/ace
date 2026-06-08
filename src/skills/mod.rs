@@ -538,7 +538,10 @@ mod tests {
     }
 
     fn excluded_names(resolved: &Skills<Decided>) -> Vec<String> {
-        let mut names: Vec<String> = resolved.excluded().map(|s| s.locator.to_string()).collect();
+        let mut names: Vec<String> = resolved
+            .excluded()
+            .map(|s| s.locator.as_str().to_string())
+            .collect();
         names.sort();
         names
     }

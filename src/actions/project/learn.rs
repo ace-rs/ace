@@ -50,7 +50,7 @@ impl LearnAction {
         let available: Vec<String> = ace
             .skills()?
             .iter()
-            .map(|s| s.locator.to_string())
+            .map(|s| s.locator.as_str().to_string())
             .collect();
         let prompt_text = render_prompt(&available);
 

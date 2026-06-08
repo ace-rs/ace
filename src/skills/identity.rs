@@ -111,8 +111,15 @@ impl Borrow<str> for Locator {
 }
 
 impl fmt::Display for Locator {
+    /// Human-facing axis: sanitized. A `Locator` may be pre-validation
+    /// (discovery → diagnostics surface before `validate`), so its identity can
+    /// still carry chars the whitelist rejects. Display routes through
+    /// [`name::render`] so any `{}`/`to_string()` of a `Locator` is safe to put
+    /// on a terminal by construction — no caller has to remember. Raw,
+    /// machine-faithful access stays on [`as_str`](Self::as_str). Post-validate
+    /// the identity is admissible, so this is a no-op there.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
+        write!(f, "{}", super::name::render(&self.0))
     }
 }
 
@@ -288,6 +295,17 @@ mod tests {
         // `*/coding` matches identities like `typescript/coding` —
         // the glob version of "any path ending in /coding".
         assert!(pattern_matches("*/coding", "typescript/coding"));
+    }
+
+    #[test]
+    fn display_sanitizes_hostile_identity_raw_stays_on_as_str() {
+        // A pre-validation Locator can carry disallowed chars — char admission
+        // is settled later at `validate`, structural construction lets bidi
+        // through. Display is the human-facing axis and must neutralize them;
+        // `as_str` is the raw machine axis and preserves them verbatim.
+        let loc = Locator::from_basename("bad\u{202E}name");
+        assert_eq!(loc.to_string(), "bad\u{FFFD}name", "Display sanitizes");
+        assert_eq!(loc.as_str(), "bad\u{202E}name", "as_str stays raw");
     }
 
     #[test]

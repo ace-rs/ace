@@ -69,7 +69,13 @@ fn run_inner(
     match result {
         AddImportResult::Done => {}
         AddImportResult::NeedsSelection(skills) => {
-            let names: Vec<String> = skills.iter().map(|s| s.locator.to_string()).collect();
+            // Raw identities: the picked value is matched back against
+            // `s.locator` below, so it must be the verbatim identity, not the
+            // sanitized Display form.
+            let names: Vec<String> = skills
+                .iter()
+                .map(|s| s.locator.as_str().to_string())
+                .collect();
             let selected = ace.prompt_select("Multiple skills found, pick one:", names)?;
 
             let skill = skills

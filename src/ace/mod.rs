@@ -186,7 +186,10 @@ impl Ace {
         let Ok(skills) = self.skills() else {
             return Vec::new();
         };
-        let mut names: Vec<String> = skills.excluded().map(|s| s.locator.to_string()).collect();
+        let mut names: Vec<String> = skills
+            .excluded()
+            .map(|s| s.locator.as_str().to_string())
+            .collect();
         names.sort();
         names.dedup();
         names
