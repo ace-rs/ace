@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use once_cell::unsync::OnceCell;
 
 use crate::backend::registry::TemplateCtx;
-use crate::backend::{registry, Backend, BackendError};
+use crate::backend::{Backend, BackendError, registry};
 use crate::config;
 use crate::config::ace_toml::AceToml;
 use crate::config::paths::AcePaths;
@@ -19,7 +19,7 @@ use crate::school::{School, SchoolError};
 use crate::skills::{Decided, SkillError, Skills};
 
 use io::Io;
-pub use io::{logo, IoError, OutputMode};
+pub use io::{IoError, OutputMode, logo};
 
 /// Lazy-cached session view. All read accessors take `&self` and populate
 /// their cell on first call via `OnceCell`. Mutations (overrides, reload)

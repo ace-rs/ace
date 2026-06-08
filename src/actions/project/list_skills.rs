@@ -6,7 +6,7 @@
 
 use std::fmt::Write;
 
-use crate::skills::{name, Decided, Entry, Skill, Skills, Source};
+use crate::skills::{Decided, Entry, Skill, Skills, Source, name};
 
 /// Tab-separated table with header. Matches `ace paths` style for machine parsing.
 pub fn render_table(skills: &Skills<Decided>, show_excluded: bool) -> String {

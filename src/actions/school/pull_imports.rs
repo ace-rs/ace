@@ -3,8 +3,8 @@ use std::path::Path;
 use crate::ace::Ace;
 use crate::config;
 use crate::skills::discover::discover_skills;
-use crate::skills::resolve::{resolve_imports, Discovery, ImportVerdict, ImportsResolution};
-use crate::skills::{name, Discovered, Skill, Skills, FRONTMATTER_WARNING_HINT};
+use crate::skills::resolve::{Discovery, ImportVerdict, ImportsResolution, resolve_imports};
+use crate::skills::{Discovered, FRONTMATTER_WARNING_HINT, Skill, Skills, name};
 
 pub struct PullImports<'a> {
     pub school_root: &'a Path,

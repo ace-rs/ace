@@ -21,7 +21,7 @@ use std::fmt;
 use std::ops::Deref;
 use std::path::Path;
 
-use super::name::{structural_ok, NameContext, RejectReason};
+use super::name::{NameContext, RejectReason, structural_ok};
 use crate::glob;
 
 /// A skill's identity path. Produced only by discovery (the prefix-strip

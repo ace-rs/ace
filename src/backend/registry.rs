@@ -412,8 +412,8 @@ mod tests {
     // now-retired state/mod.rs.
 
     use crate::config::ace_toml::AceToml;
-    use crate::config::tree::Tree;
     use crate::config::resolve;
+    use crate::config::tree::Tree;
 
     fn ace_with(school: &str, env: &[(&str, &str)]) -> AceToml {
         AceToml {

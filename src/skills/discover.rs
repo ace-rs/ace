@@ -723,11 +723,15 @@ mod tests {
 
     #[test]
     fn frontmatter_warning_silent_on_clean_or_absent_name() {
-        assert!(discovered_with_name("coding", Some("ts-coding"))
-            .frontmatter_warning()
-            .is_none());
-        assert!(discovered_with_name("coding", None)
-            .frontmatter_warning()
-            .is_none());
+        assert!(
+            discovered_with_name("coding", Some("ts-coding"))
+                .frontmatter_warning()
+                .is_none()
+        );
+        assert!(
+            discovered_with_name("coding", None)
+                .frontmatter_warning()
+                .is_none()
+        );
     }
 }

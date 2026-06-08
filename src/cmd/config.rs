@@ -5,9 +5,9 @@ use clap::Subcommand;
 use crate::ace::Ace;
 use crate::backend::Kind;
 use crate::config::ace_toml::{self, AceToml, Trust};
+use crate::config::resolve::Source;
 use crate::config::tree::Tree;
 use crate::config::{ConfigKey, Scope};
-use crate::config::resolve::Source;
 
 use super::CmdError;
 

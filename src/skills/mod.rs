@@ -203,8 +203,7 @@ impl Skill<Discovered> {
 
 /// Hint paired with [`Skill::frontmatter_warning`]. The name is display-only,
 /// so the fix is upstream or selection-side, never an ACE edit.
-pub const FRONTMATTER_WARNING_HINT: &str =
-    "ACE emits the path basename and renders the name sanitized, but the backend reads \
+pub const FRONTMATTER_WARNING_HINT: &str = "ACE emits the path basename and renders the name sanitized, but the backend reads \
      the frontmatter raw — verify the source or drop the skill via `exclude_skills`";
 
 /// Selection verdict of a *decided* skill. A `Skill<Decided>` is admissible

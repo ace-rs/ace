@@ -216,12 +216,7 @@ fn select(locators: &[Locator], user: &AceToml, project: &AceToml, local: &AceTo
 /// Returns `false` and records a diagnostic for unsupported syntax — the
 /// pattern is then skipped rather than rejected, keeping resolution
 /// infallible (the config may be third-party authored).
-fn glob_ok(
-    pattern: &str,
-    source: Source,
-    field: Field,
-    invalid: &mut Vec<InvalidPattern>,
-) -> bool {
+fn glob_ok(pattern: &str, source: Source, field: Field, invalid: &mut Vec<InvalidPattern>) -> bool {
     let Err(reason) = glob::validate(pattern) else {
         return true;
     };
