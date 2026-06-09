@@ -123,8 +123,10 @@ pub struct Cli {
 enum Command {
     /// Set up a school (clone + auth + config)
     Setup {
-        /// School specifier (owner/repo). Omit to link a cached school.
-        specifier: Option<String>,
+        /// School specifier (`owner/repo`, or the `owner repo` typo).
+        /// Omit to link a cached school.
+        #[arg(num_args = 0..=2)]
+        specifier: Vec<String>,
     },
     /// Show uncommitted changes in the school clone
     Diff,
@@ -512,7 +514,12 @@ pub fn run(ace: &mut Ace, cli: Cli) {
     };
 
     match command {
-        Command::Setup { specifier } => setup::run(ace, specifier.as_deref()),
+        Command::Setup { specifier } => {
+            // `ace setup prod9 school` arrives as two args; join so the
+            // space-separated typo normalizes like the quoted `prod9/school`.
+            let specifier = (!specifier.is_empty()).then(|| specifier.join(" "));
+            setup::run(ace, specifier.as_deref())
+        }
         Command::Import {
             source,
             skill,
@@ -684,6 +691,21 @@ mod tests {
     fn root_dash_dash_passthrough() {
         let cli = Cli::try_parse_from(["ace", "--", "-p", "hi"]).expect("parse");
         assert_eq!(cli.backend_args, vec!["-p".to_string(), "hi".to_string()]);
+    }
+
+    #[test]
+    fn setup_accepts_space_separated_specifier_as_two_args() {
+        let cli = Cli::try_parse_from(["ace", "setup", "prod9", "school"]).expect("parse");
+        let Some(Command::Setup { specifier }) = cli.command else {
+            panic!("expected setup command");
+        };
+        assert_eq!(specifier, vec!["prod9".to_string(), "school".to_string()]);
+    }
+
+    #[test]
+    fn setup_rejects_more_than_two_specifier_args() {
+        let result = Cli::try_parse_from(["ace", "setup", "a", "b", "c"]);
+        assert!(result.is_err(), "3 positional args should be a usage error");
     }
 
     #[test]
