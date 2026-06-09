@@ -193,7 +193,16 @@ pub fn normalize_github_source(source: &str) -> String {
         .or_else(|| source.strip_prefix("http://github.com/"))
         .unwrap_or(source);
     let s = s.strip_suffix(".git").unwrap_or(s);
-    s.trim_end_matches('/').to_string()
+    let s = s.trim_end_matches('/');
+
+    // Accept the space-separated `owner repo` typo as `owner/repo`. Only when
+    // there's no slash already and the input is exactly two whitespace tokens —
+    // anything else is left as typed rather than guessed at.
+    let parts: Vec<&str> = s.split_whitespace().collect();
+    if !s.contains('/') && parts.len() == 2 {
+        return parts.join("/");
+    }
+    s.to_string()
 }
 
 /// Standalone — no repo context needed.
@@ -302,6 +311,23 @@ mod tests {
     #[test]
     fn normalize_preserves_dot_specifier() {
         assert_eq!(normalize_github_source("."), ".");
+    }
+
+    #[test]
+    fn normalize_space_separated_specifier() {
+        assert_eq!(normalize_github_source("prod9 school"), "prod9/school");
+    }
+
+    #[test]
+    fn normalize_space_separated_collapses_extra_whitespace() {
+        assert_eq!(normalize_github_source("prod9   school"), "prod9/school");
+        assert_eq!(normalize_github_source("prod9\tschool"), "prod9/school");
+    }
+
+    #[test]
+    fn normalize_leaves_three_token_input_untouched() {
+        // Not a valid owner/repo — don't guess, leave it as typed.
+        assert_eq!(normalize_github_source("a b c"), "a b c");
     }
 
     #[test]
