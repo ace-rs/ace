@@ -127,6 +127,7 @@ pub fn maybe_hint_relearn(ace: &mut Ace, changes: &[SkillChange]) {
     ace.hint(&format!(
         "school skills changed ({added}+/{removed}-) — consider rerunning `ace learn`"
     ));
+    ace.hint("for a small change, editing the `skills` list in ace.toml directly is enough");
 }
 
 fn tally_changes(changes: &[SkillChange]) -> (usize, usize) {
