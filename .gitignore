@@ -47,3 +47,6 @@ ace.local.toml
 ace.local.toml
 # end ACE
 .inbox.log
+
+# Local roadmap cache (ace roadmap session scratch)
+.roadmap-cache/
