@@ -157,7 +157,7 @@ bottom.
 ## 8. Notify the website agent
 
 After every published GitHub release, send an `ace-connect` bridge message
-to the `ace-rs-www.claude` peer so the website (schools, commands,
+to the `ace-rs.www.claude` peer so the website (schools, commands,
 configuration pages) can be regenerated. Include:
 
 - the version tag (e.g. `v0.7.0`)
