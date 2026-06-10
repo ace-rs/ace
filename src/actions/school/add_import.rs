@@ -27,6 +27,8 @@ pub enum AddImportError {
     Config(#[from] config::ConfigError),
     #[error("skipped {count} inadmissible skill(s)")]
     RejectedImports { count: usize },
+    #[error("skill `{0}` is committed as a broken git submodule")]
+    BrokenSubmodule(String),
 }
 
 /// Result of a successful import — or a request for the caller to pick a skill.
@@ -67,7 +69,7 @@ impl AddImport<'_> {
         if !warn_if_rejected(selected, ace) {
             return Err(AddImportError::RejectedImports { count: 1 });
         }
-        self.install_skill(selected)?;
+        self.install_skill(selected, ace)?;
 
         ace.done(&format!("Imported skill: {}", selected.locator));
         Ok(AddImportResult::Done)
@@ -83,18 +85,30 @@ impl AddImport<'_> {
         if !warn_if_rejected(skill, ace) {
             return Err(AddImportError::RejectedImports { count: 1 });
         }
-        self.install_skill(skill)?;
+        self.install_skill(skill, ace)?;
         ace.done(&format!("Imported skill: {}", skill.locator));
         Ok(())
     }
 
-    fn install_skill(&self, skill: &Skill<Discovered>) -> Result<(), AddImportError> {
-        let dest = self.school_root.join("skills").join(skill.locator.as_str());
-        if dest.exists() {
-            std::fs::remove_dir_all(&dest)?;
+    fn install_skill(
+        &self,
+        skill: &Skill<Discovered>,
+        ace: &mut Ace,
+    ) -> Result<(), AddImportError> {
+        let name = skill.locator.as_str();
+
+        // Refuse to overwrite a path the host repo tracks as a gitlink — an
+        // earlier import that leaked a `.git` turned it into an accidental
+        // submodule. Writing files there leaves a confusing half-state; warn
+        // and bail so the user clears the index entry first.
+        let names = [name.to_string()];
+        if !super::gitlink::gitlinked_names(self.school_root, &names).is_empty() {
+            super::gitlink::warn_broken_submodule(ace, name);
+            return Err(AddImportError::BrokenSubmodule(name.to_string()));
         }
 
-        crate::fsutil::copy_dir_recursive(&skill.path, &dest)?;
+        let dest = self.school_root.join("skills").join(name);
+        crate::fsutil::replace_dir_recursive(&skill.path, &dest)?;
 
         let toml_path = self.school_root.join("school.toml");
         let mut school = config::school_toml::load(&toml_path)?;

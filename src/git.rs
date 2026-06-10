@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 
 use crate::ace::OutputMode;
@@ -56,6 +56,38 @@ fn ensure_source_cache_in(dest: &Path, url: &str) -> Result<(), GitError> {
     let branch = git.current_branch()?;
     git.fetch("origin", &branch)?;
     git.merge_ff_only(&format!("origin/{branch}"))
+}
+
+/// Paths (relative to `dir`) of any gitlink index entries under `subdir` —
+/// directories git tracks as mode `160000`, i.e. accidental submodules left by a
+/// `.git` that leaked into a copied skill. Returns empty when `dir` is not a git
+/// repo or has no such entries; it never errors, since "not a repo" is simply
+/// "no gitlinks".
+pub fn gitlinks_under(dir: &Path, subdir: &str) -> Vec<PathBuf> {
+    let output = git_command()
+        .arg("-C")
+        .arg(dir)
+        .args(["ls-files", "--stage", "--", subdir])
+        .output();
+
+    let Ok(output) = output else {
+        return Vec::new();
+    };
+    if !output.status.success() {
+        return Vec::new();
+    }
+
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(parse_gitlink_entry)
+        .collect()
+}
+
+/// Parse one `git ls-files --stage` line, yielding its path iff the entry is a
+/// gitlink. Format: `<mode> <object> <stage>\t<path>`.
+fn parse_gitlink_entry(line: &str) -> Option<PathBuf> {
+    let (meta, path) = line.split_once('\t')?;
+    meta.starts_with("160000 ").then(|| PathBuf::from(path))
 }
 
 /// Hint printed alongside git failures that look like auth/transport issues.

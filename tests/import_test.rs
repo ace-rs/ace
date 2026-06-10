@@ -649,3 +649,152 @@ fn import_reuses_source_cache_on_second_call() {
         "second import should reuse cache via fetch, not re-clone; sentinel was wiped",
     );
 }
+
+// A single-skill repo (SKILL.md at the repo root) puts the clone's `.git`
+// *inside* the skill's path. That is the exact shape that used to leak a nested
+// `.git` into the school and turn the skill dir into an accidental submodule.
+#[test]
+fn import_repo_root_skill_does_not_copy_dot_git() {
+    let env = TestEnv::new();
+    env.git_init();
+    env.write_dogfood_school("name = \"test-school\"\n");
+    env.mkdir("skills");
+
+    setup_root_skill_origin(&env, "chakrit/lowfat-pantry");
+
+    env.ace()
+        .args(["import", "chakrit/lowfat-pantry"])
+        .assert()
+        .success();
+
+    env.assert_exists("skills/lowfat-pantry/SKILL.md");
+    env.assert_not_exists("skills/lowfat-pantry/.git");
+}
+
+// A pre-fix import committed a skill dir as a gitlink (an accidental submodule).
+// `ace school pull` must warn and skip it — never silently rewrite the user's
+// index, which they may be repairing by hand.
+#[test]
+fn pull_imports_warns_and_skips_broken_submodule() {
+    let env = TestEnv::new();
+    env.git_init();
+
+    env.setup_tiered_origin("chakrit/lowfat-pantry", &["skills/lowfat-pantry"]);
+    env.write_dogfood_school(
+        r#"name = "test-school"
+
+[[imports]]
+source = "chakrit/lowfat-pantry"
+skills = ["lowfat-pantry"]
+"#,
+    );
+    env.mkdir("skills");
+    commit_gitlink(&env, "skills/lowfat-pantry");
+
+    let before = env.git_in(env.root(), &["ls-files", "--stage", "skills/lowfat-pantry"]);
+    assert!(
+        before.starts_with("160000 "),
+        "fixture should start as a gitlink: {before}"
+    );
+
+    env.ace()
+        .args(["school", "update"])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("committed as a git submodule"));
+
+    // ACE must leave the index untouched — the gitlink stays until the user
+    // clears it themselves.
+    let after = env.git_in(env.root(), &["ls-files", "--stage", "skills/lowfat-pantry"]);
+    assert!(
+        after.starts_with("160000 "),
+        "ACE must not rewrite the user's index: {after}"
+    );
+}
+
+/// Build a bare origin whose only skill is `SKILL.md` at the repo root, with a
+/// gitconfig `insteadOf` redirect so `ace import <specifier>` clones from the
+/// sandbox instead of github.com.
+fn setup_root_skill_origin(env: &TestEnv, specifier: &str) {
+    let origin = env.path(&format!("origins/{specifier}.git"));
+    let work = env.path(&format!("_root_work_{}", specifier.replace('/', "_")));
+
+    std::fs::create_dir_all(&origin).expect("create origin dir");
+    env.git_in(
+        &origin,
+        &["init", "--bare", "--quiet", "--template=", "-b", "main"],
+    );
+    env.git_in(
+        env.root(),
+        &[
+            "clone",
+            "--quiet",
+            origin.to_str().expect("origin path"),
+            work.to_str().expect("work path"),
+        ],
+    );
+
+    std::fs::write(work.join("SKILL.md"), "# lowfat-pantry\n").expect("write SKILL.md");
+    commit_all(env, &work, "seed");
+    env.git_in(&work, &["push", "--quiet"]);
+    std::fs::remove_dir_all(&work).expect("remove work dir");
+
+    append_gitconfig_redirect(env, specifier, &origin);
+}
+
+/// Commit a `160000` gitlink entry at `rel` in the env's repo, pointing at a
+/// throwaway sub-repo — the broken-submodule shape a pre-fix import left behind.
+fn commit_gitlink(env: &TestEnv, rel: &str) {
+    let sub = env.path("_gitlink_source");
+    std::fs::create_dir_all(&sub).expect("mkdir gitlink source");
+    env.git_in(&sub, &["init", "--quiet", "--template=", "-b", "main"]);
+    std::fs::write(sub.join("README.md"), "gitlink target\n").expect("write target");
+    commit_all(env, &sub, "gitlink target");
+    let head = env.git_in(&sub, &["rev-parse", "HEAD"]);
+
+    // Stage the gitlink directly via the index (the path has no working copy),
+    // then commit without `git add -A` — which would otherwise stage a deletion
+    // of the absent path and unstage the gitlink.
+    env.git_in(
+        env.root(),
+        &[
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            "160000",
+            head.trim(),
+            rel,
+        ],
+    );
+    git_commit(env, env.root(), "broken gitlink");
+}
+
+fn commit_all(env: &TestEnv, dir: &std::path::Path, message: &str) {
+    env.git_in(dir, &["add", "-A"]);
+    git_commit(env, dir, message);
+}
+
+fn git_commit(env: &TestEnv, dir: &std::path::Path, message: &str) {
+    env.git_in(
+        dir,
+        &[
+            "-c",
+            "user.email=test@test.com",
+            "-c",
+            "user.name=Test",
+            "commit",
+            "-m",
+            message,
+        ],
+    );
+}
+
+fn append_gitconfig_redirect(env: &TestEnv, specifier: &str, origin: &std::path::Path) {
+    let gh_url = format!("https://github.com/{specifier}.git");
+    let file_url = format!("file://{}", origin.display());
+    let block = format!("[url \"{file_url}\"]\n\tinsteadOf = {gh_url}\n");
+
+    let cfg = env.path(".gitconfig");
+    let existing = std::fs::read_to_string(&cfg).unwrap_or_default();
+    std::fs::write(&cfg, format!("{existing}{block}")).expect("write gitconfig");
+}

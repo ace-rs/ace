@@ -334,14 +334,12 @@ impl<S: Vetted> Skills<S> {
             };
 
             let dest = dest_dir.join(name);
-            let kind = if dest.exists() {
-                std::fs::remove_dir_all(&dest)?;
+            let kind = if crate::fsutil::replace_dir_recursive(&skill.path, &dest)? {
                 ChangeKind::Modified
             } else {
                 ChangeKind::Added
             };
 
-            crate::fsutil::copy_dir_recursive(&skill.path, &dest)?;
             changes.push(SkillChange {
                 name: name.to_string(),
                 kind,

@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use crate::ace::Ace;
+use crate::actions::school::gitlink::{gitlinked_names, warn_broken_submodule};
 use crate::config;
 use crate::skills::discover::discover_skills;
 use crate::skills::resolve::{Discovery, ImportVerdict, ImportsResolution, resolve_imports};
@@ -22,6 +23,8 @@ pub enum PullImportsError {
     InvalidDecl { decl_source: String, index: usize },
     #[error("skipped {count} inadmissible imported skill(s)")]
     RejectedImports { count: usize },
+    #[error("skipped {count} skill(s) committed as broken git submodules")]
+    BrokenSubmodules { count: usize },
 }
 
 pub enum PullImportsResult {
@@ -114,11 +117,30 @@ impl PullImports<'_> {
         }
         let rejected_count = rejected.len();
 
+        // A previous buggy import may have committed a skill dir as a gitlink
+        // (an accidental submodule from a leaked `.git`). ACE will not rewrite
+        // the user's index — it warns, skips the poisoned skill so it never
+        // writes files into a submodule-tracked path, and points at the fix.
+        // Everything healthy still syncs.
         let winning_names: Vec<String> = validated.names().map(String::from).collect();
-        let name_refs: Vec<&str> = winning_names.iter().map(String::as_str).collect();
-        let changes = validated.copy_into(&skills_dir, &name_refs)?;
+        let gitlinked = gitlinked_names(self.school_root, &winning_names);
+        for name in &gitlinked {
+            warn_broken_submodule(ace, name);
+        }
+
+        let healthy: Vec<&str> = winning_names
+            .iter()
+            .map(String::as_str)
+            .filter(|n| !gitlinked.iter().any(|g| g == n))
+            .collect();
+        let changes = validated.copy_into(&skills_dir, &healthy)?;
 
         ace.done(&crate::skills::format_pull_summary(&changes));
+        if !gitlinked.is_empty() {
+            return Err(PullImportsError::BrokenSubmodules {
+                count: gitlinked.len(),
+            });
+        }
         if rejected_count > 0 {
             return Err(PullImportsError::RejectedImports {
                 count: rejected_count,

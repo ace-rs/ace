@@ -458,7 +458,8 @@ fn add_import_exit_code(e: &AddImportError) -> ExitCode {
         AddImportError::Config(c) => config_exit_code(c),
         AddImportError::Clone(_)
         | AddImportError::Io(_)
-        | AddImportError::RejectedImports { .. } => ExitCode::Operational,
+        | AddImportError::RejectedImports { .. }
+        | AddImportError::BrokenSubmodule(_) => ExitCode::Operational,
     }
 }
 
@@ -478,7 +479,8 @@ fn pull_imports_exit_code(e: &PullImportsError) -> ExitCode {
         PullImportsError::InvalidDecl { .. } => ExitCode::Usage,
         PullImportsError::Io(_)
         | PullImportsError::Git(_)
-        | PullImportsError::RejectedImports { .. } => ExitCode::Operational,
+        | PullImportsError::RejectedImports { .. }
+        | PullImportsError::BrokenSubmodules { .. } => ExitCode::Operational,
     }
 }
 

@@ -121,6 +121,7 @@ impl Pull<'_> {
         };
 
         if !self.force && !is_stale(clone_path) {
+            warn_unusable_skill_folders(ace, clone_path);
             return if let Some(from) = switched_from {
                 Ok(PullOutcome::SwitchedBranch { from })
             } else {
@@ -164,7 +165,39 @@ impl Pull<'_> {
 
         let changes = diff_skill_changes(&git, &old_head, &new_head);
 
+        warn_unusable_skill_folders(ace, clone_path);
         Ok(PullOutcome::Updated { changes })
+    }
+}
+
+/// Warn about any folder under `skills/` that doesn't resolve to a usable skill
+/// — no `SKILL.md`, or an unresolved submodule left by an upstream import bug.
+/// A consumer can't fix the school it pulls from, so this informs rather than
+/// prescribes a fix.
+fn warn_unusable_skill_folders(ace: &mut Ace, school_root: &Path) {
+    let skills_dir = school_root.join("skills");
+    let Ok(entries) = std::fs::read_dir(&skills_dir) else {
+        return;
+    };
+    let (skills, _) = crate::skills::discover::discover_skills(school_root).unwrap_or_default();
+
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        // Skip tier containers (`.curated`/`.experimental`/`.system`) and stray
+        // dotfiles — discovery accounts for tier dirs via their own entries.
+        if name.starts_with('.') || !entry.file_type().is_ok_and(|t| t.is_dir()) {
+            continue;
+        }
+
+        let dir = entry.path();
+        let usable = skills.iter().any(|s| s.path.starts_with(&dir));
+        if !usable {
+            ace.warn(&format!(
+                "skills/{name}: not a usable skill folder (no SKILL.md) — \
+                 likely an unresolved import in the school you're consuming"
+            ));
+        }
     }
 }
 

@@ -11,7 +11,11 @@ fn push_to_origin(env: &TestEnv, school: &RemoteSchool, file: &str, content: &st
     let work_str = work.to_str().expect("work path");
 
     env.git_in(env.root(), &["clone", "--quiet", origin_str, work_str]);
-    std::fs::write(work.join(file), content).expect("write file");
+    let dest = work.join(file);
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent).expect("create parent dirs");
+    }
+    std::fs::write(&dest, content).expect("write file");
     env.git_in(&work, &["add", "-A"]);
     env.git_in(
         &work,
@@ -50,6 +54,25 @@ fn pull_fetches_without_cooldown() {
         school.cache.join("skills/maverick/NEW.md").exists(),
         "pull should fetch new file despite fresh FETCH_HEAD",
     );
+}
+
+// A consumer can't fix the school it pulls from, so a folder under skills/ that
+// doesn't resolve to a usable skill (no SKILL.md — what an unresolved submodule
+// or junk looks like after a clone) gets a generic integrity warning.
+#[test]
+fn pull_warns_about_unusable_skill_folder() {
+    let env = TestEnv::new();
+    let school = env.setup_remote_school("test/school");
+
+    env.ace().assert().success();
+
+    push_to_origin(&env, &school, "skills/broken/README.md", "not a skill\n");
+
+    env.ace()
+        .args(["pull"])
+        .assert()
+        .success()
+        .stderr(predicates::str::contains("not a usable skill folder"));
 }
 
 #[test]
