@@ -76,7 +76,7 @@ load-this-skill nudges, org-wide conventions, coding-style reminders, etc.
 ```toml
 session_prompt = """Always load the `acme-conventions` skill first.
 This org uses Postgres for storage and gRPC for service-to-service calls.
-Prefer `rtk`-prefixed shell commands."""
+Run database migrations with `acme-migrate`, never raw `psql`."""
 ```
 
 Layering order with the project-level `session_prompt` (in `ace.toml` / `ace.local.toml`)

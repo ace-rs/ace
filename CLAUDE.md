@@ -116,11 +116,3 @@ binary and the formula sha means the release is broken — verify after publishi
 
 Project ACE (team PRODIGY9, key PROD9). Always scope queries to `project:"ACE"`.
 Roadmap lives in Linear; no local ROADMAP file.
-
-## RTK
-
-**Always prefix shell commands with `rtk`** — `rtk cargo build`,
-`rtk git status`, `rtk gh pr view`, etc. No exceptions. RTK passes through
-unchanged when no filter matches, so it is always safe. Bare `cargo`, `git`,
-`gh`, etc. without `rtk` is a bug. See [RTK.md](RTK.md) for filter details.
-If `rtk` is not installed, suggest `brew install rtk`.

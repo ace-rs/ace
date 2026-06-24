@@ -1,0 +1,11 @@
+# lowfat project config — replaces the retired .rtk/filters.toml.
+# Format: https://github.com/zdk/lowfat/blob/main/docs/CONFIG.md
+
+# Intensity: lite (~60 lines) · full (~30) · ultra (~10).
+level=full
+
+# All active plugins run here: bundled (git/docker/ls/find/grep/tree) plus the
+# synced community set (cargo/gh/rg/diff/make/curl/jq/tar/env/...). To restrict
+# to this repo's toolchain instead, whitelist them (mutually exclusive with
+# `disable`):
+#   filters = git, cargo, gh, rg, diff, make
