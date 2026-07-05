@@ -246,6 +246,9 @@ Alternate ways to invoke ACE — serve mode, transparent shim, remote.
 - 🆕 ACE macros — record keybinds that play a chord or series of inputs into the harness.
   (Same session-input plumbing as idle-injection above, but user-triggered rather than
   idle-triggered.)
+- 🆕 advance ACE `/loop` — auto re-insert the prompt when the harness emits its
+  waiting-for-input signal, so the loop self-continues. (Signal-triggered sibling of
+  idle-injection/macros — same session-input plumbing, keyed off waiting-for-input.)
 
 # H — CLI ergonomics & inspection
 
