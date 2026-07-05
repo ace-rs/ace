@@ -135,6 +135,9 @@ Provision MCP servers per-school, mirroring the `[[backends]]` story.
 - **34** ACE as an MCP server inside the backend (spike)
 - 🆕 MCP health check is slow / probably broken in many places — the post-`mcp` check
   (overlaps 225)
+- 🆕 ACE MCP proxy — with multiple active backend sessions each launching its own copy of an
+  MCP process, ACE runs one shared instance behind a pass-through proxy and multiplexes the
+  sessions onto it (resource optimization; ties to per-session process management)
 
 *Shipped:* 48, 53, 42.
 
