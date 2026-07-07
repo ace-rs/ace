@@ -252,6 +252,9 @@ Alternate ways to invoke ACE — serve mode, transparent shim, remote.
 - 🆕 advance ACE `/loop` — auto re-insert the prompt when the harness emits its
   waiting-for-input signal, so the loop self-continues. (Signal-triggered sibling of
   idle-injection/macros — same session-input plumbing, keyed off waiting-for-input.)
+- 🆕 auto-pause idle harnesses — after a session sits unused for a good while, ACE
+  suspends the harness to reclaim resources (resume on next use). Idle-detection sibling of
+  the injection idea above; resource-management cousin of Epic B's MCP proxy.
 
 # H — CLI ergonomics & inspection
 
