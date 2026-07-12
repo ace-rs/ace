@@ -256,6 +256,14 @@ Alternate ways to invoke ACE — serve mode, transparent shim, remote.
   suspends the harness to reclaim resources (resume on next use). Idle-detection sibling of
   the injection idea above; resource-management cousin of Epic B's MCP proxy.
 
+**Design note — session-runtime substrate.** The five `🆕` items above (idle-injection,
+macros, `/loop` self-continue, auto-pause, and the always-on bridge) are not independent
+features. They're one capability: an **event loop over a live harness** — watch it (idle
+timer, waiting-for-input signal, keypresses/scroll) and act (inject a command, replay a
+chord, re-prompt, suspend). Design them as one substrate + a trigger/action table, not six
+one-offs. When Epic G is picked up, this substrate is the first design spike; the individual
+ideas become entries in its table.
+
 # H — CLI ergonomics & inspection
 
 - [ ] **44** pipe `ace diff` through a pager for long output
