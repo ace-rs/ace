@@ -114,6 +114,11 @@ binary and the formula sha means the release is broken — verify after publishi
 
 ## Roadmap & backlog
 
+**Outline is the only tracker.** All tasks, epics, phasing, and planning artifacts go
+there — never into local files, never into Linear. File new work as a checklist item on
+the matching epic doc (or the `Roadmap` doc for ordering); nothing gets a local
+`TODO.md`, backlog note, or plan file.
+
 Lives in the **ACE** collection on Outline (self-hosted, via the `outline` MCP):
 <https://outline.prodigy9.co/collection/ace-hbmmUqagR9> — one doc per epic (A–L),
 each with its own checklist, plus a `Roadmap` doc for suggested ordering. The collection
