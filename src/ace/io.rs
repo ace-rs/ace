@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::io::{IsTerminal, Write as _};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
@@ -262,11 +263,55 @@ impl Io {
             .map_err(map_inquire_err)
     }
 
+    /// Present a checklist and return the indices of the ticked options.
+    ///
+    /// Indices rather than values so callers match picks back against their own
+    /// list without a stringly round-trip. Outside `Human` mode there is no
+    /// terminal to tick boxes in, so `default_all` decides: all or none.
+    pub fn prompt_multiselect(
+        &mut self,
+        prompt: &str,
+        options: Vec<String>,
+        default_all: bool,
+    ) -> Result<Vec<usize>, IoError> {
+        if self.mode != OutputMode::Human {
+            let all = (0..options.len()).collect();
+            return Ok(if default_all { all } else { Vec::new() });
+        }
+
+        self.clear_spinner();
+        let mut p = inquire::MultiSelect::new(prompt, options);
+        if default_all {
+            p = p.with_all_selected_by_default();
+        }
+
+        let picked = p.raw_prompt().map_err(map_inquire_err)?;
+        Ok(picked.iter().map(|opt| opt.index).collect())
+    }
+
     fn clear_spinner(&mut self) {
         if let Some(sp) = self.spinner.take() {
             sp.finish_and_clear();
         }
     }
+}
+
+/// Split `items` into (picked, declined) by index membership in `picked`,
+/// the return of `prompt_multiselect`. Order is preserved within each half.
+pub fn partition_picked<T: Clone>(items: &[T], picked: &[usize]) -> (Vec<T>, Vec<T>) {
+    let picked: HashSet<usize> = picked.iter().copied().collect();
+
+    let mut chosen = Vec::new();
+    let mut declined = Vec::new();
+    for (i, item) in items.iter().enumerate() {
+        if picked.contains(&i) {
+            chosen.push(item.clone());
+        } else {
+            declined.push(item.clone());
+        }
+    }
+
+    (chosen, declined)
 }
 
 fn map_inquire_err(e: inquire::InquireError) -> IoError {
@@ -290,5 +335,45 @@ mod tests {
     #[test]
     fn cleanup_bytes_exits_alt_screen_when_active() {
         assert_eq!(cleanup_bytes_for(true), b"\x1b[?1049l\x1b[?25h");
+    }
+
+    // -- partition_picked --
+
+    fn items() -> Vec<&'static str> {
+        vec!["a", "b", "c", "d"]
+    }
+
+    #[test]
+    fn partition_splits_on_index_membership() {
+        let (picked, declined) = partition_picked(&items(), &[0, 2]);
+        assert_eq!(picked, vec!["a", "c"]);
+        assert_eq!(declined, vec!["b", "d"]);
+    }
+
+    #[test]
+    fn partition_preserves_order_regardless_of_pick_order() {
+        let (picked, _) = partition_picked(&items(), &[3, 1]);
+        assert_eq!(picked, vec!["b", "d"]);
+    }
+
+    #[test]
+    fn partition_none_picked_declines_everything() {
+        let (picked, declined) = partition_picked(&items(), &[]);
+        assert!(picked.is_empty());
+        assert_eq!(declined, items());
+    }
+
+    #[test]
+    fn partition_all_picked_declines_nothing() {
+        let (picked, declined) = partition_picked(&items(), &[0, 1, 2, 3]);
+        assert_eq!(picked, items());
+        assert!(declined.is_empty());
+    }
+
+    #[test]
+    fn partition_ignores_out_of_range_indices() {
+        let (picked, declined) = partition_picked(&items(), &[1, 99]);
+        assert_eq!(picked, vec!["b"]);
+        assert_eq!(declined, vec!["a", "c", "d"]);
     }
 }

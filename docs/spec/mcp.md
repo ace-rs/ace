@@ -51,22 +51,26 @@ Registration flow:
 1. **Check** — list the backend's existing servers. If `<name>` is already registered
    at any scope, print a warning (same pattern as school update warnings) and skip. Do
    not overwrite existing config.
-2. **Prompt** — Print `instructions` (if non-empty) for every newly-registered entry,
+2. **Offer** — present every unregistered entry as a single checklist, ticked by
+   default, rather than one yes/no per server. Ticked entries proceed; unticked ones are
+   excluded (see [Skipping servers](#skipping-servers)). One prompt per run, whatever the
+   number of servers.
+3. **Prompt** — Print `instructions` (if non-empty) for every newly-registered entry,
    regardless of whether headers are present. If `headers` contain `{{ placeholder }}`
    values, then prompt the user for each placeholder value after the instructions.
-3. **Substitute** — Replace placeholders with user-provided values.
-4. **Register** — Call the backend CLI to add the MCP server with resolved headers.
-5. **Inform** — Print auth guidance (OAuth servers: "you'll be prompted on first use"; PAT
+4. **Substitute** — Replace placeholders with user-provided values.
+5. **Register** — Call the backend CLI to add the MCP server with resolved headers.
+6. **Inform** — Print auth guidance (OAuth servers: "you'll be prompted on first use"; PAT
    servers: confirm registration succeeded).
 
 See [backend.md](backend.md#mcp-server-registration) for per-backend CLI commands.
 
 ### Skipping servers
 
-Both bare `ace` (default startup) and `ace mcp` prompt before registering each missing
-server. Answering "no" appends the server name to `exclude_mcp` in `ace.local.toml`;
-subsequent runs silently skip those names. The exclusion list is unioned across user,
-project, and local `ace.toml` scopes (same merge as `exclude_skills`).
+Both bare `ace` (default startup) and `ace mcp` offer the missing servers as one
+checklist before registering. Unticking a server appends its name to `exclude_mcp` in
+`ace.local.toml`; subsequent runs silently skip those names. The exclusion list is unioned
+across user, project, and local `ace.toml` scopes (same merge as `exclude_skills`).
 
 `ace mcp register <name>` is the un-skip path: it removes `<name>` from `exclude_mcp` (in
 `ace.local.toml`) and registers that single school-defined entry. Use it when a server was
@@ -103,6 +107,16 @@ ACE detects newly registered entries (entries added since last run) and prints a
 - Codex: `"New MCP server '<name>' registered — use /mcp inside Codex to finish setup."`
 
 This is informational only — ACE does not block on auth completion.
+
+## Inspection
+
+`ace mcp list` reports where every server stands without probing anything: one
+`name<TAB>state` line per row, school order first, then backend servers the school never
+declared. States are `registered`, `not registered`, `excluded`, and `not in school`; an
+exclusion outranks registration, since it is the user's standing decision.
+
+The command must stay cheap — it exists precisely so inspection does not pay for a health
+probe. Health belongs to `ace mcp check`.
 
 ## Health Checks
 

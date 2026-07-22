@@ -19,7 +19,7 @@ use crate::school::{School, SchoolError};
 use crate::skills::{Decided, SkillError, Skills};
 
 use io::Io;
-pub use io::{IoError, OutputMode, logo};
+pub use io::{IoError, OutputMode, logo, partition_picked};
 
 /// Lazy-cached session view. All read accessors take `&self` and populate
 /// their cell on first call via `OnceCell`. Mutations (overrides, reload)
@@ -316,6 +316,15 @@ impl Ace {
 
     pub fn prompt_select(&mut self, prompt: &str, options: Vec<String>) -> Result<String, IoError> {
         self.io.prompt_select(prompt, options)
+    }
+
+    pub fn prompt_multiselect(
+        &mut self,
+        prompt: &str,
+        options: Vec<String>,
+        default_all: bool,
+    ) -> Result<Vec<usize>, IoError> {
+        self.io.prompt_multiselect(prompt, options, default_all)
     }
 }
 

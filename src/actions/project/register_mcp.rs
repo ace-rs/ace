@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use crate::ace::{Ace, IoError};
+use crate::ace::{Ace, IoError, partition_picked};
 use crate::actions::project::edit_mcp_config;
 use crate::backend::{Backend, Kind};
 use crate::config::ConfigError;
@@ -18,9 +18,9 @@ pub enum RegisterMcpError {
     Config(#[from] ConfigError),
 }
 
-/// For each entry: if already registered, pass through. Otherwise prompt
-/// `Register MCP '<name>'?` — "yes" batches for registration; "no" appends
-/// the name to `exclude_mcp` in `ace.local.toml` so future runs skip it.
+/// Offer every unregistered entry in one checklist, ticked by default. Ticked
+/// entries are registered as a batch; unticked ones are appended to
+/// `exclude_mcp` in `ace.local.toml` so future runs stop asking.
 pub fn register_missing(
     ace: &mut Ace,
     backend: &Backend,
@@ -33,33 +33,48 @@ pub fn register_missing(
     }
 
     let registered = backend.mcp_list(project_dir);
+    let missing: Vec<McpDecl> = unregistered(entries, &registered)
+        .into_iter()
+        .cloned()
+        .collect();
 
-    let mut to_register: Vec<McpDecl> = Vec::new();
-    for entry in entries {
-        if registered.contains(&entry.name) {
-            to_register.push(entry.clone());
-            continue;
-        }
-        let prompt = format!("Register MCP '{}'?", entry.name);
-        if ace.prompt_confirm(&prompt, true)? {
-            to_register.push(entry.clone());
-        } else {
-            edit_mcp_config::exclude(local_path, &entry.name)?;
-            ace.hint(&format!(
-                "'{}' added to exclude_mcp in ace.local.toml",
-                entry.name
-            ));
-        }
+    if missing.is_empty() {
+        return Ok(());
     }
 
-    if to_register.iter().any(|e| !registered.contains(&e.name)) {
-        RegisterMcp {
-            backend,
-            entries: &to_register,
-            project_dir,
-        }
-        .run(ace)?;
+    let names = missing.iter().map(|e| e.name.clone()).collect();
+    let picked =
+        ace.prompt_multiselect("Register MCP servers (unticked → exclude_mcp)", names, true)?;
+    let (chosen, declined) = partition_picked(&missing, &picked);
+
+    exclude_all(ace, local_path, &declined)?;
+    if chosen.is_empty() {
+        return Ok(());
     }
+
+    RegisterMcp {
+        backend,
+        entries: &chosen,
+        project_dir,
+    }
+    .run(ace)
+}
+
+/// Persist declines so the next run doesn't re-offer them (ux.md §4).
+fn exclude_all(ace: &mut Ace, local_path: &Path, declined: &[McpDecl]) -> Result<(), ConfigError> {
+    if declined.is_empty() {
+        return Ok(());
+    }
+
+    for entry in declined {
+        edit_mcp_config::exclude(local_path, &entry.name)?;
+    }
+
+    let names: Vec<&str> = declined.iter().map(|e| e.name.as_str()).collect();
+    ace.hint(&format!(
+        "added to exclude_mcp in ace.local.toml: {}",
+        names.join(", ")
+    ));
     Ok(())
 }
 

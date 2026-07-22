@@ -1,18 +1,21 @@
 use std::collections::HashSet;
+use std::path::Path;
 
 use clap::Subcommand;
 
-use crate::ace::Ace;
+use crate::ace::{Ace, partition_picked};
 use crate::actions::project::{
     RegisterMcp, RemoveMcp, edit_mcp_config, register_mcp, register_missing_mcp,
 };
-use crate::backend::McpStatus;
+use crate::backend::{Backend, McpStatus};
 use crate::config::school_toml::McpDecl;
 
 use super::CmdError;
 
 #[derive(Subcommand)]
 pub enum Command {
+    /// List school-declared MCP servers and their registration state
+    List,
     /// Health-check registered MCP servers (read-only)
     Check,
     /// Remove registered MCP servers, then re-add with `ace mcp`
@@ -36,6 +39,7 @@ pub enum Command {
 pub fn run(ace: &mut Ace, command: Option<Command>) {
     let result = match command {
         None => run_default(ace),
+        Some(Command::List) => run_list(ace),
         Some(Command::Check) => run_check(ace),
         Some(Command::Reset { name } | Command::Clear { name }) => run_reset(ace, name),
         Some(Command::Register { name }) => run_register(ace, name),
@@ -53,7 +57,7 @@ fn run_default(ace: &mut Ace) -> Result<(), CmdError> {
         return Ok(());
     }
 
-    // -- add missing (prompt per missing entry; "no" appends to exclude_mcp) --
+    // -- add missing (one checklist; unticked entries append to exclude_mcp) --
 
     let local_path = ace.require_paths()?.local.clone();
     register_missing_mcp(ace, &backend, &entries, &project_dir, &local_path)?;
@@ -89,38 +93,132 @@ fn run_default(ace: &mut Ace) -> Result<(), CmdError> {
 
     // -- prompt to re-register broken --
 
-    let broken: Vec<&McpStatus> = statuses.iter().filter(|s| !s.ok).collect();
-
-    for status in &broken {
-        let Some(entry) = entries.iter().find(|e| e.name == status.name) else {
-            continue;
-        };
-
-        let prompt = format!("Re-register '{}'?", status.name);
-        if !ace.prompt_confirm(&prompt, true)? {
-            continue;
-        }
-
-        // Remove and re-add
-        if let Err(e) = backend.mcp_remove(&status.name, &project_dir) {
-            ace.warn(&format!("remove '{}' failed: {e}", status.name));
-            continue;
-        }
-
-        let resolved = register_mcp::resolve_headers(entry, ace)?;
-        let target = resolved.as_ref().unwrap_or(entry);
-
-        match backend.mcp_add(target, &project_dir) {
-            Ok(()) => ace.done(&format!("Re-registered '{}'", status.name)),
-            Err(e) => ace.warn(&format!("re-register '{}' failed: {e}", status.name)),
-        }
-    }
+    let broken: Vec<McpDecl> = entries
+        .iter()
+        .filter(|e| statuses.iter().any(|s| s.name == e.name && !s.ok))
+        .cloned()
+        .collect();
 
     if broken.is_empty() {
         ace.done("all MCP servers healthy");
+        return Ok(());
+    }
+
+    let names = broken.iter().map(|e| e.name.clone()).collect();
+    let picked = ace.prompt_multiselect("Re-register unhealthy servers", names, true)?;
+    let (chosen, _) = partition_picked(&broken, &picked);
+
+    for entry in &chosen {
+        reregister(ace, &backend, entry, &project_dir)?;
     }
 
     Ok(())
+}
+
+/// Drop and re-add a single server, warning rather than aborting on failure —
+/// one broken server must not stop the rest of the batch.
+fn reregister(
+    ace: &mut Ace,
+    backend: &Backend,
+    entry: &McpDecl,
+    project_dir: &Path,
+) -> Result<(), CmdError> {
+    if let Err(e) = backend.mcp_remove(&entry.name, project_dir) {
+        ace.warn(&format!("remove '{}' failed: {e}", entry.name));
+        return Ok(());
+    }
+
+    let resolved = register_mcp::resolve_headers(entry, ace)?;
+    let target = resolved.as_ref().unwrap_or(entry);
+
+    match backend.mcp_add(target, project_dir) {
+        Ok(()) => ace.done(&format!("Re-registered '{}'", entry.name)),
+        Err(e) => ace.warn(&format!("re-register '{}' failed: {e}", entry.name)),
+    }
+    Ok(())
+}
+
+/// `ace mcp list` — read-only inventory: what the school declares against what
+/// the backend has. Deliberately does not probe health; that costs a subprocess
+/// round-trip per server and belongs to `ace mcp check`.
+fn run_list(ace: &mut Ace) -> Result<(), CmdError> {
+    ace.require_resolved()?;
+
+    let backend = ace.backend()?.clone();
+    let declared = ace.school()?.map(|s| s.mcp.clone()).unwrap_or_default();
+    let excluded = ace.excluded_mcp();
+    let registered = backend.mcp_list(ace.project_dir());
+
+    for row in inventory(&declared, &excluded, &registered) {
+        ace.data(&format!("{}\t{}", row.name, row.state.label()));
+    }
+
+    Ok(())
+}
+
+/// Where a server stands relative to the school and the backend.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum McpState {
+    Registered,
+    Missing,
+    Excluded,
+    Foreign,
+}
+
+impl McpState {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Registered => "registered",
+            Self::Missing => "not registered",
+            Self::Excluded => "excluded",
+            Self::Foreign => "not in school",
+        }
+    }
+}
+
+struct McpRow {
+    name: String,
+    state: McpState,
+}
+
+/// School order first (an exclusion outranks registration — it is the user's
+/// standing decision), then backend servers the school never declared.
+fn inventory(
+    declared: &[McpDecl],
+    excluded: &HashSet<String>,
+    registered: &HashSet<String>,
+) -> Vec<McpRow> {
+    let school_names: HashSet<&str> = declared.iter().map(|e| e.name.as_str()).collect();
+
+    let mut rows: Vec<McpRow> = declared
+        .iter()
+        .map(|entry| {
+            let state = match (
+                excluded.contains(&entry.name),
+                registered.contains(&entry.name),
+            ) {
+                (true, _) => McpState::Excluded,
+                (false, true) => McpState::Registered,
+                (false, false) => McpState::Missing,
+            };
+            McpRow {
+                name: entry.name.clone(),
+                state,
+            }
+        })
+        .collect();
+
+    let mut foreign: Vec<&String> = registered
+        .iter()
+        .filter(|n| !school_names.contains(n.as_str()))
+        .collect();
+    foreign.sort();
+
+    rows.extend(foreign.into_iter().map(|name| McpRow {
+        name: name.clone(),
+        state: McpState::Foreign,
+    }));
+    rows
 }
 
 /// `ace mcp check` — health check only, no mutations.
@@ -297,6 +395,65 @@ mod tests {
             instructions: String::new(),
         }
     }
+
+    // -- inventory --
+
+    fn names_of(rows: &[McpRow]) -> Vec<(&str, McpState)> {
+        rows.iter().map(|r| (r.name.as_str(), r.state)).collect()
+    }
+
+    fn set(names: &[&str]) -> HashSet<String> {
+        names.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn inventory_classifies_each_declared_server() {
+        let declared = vec![decl("linear"), decl("github"), decl("sentry")];
+        let rows = inventory(&declared, &set(&["sentry"]), &set(&["linear"]));
+
+        assert_eq!(
+            names_of(&rows),
+            vec![
+                ("linear", McpState::Registered),
+                ("github", McpState::Missing),
+                ("sentry", McpState::Excluded),
+            ]
+        );
+    }
+
+    #[test]
+    fn inventory_marks_exclusion_over_registration() {
+        let declared = vec![decl("linear")];
+        let rows = inventory(&declared, &set(&["linear"]), &set(&["linear"]));
+        assert_eq!(names_of(&rows), vec![("linear", McpState::Excluded)]);
+    }
+
+    #[test]
+    fn inventory_appends_foreign_servers_sorted() {
+        let declared = vec![decl("linear")];
+        let rows = inventory(
+            &declared,
+            &HashSet::new(),
+            &set(&["zed", "linear", "atlas"]),
+        );
+
+        assert_eq!(
+            names_of(&rows),
+            vec![
+                ("linear", McpState::Registered),
+                ("atlas", McpState::Foreign),
+                ("zed", McpState::Foreign),
+            ]
+        );
+    }
+
+    #[test]
+    fn inventory_empty_school_lists_only_foreign() {
+        let rows = inventory(&[], &HashSet::new(), &set(&["atlas"]));
+        assert_eq!(names_of(&rows), vec![("atlas", McpState::Foreign)]);
+    }
+
+    // -- filter_excluded --
 
     #[test]
     fn filter_excluded_drops_named() {
