@@ -1,5 +1,8 @@
 _Predates the `docs/scratch/` convention; preserved as-is for historical context._
 
+Not spec/decision because: every section here was explicitly shelved — parked research,
+not intent.
+
 # Future Directions
 
 Explored but parked. Each section captures the key finding and why it was shelved.

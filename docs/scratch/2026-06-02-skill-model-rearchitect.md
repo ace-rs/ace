@@ -1,27 +1,20 @@
 # Skill model rearchitect — design notes (2026-06-02)
 
-Status: **design decided (2026-06-04).** The model is now ruled in two decisions —
+Not spec/decision because: it's the design exploration behind both, retained as the
+provenance those decisions cite.
+
+Status: **done.** The model was ruled on 2026-06-04 in two decisions —
 [skill lifecycle typestate](../decisions/2026-06-04-skill-lifecycle-typestate.md) and
-[admission eviction is non-overridable](../decisions/2026-06-04-admission-eviction-non-overridable.md).
-This note is retained for the defect catalogue (§ Why) and the still-open forks (2–3); its
-lifecycle table and fork 1 are superseded by the decisions and annotated inline below. Fork 4
-(naming) was ratified and the specs written on 2026-06-05; the implementation series (forks
-2–3) is the remaining step.
+[admission eviction is non-overridable](../decisions/2026-06-04-admission-eviction-non-overridable.md)
+— the specs were reconciled 2026-06-05, and the implementation shipped in seven slices
+(2026-06-05) plus two audit passes (2026-06-08). Forks 2 and 3 were resolved by
+[resolver dissolution](../decisions/2026-06-05-resolver-dissolution.md): `MatchHandle`
+cut, `src/resolver/` dissolved into `config/resolve/` + `skills/resolve/`.
 
-## Resume — implementation (forks 2–3)
-
-Naming (fork 4) ratified and specs written 2026-06-05; both decisions and the spec edits are
-committed. Specs touched: `model.md` (partition-not-carry in § Name Admission; lattice +
-vetted-gate § Type-safety invariant), `selection.md` (selection runs over the validated set;
-`discovered → validated → decided` progression), `sync.md` (eviction-visibility surfaces —
-dry-run + reconcile summary splitting *admission-evicted* vs *config-orphaned*). `emit.md` was
-already aligned (name = `basename(identity)`, included-only).
-
-Remaining: the implementation series — carry the typed `Locator` end-to-end, fold
-`DiscoveredSkill` into the discovered atom, make `validate` a real partition, add the `Vetted`
-gate, de-stringify the resolvers, drop `Skill.name`. Forks 2 (`MatchHandle` keep/cut) and 3
-(package placement) get decided during impl. Specs stay behavioral; the concrete names
-(`Discovered`/`Validated`/`Decided`, `Vetted`, `Locator`) live in the lifecycle decision.
+**Read this only for the defect catalogue below** (§ Why) — the type-audit that motivated
+the rearchitect. Everything forward-looking in it has landed; the lifecycle table and fork 1
+are superseded by the decisions and annotated inline. Current design lives in
+[`spec/skills/`](../spec/skills/).
 
 ## Why
 

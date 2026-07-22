@@ -1,7 +1,9 @@
 # School instructions file as capability catalog (+ PROD9-13)
 
-Captured 2026-05-30. Draft / research — not yet decided. Full review + decisions
-deferred to a fresh session. Do **not** treat anything here as ruled.
+Not spec/decision because: explicitly undecided — the review it needs never happened.
+
+Captured 2026-05-30. Draft / research. Full review + decisions deferred to a fresh
+session. Do **not** treat anything here as ruled.
 
 ## Origin
 

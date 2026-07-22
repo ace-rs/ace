@@ -1,8 +1,15 @@
 # Build & test speedup backlog
 
+Not spec/decision because: it's a menu of unmeasured options, not a ruling on which
+to take.
+
 Captured from session memory before repo move. Ranked menu of remaining wins
 after the 2026-04-22 build-all.sh rework (commits 7253dd2, 2d89be1: zig 0.14
 pin, multi-target groups, sccache opt-in).
+
+**Test-side items are settled** — the 2026-05-27 audit shipped the wins and closed the
+rest; see [prior-art](prior-art.md) § Test-suite speedup audit. What survives below is
+the **build** menu.
 
 Baseline:
 - `build-all.sh` clean: ~1m 55s for all 7 targets
@@ -41,35 +48,17 @@ is independently measurable.
 - `cranelift` codegen — nightly only.
 - Drop musl targets — would lose static linux binaries.
 
-## Tests
+## Tests — closed
 
-### Tier 1
+All test-side items are resolved. `[profile.test] debug = "line-tables-only"` landed
+2026-05-27 (cold `cargo test --no-run` 21.45s → 17.14s); the fixture-sharing work landed
+the same day (warm `cargo test` 9.4s → 6.8s); `cargo nextest` was **ruled out** by
+chakrit; `cargo test --release` was skipped (ACE's integration tests exec `ace` as a
+subprocess, so binary mode matters more than harness mode). Details and the
+deliberately-unpursued list: [prior-art](prior-art.md) § Test-suite speedup audit.
 
-1. **`cargo nextest`** — drop-in for `cargo test`, ~2-3× faster, cleaner
-   output, surfaces ordering flakes more clearly. Worth adopting just for the
-   output, particularly given the existing `git::tests::ls_remote_tags_local_repo`
-   ordering flake.
-2. ~~**Add `[profile.test]`** to `Cargo.toml`~~ — landed 2026-05-27.
-   Cold `cargo test --no-run` after `cargo clean`: 21.45s → 17.14s (~20%).
-   Warm `cargo test` runtime unchanged (~9–10s, within noise). 729 tests
-   still pass.
+## Next up
 
-### Tier 2
-
-3. **Audit `tests/common/` setup cost** — integration tests do `git init`,
-   write fixture school repos via `setup_remote_school`. If measurable, share
-   fixtures via lazy_static. Risks test coupling — only if measured as
-   bottleneck.
-
-### Skip
-
-- `cargo test --release` — slower compile, only worth it for hot-path runtime
-  tests. ACE integration tests exec ace as subprocess; binary mode matters
-  more than harness mode.
-
-## Recommended single PR
-
-`[profile.release] strip = "symbols"` + `[profile.test] debug = "line-tables-only"`
-+ document `cargo nextest` as recommended runner. Optional: spend 30 min
-checking `mold` via zigbuild. Estimated combined: 15–25% off clean build time
-+ faster test cycles.
+`[profile.release] strip = "symbols"` — still absent from `Cargo.toml`, so this is the
+one unclaimed low-effort win. Optionally spend 30 min checking whether `mold` can be
+forced through zigbuild.

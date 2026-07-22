@@ -1,6 +1,7 @@
 # `ace template` subcommand
 
-Status: design note, not yet implemented.
+Not spec/decision because: proposed, never ruled on. Still unimplemented as of
+2026-07-22 — no `template`/`tmpl` variant exists in `src/cmd/`.
 
 A debugging / inspection affordance for ACE's built-in prompt templates: render
 them as ACE actually does, with default or caller-supplied variables, and print

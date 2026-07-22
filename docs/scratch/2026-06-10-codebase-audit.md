@@ -1,5 +1,16 @@
 # Codebase Audit — 2026-06-10
 
+Not spec/decision because: findings, not rulings — each one still has to be argued and
+fixed on its own.
+
+**Status (re-verified 2026-07-22): still open.** Spot-checked against the tree — the
+imports-source traversal guard is still absent from `src/git.rs`, `copy_dir_recursive`
+still follows symlinks (the 2026-06-10 gitlink fix skips `.git`/`.gitmodules` only, not
+symlinks), `cmd/upgrade.rs` still calls `exit(1)` directly, the update check still has
+no `ureq` timeout, `src/school/skill_count.rs` still imports `ace`/`actions`/`cmd` from
+below, and `--include-internal` still isn't on the CLI. The priority order at the bottom
+stands. Work items are tracked in the Outline **ACE** collection, not here.
+
 Full-tree audit (~105 Rust files, ~25.5k lines) across five lenses: readability,
 spec compliance, performance, security, and architecture/abstractions. Judged
 against `general-coding` / `rust-coding` skill rules, `docs/spec/`, and
