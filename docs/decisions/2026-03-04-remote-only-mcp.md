@@ -1,5 +1,9 @@
 # Decision: Remote-Only MCP (2026-03-04)
 
+- **Date:** 2026-03-04
+- **PR:** manual
+- **Status:** accepted
+
 ACE supports remote MCP servers exclusively. Schools declare `[[mcp]]` entries with URLs pointing
 to hosted MCP endpoints. The backend handles OAuth discovery, token acquisition, storage, and
 refresh — ACE only registers the endpoint.

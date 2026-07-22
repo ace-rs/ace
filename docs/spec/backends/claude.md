@@ -63,8 +63,9 @@ claude mcp add -t http -s user github https://api.githubcopilot.com/mcp/ \
 User scope (`-s user`) makes the server available across all projects. The CLI writes to the
 user-level config and merges with existing entries. ACE never touches `.mcp.json` directly.
 
-Before adding, ACE checks `claude mcp get <name>` to detect existing registrations. If the
-server is already registered at any scope, ACE warns and skips — it does not overwrite.
+Before adding, ACE lists existing registrations (parsed from `~/.claude.json`) to detect
+collisions. If the server is already registered at any scope, ACE warns and skips — it
+does not overwrite.
 
 **MCP list**: parsed from `~/.claude.json`.
 

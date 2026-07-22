@@ -76,8 +76,8 @@ new version. Failures are silent.
 ace upgrade [--silent] [--force [VERSION]]
 ```
 
-- Default: check latest within current major, download, replace current binary,
-  print result.
+- Default: check the `latest` marker (no major-version gating), download, replace the
+  current binary, print result.
 - `--silent`: suppress all output (used by background spawn). Exit 0 on success,
   1 on failure.
 - `--force`: reinstall even if already at latest version. Accepts an optional

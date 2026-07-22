@@ -10,6 +10,7 @@ for remote MCP servers. See [mcp.md](mcp.md) for full details on the remote-only
 |----------|--------------------------------------------|-------------------------------------------|
 | Claude   | Auto-prompts on 401                        | System keychain                           |
 | Codex    | Managed in-session via `/mcp`              | `~/.codex/auth.json` or OS keyring        |
+| OpenCode | Auto-prompts on 401                        | `~/.local/share/opencode/auth.json`       |
 
 ACE does not implement OAuth, store tokens, or manage token refresh.
 

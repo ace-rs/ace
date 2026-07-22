@@ -30,7 +30,9 @@ A concrete example end-to-end:
 5. The agent reads source, `Cargo.toml`, existing `CLAUDE.md`, etc. It edits the
    instructions file in place with project-specific notes and prints, say, 7 skill names
    on stdout.
-6. ACE writes those 7 names to `ace.toml` 's `skills` key.
+6. ACE writes those 7 names to `ace.toml` 's `skills` key, appending `ace` and `ace-*` if
+   the agent left them out. ACE's own skills are the tool's runtime contract with the
+   school, so `ace learn` cannot drop them no matter what the agent returns.
 7. User reviews via `git diff`, keeps or rolls back per file.
 
 Net effect: future `ace` invocations load 7 relevant skills instead of 100, and the
@@ -241,5 +243,5 @@ school's own change process.
 - Session transcript handoff. `ace learn` is project study, not session recall — the agent
   works from project state (instructions file, `ace.toml`, source tree) and forms its own
   understanding.
-- Polymorphic flags beyond one-shot (`--model`, `--resume`, etc.) — tracked separately
-  under PROD9-159.
+- Polymorphic flags beyond one-shot (`--model`, `--resume`, etc.) — tracked separately in
+  the Outline **ACE** collection.

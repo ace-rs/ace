@@ -76,7 +76,7 @@ Concretely:
 
 ## 5. Borrow vocabulary from the agents being wrapped
 
-`ace` wraps Claude Code, Codex, Droid, Opencode — each with established CLI
+`ace` wraps Claude Code, Codex, OpenCode — each with established CLI
 conventions. New `ace` flags and subcommands borrow names from those
 conventions rather than inventing ace-specific terms. The user types what
 their agent-CLI muscle memory expects.
@@ -113,7 +113,7 @@ does not redo work that has no effect.
 
 - `ace setup` on an already-configured project says so and exits 0.
 - `ace pull` with nothing to pull says so and exits 0.
-- `ace register-mcp` for an already-registered server says so and exits 0.
+- `ace mcp register` for an already-registered server says so and exits 0.
 
 Idempotency is a property of the *result*, not the *implementation*. The
 command may still touch disk to verify state; what matters is that the

@@ -5,8 +5,8 @@
 ```
 
 **ACE** (Accelerated Coding Environment) — automation tooling for setting up and keeping AI coding
-environments up-to-date. Acts as an entrypoint to supported AI coding backends such as
-[Claude Code](https://docs.anthropic.com/en/docs/claude-code) and Codex.
+environments up-to-date. Acts as an entrypoint to supported AI coding backends —
+[Claude Code](https://docs.anthropic.com/en/docs/claude-code), Codex, and OpenCode.
 
 ## Install
 
@@ -65,7 +65,16 @@ ace school update                            # re-fetch all imported skills
 | `ace school init` | Initialize a new school repository |
 | `ace school update` | Re-fetch all imported skills from their sources |
 | `ace school skills` | List skills in the current school |
+| `ace school validate` | Check `school.toml` for problems |
+| `ace skills [include\|exclude\|reset]` | List resolved skills, or narrow the selection in `ace.toml` |
+| `ace explain <skill>` | Explain why a skill is included or excluded |
+| `ace config [get\|set\|explain]` | Print, read, write, or trace effective configuration |
+| `ace learn` | Ask the backend to pick the skills this project needs |
+| `ace link` | Re-link school folders into the project without fetching |
+| `ace new` | Start a fresh session, ignoring resume |
+| `ace fmt` | Format `ace.toml` |
 | `ace diff` | Show uncommitted changes in the school cache |
+| `ace upgrade` | Upgrade the `ace` binary itself |
 | `ace auto` | Persist auto trust mode in `ace.local.toml` |
 | `ace yolo` | Persist yolo trust mode in `ace.local.toml` |
 
@@ -80,7 +89,7 @@ coding tools. When you run `ace`, it:
 4. Launches the configured backend with the school's session prompt
 
 Backend selection can also be overridden per invocation with `-b`, `--backend`,
-`--claude`, `--codex`, or `--flaude`.
+`--claude`, `--codex`, or `--opencode`.
 
 ## School workflow
 
@@ -111,7 +120,7 @@ ace school update                     # refresh everything
 
 - `ace.toml` — project-level config (school specifier, backend, env)
 - `ace.local.toml` — local overrides (gitignored)
-- `~/.config/ace/config.toml` — user-level config (credentials)
+- `~/.config/ace/ace.toml` — user-level config (personal defaults across projects)
 - `school.toml` — school metadata (name, MCP servers, projects)
 
 ## Development
@@ -125,8 +134,8 @@ cargo test --test setup_test  # run a single test file
 ```
 
 Integration tests live in `tests/` and use `TestEnv` (tempdir sandbox + `assert_cmd`). Each
-test file covers one CLI command. Tests that require network (clone) are not yet supported —
-see ROADMAP.
+test file covers one CLI command. Tests that hit the network live in `tests/network_test.rs`
+and are `#[ignore]`d by default — run them with `cargo test -- --ignored`.
 
 ## Releases & cross-build
 

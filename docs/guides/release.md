@@ -105,8 +105,10 @@ of truth.
 `https://ace-rs.dev/latest` redirects to the raw `./latest` file on `main`,
 which is what both installers fetch.
 
-`ace upgrade` does not consult `./latest` at all — it discovers versions via
-`git ls-remote --tags` against the GitHub repo. See `docs/spec/upgrade.md`.
+`ace upgrade` reads the same marker — it fetches `https://ace-rs.dev/latest`
+and compares against the running version. So a stale `./latest` on `main`
+holds every channel back, installers and `ace upgrade` alike. See
+`docs/spec/upgrade.md`.
 
 ## 6. Homebrew
 

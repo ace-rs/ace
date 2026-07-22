@@ -1,5 +1,9 @@
 # Decision: No Shallow Clones for School Cache (2026-03-25)
 
+- **Date:** 2026-03-25
+- **PR:** manual
+- **Status:** accepted
+
 ACE uses full git clones for school repositories. No `--depth` flag on clone or fetch.
 
 ## Context

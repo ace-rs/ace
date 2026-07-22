@@ -60,7 +60,7 @@ school is identified by its GitHub `owner/repo` shorthand.
 
 Optional top-level string. Default backend name for projects that consume this school,
 used when no `ace.toml` / `ace.local.toml` / user config / CLI override sets one. Value is
-a built-in name (`claude`, `codex`, `opencode`, `droid`) or a custom name declared in
+a built-in name (`claude`, `codex`, `opencode`) or a custom name declared in
 `[[backends]]` below. See [backend.md → Resolution Order](../backend.md#resolution-order).
 
 ```toml

@@ -136,4 +136,4 @@ commits must carry enough context for someone reading `git log` months later to 
 the decision without asking around. A diff alone doesn't convey intent — the commit body
 is the institutional memory.
 
-Format and examples are in `src/templates/tpl_school_claude_md.md`.
+Format and examples are in `src/templates/builtins/tpl_school_instructions.md`.

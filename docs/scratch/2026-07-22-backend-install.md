@@ -1,5 +1,12 @@
 # Backend Install
 
+Not spec/decision because: it described intent that never shipped, so leaving it in
+`spec/` taught behavior ACE does not have. Moved out of `docs/spec/` on 2026-07-22 after
+a sweep found no implementation: nothing in `src/` probes `$PATH` for a backend, prompts
+"is not installed", or downloads one (`src/upgrade/download.rs` fetches ACE itself), and
+`is_ready()` is `#[allow(dead_code)]` and uncalled. The design below is intact and can be
+promoted back to `spec/` the moment someone builds it.
+
 When the resolved backend binary is not found on `$PATH`, ACE offers to install it.
 
 ## Trigger

@@ -21,13 +21,16 @@ Built by concatenating layers, separated by blank lines:
 3. **Project** — `session_prompt` field in `ace.toml` (or user-level
    `~/.config/ace/ace.toml`). Resolved across config layers (user < project < local, last
    wins). Injected verbatim (no template substitution).
-4. **Skill change summary** — `prompt_changes.md`, only when skills changed since last
+4. **Excluded skills** — `prompt_excluded_skills.md`, only when the resolved config
+   excludes at least one discovered skill. Names the excluded skills so the agent does not
+   go looking for them. Rendered with `{{ names }}`.
+5. **Skill change summary** — `prompt_changes.md`, only when skills changed since last
    session. Lists added, updated, and removed skills. Rendered with `{{ changes }}`.
-5. **School changes** — `prompt_school_changes.md`, only when a school clone exists
+6. **School changes** — `prompt_school_changes.md`, only when a school clone exists
    (remote schools). Contains proposal workflow steps. Rendered with `{{ school_clone }}`.
    When the clone has uncommitted changes, `prompt_dirty_school.md` is appended (no
    placeholders).
-6. **Previous skills** — `prompt_previous_skills.md`, only when a `previous-skills/`
+7. **Previous skills** — `prompt_previous_skills.md`, only when a `previous-skills/`
    directory exists. Consolidation guidance. Rendered with `{{ backend_dir }}`. Note:
    post-2026-04-23 ACE no longer creates `previous-skills/` (per-skill linking handles
    foreign entries in-place); this layer only fires for projects that adopted the legacy
@@ -90,6 +93,7 @@ parsed template supports `placeholders()` (returns unique names) and `substitute
 | `{{ backend_dir }}`  | `prompt_previous_skills.md`, project CLAUDE.md template | Backend directory name                        | `.claude`                                |
 | `{{ school_clone }}` | `prompt_school_changes.md`                              | School clone path                             | `/home/user/.local/share/ace/org/school` |
 | `{{ changes }}`      | `prompt_changes.md`                                     | Formatted change list (built by `session.rs`) | `- Added: \`new-skill\``                 |
+| `{{ names }}`        | `prompt_excluded_skills.md`                             | Excluded skill names, one bullet per line     | `- \`rust-coding\``                      |
 
 ### Adding a Placeholder
 

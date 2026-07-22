@@ -18,7 +18,7 @@ instructions.
 
 ### Agent-based injection
 
-ACE writes `.opencode/agents/ace.md` during setup — a markdown file with
+ACE writes `.opencode/agents/ace.md` at launch, just before exec — a markdown file with
 YAML frontmatter and the session prompt as the body:
 
 ```markdown
@@ -69,8 +69,7 @@ Available on `opencode run` only (interactive mode auto-rejects by default).
 **Method: Direct config write** — `opencode mcp add` is an interactive
 wizard, unusable for non-interactive ACE setup.
 
-Config file: `opencode.json` or `opencode.jsonc` in project root (JSONC
-format).
+Config file: `opencode.json` in project root (JSONC format).
 
 ACE writes the config file directly — merging into existing content
 (preserving manually-added entries) rather than overwriting.

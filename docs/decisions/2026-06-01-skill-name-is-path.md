@@ -5,7 +5,8 @@ never an emit or identity key. Supply-chain "shadowing" is **not** defended stru
 reduces to source-trust plus path-collision visibility and a fixed set of author-time
 warnings. Resolves the open sub-decision #1 of
 [emit & match](2026-05-26-skill-emit-and-match.md) toward basename-always, and supersedes the
-namespaced-storage proposal of `docs/scratch/2026-06-01-supply-chain-skill-shadowing.md`.
+namespaced-storage proposal of the supply-chain skill-shadowing note (deleted; see git
+history).
 
 ## Problem
 

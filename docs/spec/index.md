@@ -1,6 +1,7 @@
 # ACE Overview
 
-ACE (Accelerated Coding Environment) is a CLI gateway into Claude Code or Codex. It
+ACE (Accelerated Coding Environment) is a CLI gateway into Claude Code, Codex, or
+OpenCode. It
 ensures the development environment is properly configured and up-to-date before handing
 off to the underlying AI coding tool.
 
@@ -23,11 +24,9 @@ off to the underlying AI coding tool.
 - [mcp.md](mcp.md) — MCP server design (remote-only, OAuth delegation).
 - [authentication.md](authentication.md) — Authentication (MCP OAuth, school repo access).
 - [backend.md](backend.md) — Backend abstraction contract.
-- [backend-install.md](backend-install.md) — Backend installation and readiness.
 - [backends/claude.md](backends/claude.md) — Claude backend: permission modes, MCP, linked
   folders.
 - [backends/codex.md](backends/codex.md) — Codex backend specifics.
-- [backends/droid.md](backends/droid.md) — Droid (Factory.ai) backend specifics.
 - [backends/opencode.md](backends/opencode.md) — OpenCode backend specifics.
 - [school/overview.md](school/overview.md) — School repository structure.
 - [school/school-toml.md](school/school-toml.md) — `school.toml` format reference.
@@ -102,10 +101,10 @@ relationship to projects.
 7. **Check tooling** — required CLI tools, language runtimes, etc.
 8. **Check project setup** — CLAUDE.md, MCP configs, project-specific requirements from
    source
-9. **Select backend** — Claude Code or Codex
+9. **Select backend** — Claude Code, Codex, or OpenCode
 10. **Inject prompt** — prepend system context about skills and school workflow
-11. **Version check** — read cache marker, run `git ls-remote` if stale, print hint and
-    spawn background upgrade if newer version available. Skipped for `ace upgrade`,
+11. **Version check** — read cache marker, `GET https://ace-rs.dev/latest` if stale, print
+    hint and spawn background upgrade if newer version available. Skipped for `ace upgrade`,
     `ace --version`, `--porcelain`, `skip_update`, `ACE_SKIP_UPDATE=1`. See
     [upgrade.md](upgrade.md).
 12. **Exec** — replace process with the chosen tool

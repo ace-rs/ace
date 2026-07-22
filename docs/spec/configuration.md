@@ -20,7 +20,8 @@ Each layer can set:
 - `school` — school specifier (last non-empty wins)
 - `backend` — backend name (highest-priority `Some` wins: local → project → user →
   school's `school.toml` → fallback `claude`). Built-ins: `"claude"`, `"codex"`,
-  `"flaude"`. Custom names are valid when declared in `[[backends]]` (see
+  `"opencode"` (plus the debug-only `"flaude"` test fixture, absent from release builds).
+  Custom names are valid when declared in `[[backends]]` (see
   [Custom backends](#custom-backends)). See [backend.md](backend.md).
 - `session_prompt` — additional prompt text (last non-empty wins)
 - `env` — environment variables (additive merge, later keys override)
@@ -32,6 +33,9 @@ Each layer can set:
   last-wins). See [Skills selection](#skills-selection).
 - `exclude_skills` — always-remove skill patterns. **Union across all scopes** (exception
   to last-wins). See [Skills selection](#skills-selection).
+- `exclude_mcp` — MCP server names to skip registering. **Union across all scopes**, same
+  exception as the skill patterns. Written by answering "no" to a registration prompt;
+  cleared by `ace mcp register <name>`. See [mcp.md](mcp.md).
 
 ### Personal-only fields
 
@@ -41,7 +45,7 @@ project-committed `ace.toml` or `school.toml`. They are personal workflow prefer
 - `trust` — permission mode: `"default"`, `"auto"`, or `"yolo"`. Default: `"default"`.
 - `resume` — auto-resume previous session on `ace` launch. Default: `true`. When `true`,
   `ace` passes resume flags to the backend if a previous session exists for the current
-  project directory. `ace --new` (or `ace -n`) forces a fresh session regardless. Backends
+  project directory. The `ace new` subcommand forces a fresh session regardless. Backends
   that don't support resume start fresh silently.
 
 Resolution for personal-only fields: local wins over user. Project layer is skipped
@@ -50,13 +54,14 @@ entirely.
 ## Custom backends
 
 `[[backends]]` declarations seed or augment the backend registry. Built-ins (`claude`,
-`codex`, `flaude`) are pre-registered; declarations override their `env` /`cmd` or
-introduce new names that reuse an existing built-in's behavior (its *kind*).
+`codex`, `opencode`, and the debug-only `flaude`) are pre-registered; declarations
+override their `env` /`cmd` or introduce new names that reuse an existing built-in's
+behavior (its *kind*).
 
 ### Fields
 
 - `name` — registry key. Required. May match a built-in (override) or be new.
-- `kind` — built-in name whose behavior to reuse (`"claude"`, `"codex"`, `"flaude"`).
+- `kind` — built-in name whose behavior to reuse (`"claude"`, `"codex"`, `"opencode"`).
   Optional.
 - `cmd` — argv for launching the binary. `cmd[0]` is the program; `cmd[1..]` are prepended
   to runtime args. Optional.
@@ -76,12 +81,12 @@ For each declaration:
   - `env` per-key last-wins.
   - `cmd` last-wins-non-empty (empty `cmd` does not clobber a prior value).
   - `kind`, if specified, must match the existing entry's kind. Mismatch errors with
-    `BackendKindMismatch`.
+    `BackendError::KindMismatch`.
 - **New name** — kind is resolved by trying:
   1. Explicit `kind` field.
   2. `name` matching a built-in name.
   3. `cmd[0]` basename matching a built-in name.
-  4. Otherwise: error `UnresolvableBackendKind`.
+  4. Otherwise: error `BackendError::Unresolvable`.
 
   Then `cmd` defaults to `[kind.name()]` if not given.
 
@@ -92,7 +97,7 @@ Once registered, a custom name is selectable like a built-in:
 - `backend = "bailer"` in any `ace.toml` layer.
 - `--backend bailer` on the CLI (or `ace config set backend bailer`).
 
-Unknown names error with `UnknownBackend` at resolve time.
+Unknown names error with `BackendError::Unknown` at resolve time.
 
 ### Examples
 
@@ -316,15 +321,14 @@ values (see [mcp.md](mcp.md)) but available wherever user-specific values are ne
 
 ### Engine
 
-Hand-rolled 4-state parser (Text → MaybeOpen → Name → MaybeClose). Two pure functions:
+Hand-rolled 4-state parser (Text → MaybeOpen → Name → MaybeClose), exposed as a parsed
+template value with two operations:
 
-- `extract_placeholders(input) -> Vec<String>` — returns unique placeholder names in order
-  of first appearance.
-- `substitute(input, values) -> String` — replaces each `{{ name }}` with the
-  corresponding value from the map. Missing keys resolve to empty string.
+- **placeholders** — the unique placeholder names, in order of first appearance.
+- **substitute** — replaces each `{{ name }}` with the corresponding value from the
+  supplied map. Missing keys resolve to empty string.
 
-No regex dependency. Lives in its own module (`src/template.rs` or similar), independent
-of config or MCP logic.
+No regex dependency. Lives in its own module, independent of config or MCP logic.
 
 ### Future
 

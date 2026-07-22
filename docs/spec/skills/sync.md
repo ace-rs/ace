@@ -33,12 +33,12 @@ Only folders that exist in the school are linked — absent folders are silently
 Not all backends natively support every folder. ACE links regardless and warns for
 unsupported combos:
 
-| Folder      | Claude | Codex | OpenCode | Droid |
-| ----------- | :----: | :---: | :------: | :---: |
-| `skills/`   |   ✓    |   ✓   |    ✓     |   ✓   |
-| `rules/`    |   ✓    |   ✗   |    ✗     |   ✗   |
-| `commands/` |   ✓    |   ✗   |    ✓     |   ✗   |
-| `agents/`   |   ✓    |   ✗   |    ✓     |   ✗   |
+| Folder      | Claude | Codex | OpenCode |
+| ----------- | :----: | :---: | :------: |
+| `skills/`   |   ✓    |   ✓   |    ✓     |
+| `rules/`    |   ✓    |   ✗   |    ✗     |
+| `commands/` |   ✓    |   ✗   |    ✓     |
+| `agents/`   |   ✓    |   ✗   |    ✓     |
 
 Linking still happens for unsupported combos — the warning is informational only (linked
 for future compatibility).
@@ -150,7 +150,8 @@ skill in that absence, and the summary names which:
 
 Two surfaces keep the removal legible rather than surprising:
 
-- **Dry-run / preview** — surface the pending removes (and the rejected set) *before* acting,
+- **Dry-run / preview** *(intended; not implemented)* — surface the pending removes (and the
+  rejected set) *before* acting,
   so the user can rename a bad path, regenerate the predicate, or step outside ACE first.
 - **Reconcile summary** — report completed removes split by cause: admission-evicted rows carry
   their rejection reason, config-orphaned rows do not. Undifferentiated deletion reads as a
@@ -184,7 +185,9 @@ required.
 - **Import source cache**: `~/.cache/ace/imports/{owner/repo}/` (XDG_CACHE_HOME).
   Read-only upstream snapshots used during `ace import` and `ace school pull`; safe to
   delete.
-- **Index**: `~/.cache/ace/index.toml` — tracks downloaded schools.
+- **Index**: `~/.local/share/ace/index.toml` (XDG_DATA_HOME) — tracks downloaded schools.
+  See [index.toml lives in the data dir](../../decisions/2026-04-22-index-toml-data-dir.md);
+  the `~/.cache/ace/` path is legacy.
 - **Cache key**: remote HEAD SHA. On SHA match: no-op. On SHA mismatch: pull + sync. First
   run: full clone + index entry.
 

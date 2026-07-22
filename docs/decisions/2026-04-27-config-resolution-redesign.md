@@ -1,5 +1,10 @@
 # 007: Config Resolution Redesign
 
+- **Date:** 2026-04-27
+- **PR:** manual
+- **Status:** revised — § Module layout superseded 2026-06-05 by
+  [resolver dissolution](2026-06-05-resolver-dissolution.md)
+
 ## Context
 
 Today's `State::resolve` is one eager pass that conflates two distinct concerns into a

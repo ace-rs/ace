@@ -53,7 +53,8 @@ The dirty guard in step 1 ensures user edits are never silently discarded.
 
 ## Skill Modification Workflow
 
-When ACE execs into the backend (lifecycle step 13), it injects a session prompt that:
+When ACE execs into the backend (the final lifecycle step in
+[index.md](../index.md)), it injects a session prompt that:
 
 1. Tells the AI that skills are loaded from the linked school and are editable.
 2. Instructs it to propose changes back to the school repo when skills are modified.
@@ -78,8 +79,10 @@ Import a skill from an external repository into the school. Top-level command (n
   Fails if used without `--all`.
 - **--include-system** — With `--all`: also expand into `skills/.system/`. Fails if used
   without `--all`.
-- **--include-internal** — With `--all`: admit skills with `internal: true` via glob
-  matches. Fails if used without `--all`.
+- **--include-internal** *(intended; not yet on the CLI)* — With `--all`: admit skills with
+  `internal: true` via glob matches. Fails if used without `--all`. `include_internal` is
+  wired end-to-end in config/resolve and settable as an `[[imports]]` field; only the flag
+  is missing.
 
 ### Parity with skills.sh
 
@@ -103,7 +106,8 @@ but not special, no `?` or character classes.
 1. Resolve the school root via `ace.toml` 's specifier (the standard `Ace::require_school`
    path). For an in-school invocation, the school's own `ace.toml` carries `school = "."`
    and resolves to cwd; for a project invocation, it resolves to the linked clone.
-2. Clone source repo to temp dir (`git clone --depth 1`).
+2. Clone source repo into the import cache (`~/.cache/ace/imports/`) — a full clone, no
+   `--depth`; see [no shallow clones](../../decisions/2026-03-25-no-shallow-clones.md).
 3. Discover skills via the 2-stage cascade in
    [skills/model.md → Discovery Cascade](../skills/model.md#discovery-cascade).
    `.curated/`, `.experimental/`, `.system/` are community conventions skills.sh
@@ -214,8 +218,9 @@ Suggestion is omitted when no close match exists.
 ### Exit code
 
 - `0` — clean. A success message (`school.toml looks good`) is emitted.
-- `1` — one or more issues reported. The error line `N validation issue(s) found` follows
-  the issue list.
+- `3` (operational) — one or more issues reported. The error line `N validation issue(s)
+  found` follows the issue list. See
+  [exit codes](../../decisions/2026-05-30-exit-codes.md).
 
 ### Scope (v1)
 

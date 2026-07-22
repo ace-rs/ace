@@ -238,7 +238,7 @@ consumer escape hatch. Keeps pressure on the school maintainer to fix upstream.
 
 Spec edit pending: the school-side collision policy needs to land in the appropriate
 school spec (likely `docs/spec/school/school-toml.md` or
-`docs/spec/school/school-commands.md`). `docs/spec/skills-sync.md` is not the right target
+`docs/spec/school/school-commands.md`). `docs/spec/skills/sync.md` is not the right target
 — it covers project-side `ace pull` materialization, not school-side import resolution.
 
 ### `pull.rs` diff path extraction
@@ -286,7 +286,8 @@ skills sharing a frontmatter `name` field is fine as long as their identity path
 
 - Decision doc(s) need to enumerate the SkillName/SkillMeta type APIs at implementation
   time. This decision sketches roles only.
-- Doctor checks (Linear PROD9-123) to be edited with the skill-spec diagnostic list
+- Doctor checks (tracked in the Outline **ACE** collection; formerly PROD9-123) to be
+  edited with the skill-spec diagnostic list
   (frontmatter mismatch, kebab/length violations, missing fields, identity collisions,
   bidi/control chars in path components).
 

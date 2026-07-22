@@ -9,7 +9,10 @@ still follows symlinks (the 2026-06-10 gitlink fix skips `.git`/`.gitmodules` on
 symlinks), `cmd/upgrade.rs` still calls `exit(1)` directly, the update check still has
 no `ureq` timeout, `src/school/skill_count.rs` still imports `ace`/`actions`/`cmd` from
 below, and `--include-internal` still isn't on the CLI. The priority order at the bottom
-stands. Work items are tracked in the Outline **ACE** collection, not here.
+stands, **except step 6 (the spec sweep), which was done on 2026-07-22** — shallow-clone
+refs, index path, validate exit code, `ace --new`, `ace skills add`, learn's `ace*` append,
+and Droid's status (dropped; `backends/droid.md` deleted) are all corrected in `docs/spec/`.
+Work items are tracked in the Outline **ACE** collection, not here.
 
 Full-tree audit (~105 Rust files, ~25.5k lines) across five lenses: readability,
 spec compliance, performance, security, and architecture/abstractions. Judged

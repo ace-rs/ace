@@ -1,7 +1,13 @@
 # `ace connect` — fold cross-backend A2A bridge into ace
 
+- **Date:** 2026-05-30
+- **PR:** manual
+- **Status:** accepted, unimplemented
+
 2026-05-30 — handoff from peer agent `ace-rs.connect.claude` over the ace-connect bridge.
-**Deferred: tackle after 0.8 is released.** Capture only.
+The ruling below is settled; only the build is outstanding. It was deferred until after
+0.8, which shipped — as of 2026-07-22 there is still no `connect` subcommand in
+`src/cmd/`, and the work is tracked in the Outline **ACE** collection.
 
 **Decision (locked with chakrit):** fold the cross-backend agent-to-agent bridge into
 `ace` as an `ace connect` feature. Do **not** ship a separate binary or repo. This

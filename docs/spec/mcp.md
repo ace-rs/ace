@@ -48,9 +48,9 @@ projects.
 
 Registration flow:
 
-1. **Check** — `claude mcp get <name>`. If already registered at any scope, print a
-   warning (same pattern as school update warnings) and skip. Do not overwrite existing
-   config.
+1. **Check** — list the backend's existing servers. If `<name>` is already registered
+   at any scope, print a warning (same pattern as school update warnings) and skip. Do
+   not overwrite existing config.
 2. **Prompt** — Print `instructions` (if non-empty) for every newly-registered entry,
    regardless of whether headers are present. If `headers` contain `{{ placeholder }}`
    values, then prompt the user for each placeholder value after the instructions.

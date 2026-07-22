@@ -43,16 +43,15 @@ A pattern containing `*` is an explicit glob, multi-match by design:
 Multi-match is **not** an ambiguity error. If the user wants single-target semantics,
 they type a bare name or a path-anchored pattern.
 
-`?` and character classes are not supported. At the CLI entry (`ace skills add`) an
-unsupported pattern is a hard error. At the resolver boundary — `ace.toml` selection and
+`?` and character classes are not supported. At the CLI entry (`ace skills include` /
+`ace skills exclude`) an unsupported pattern is a hard error. At the resolver boundary — `ace.toml` selection and
 `[[imports]]` patterns, which may be third-party authored — it is instead warned and
 skipped, keeping resolution infallible.
 
 ### Errors echo user input verbatim
 
-The user sees their own pattern back when a match fails or yields nothing. The
-slugified form used at emit time (see [emit.md](emit.md)) is internal; users never see
-it.
+The user sees their own pattern back when a match fails or yields nothing — verbatim,
+never a normalized or internal rendering of it.
 
 ### Type-safety invariant
 
