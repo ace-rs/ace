@@ -50,4 +50,4 @@ enum is backwards — one shared enum is an import, not a module.
 - Supersedes § Module layout of [007](2026-04-27-config-resolution-redesign.md).
 - Implements fork 3 of
   [skill lifecycle typestate](2026-06-04-skill-lifecycle-typestate.md).
-- Origin: [skill-model rearchitect note](../notes/2026-06-02-skill-model-rearchitect.md).
+- Origin: [skill-model rearchitect note](../scratch/2026-06-02-skill-model-rearchitect.md).

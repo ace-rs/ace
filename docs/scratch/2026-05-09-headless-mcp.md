@@ -1,4 +1,4 @@
-_Predates the `docs/notes/` convention; preserved as-is for historical context._
+_Predates the `docs/scratch/` convention; preserved as-is for historical context._
 
 # MCP in Headless/Web-Hosted ACE
 

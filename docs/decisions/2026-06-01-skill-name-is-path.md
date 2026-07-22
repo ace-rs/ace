@@ -5,7 +5,7 @@ never an emit or identity key. Supply-chain "shadowing" is **not** defended stru
 reduces to source-trust plus path-collision visibility and a fixed set of author-time
 warnings. Resolves the open sub-decision #1 of
 [emit & match](2026-05-26-skill-emit-and-match.md) toward basename-always, and supersedes the
-namespaced-storage proposal of `docs/notes/2026-06-01-supply-chain-skill-shadowing.md`.
+namespaced-storage proposal of `docs/scratch/2026-06-01-supply-chain-skill-shadowing.md`.
 
 ## Problem
 
@@ -158,7 +158,7 @@ divergence warning cover them when a future import uses them.
 - Consolidates and replaces the prior research note `supply-chain-skill-shadowing.md` (threat
   analysis, backend keying facts, upstream collision evidence) — removed in this commit; see
   git history.
-- Companion visual summary: `docs/notes/2026-06-01-skill-lifecycle.html`.
+- Companion visual summary: `docs/scratch/2026-06-01-skill-lifecycle.html`.
 - Resolves sub-decision #1 of [emit & match](2026-05-26-skill-emit-and-match.md); builds on
   [discovery & identity](2026-05-26-skill-discovery-identity-storage.md) and
   [name admission](2026-05-30-skill-name-admission-policy.md).

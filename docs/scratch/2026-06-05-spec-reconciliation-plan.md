@@ -102,5 +102,5 @@ This batch is **docs-only reconciliation**. The **code** implementation series (
 `Locator` end-to-end, fold `DiscoveredSkill` into `Skill<Discovered>`, make `validate` a
 real partition, add the `Vetted` gate, de-stringify resolvers, drop `Skill.name`, plus the
 fork-2/3 code changes now decided above) is the separate, larger next step — see
-`docs/notes/2026-06-02-skill-model-rearchitect.md` § Resume. Do the reconciliation first;
+`docs/scratch/2026-06-02-skill-model-rearchitect.md` § Resume. Do the reconciliation first;
 the code then builds from coherent specs.

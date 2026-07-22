@@ -22,7 +22,7 @@ means "compat with skills.sh's looser predicate."
 
 Companion notes capturing the full analysis:
 
-- `docs/notes/2026-05-25-skills-sh-spec-reference.md` — frozen upstream spec snapshot.
+- `docs/vendor/agent-skills-spec.md` — frozen upstream spec snapshot.
 - `docs/decisions/2026-06-01-skill-name-is-path.md` — resolves the shadowing / collision
   thread (name = path; shadowing is source-trust). It consolidated and replaced the earlier
   research note, which was removed once its rulings landed in that decision.

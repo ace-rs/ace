@@ -25,7 +25,6 @@ ace.local.toml
 
 # Session scratch
 .tasks.md
-.ace-connect-inbox.log
 
 # Added by cargo
 /target
@@ -46,7 +45,6 @@ ace.local.toml
 .opencode/skills
 ace.local.toml
 # end ACE
-.inbox.log
 
-# Local roadmap cache (ace roadmap session scratch)
-.roadmap-cache/
+# ACE session scratch — trail (ace-save), agent inbox (ace-connect), afk log
+.ace/

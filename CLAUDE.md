@@ -11,11 +11,10 @@ Read `docs/spec/architecture.md` first; load specs for the feature area you're t
 
 ## Durable artifacts
 
-`docs/{spec,decisions,notes}/` — sorted by permanence. `spec/` is current intent
-(forward-looking, edited in place). `decisions/` is point-in-time rulings against
-defaults (frozen, supersede with new dated entries). `notes/` is impermanent —
-research, surveys, drafts. Default to `notes/` when unsure. See per-dir READMEs
-for the picker.
+`docs/` — file by the routing gate in `docs/README.md`: a ruling → `decisions/`;
+third-party lookup → `vendor/`; a how-to → `guides/`; our own design/surface →
+`spec/`; unsettled exploration → `scratch/` (last resort, opened with a
+"not spec/decision because ___" line). Nothing defaults to `scratch/`.
 
 ## Load these skills
 
@@ -103,8 +102,8 @@ ACE has real users. CLI verbs, subcommand names, config keys (`ace.toml`, `schoo
 
 ## Release Process
 
-See [RELEASE.md](RELEASE.md). It is the only place release steps live — do not
-duplicate them here or in any other doc.
+See [docs/guides/release.md](docs/guides/release.md). It is the only place release
+steps live — do not duplicate them here or in any other doc.
 
 **Distribution.** Primary channel is Homebrew via the
 [`ace-rs/homebrew-tap`](https://github.com/ace-rs/homebrew-tap) tap: end users
@@ -113,7 +112,14 @@ install with `brew install ace-rs/tap/ace`. The formula source lives at
 it and pushes the subtree to the tap repo. A sha mismatch between the published
 binary and the formula sha means the release is broken — verify after publishing.
 
-## Linear
+## Roadmap & backlog
 
-Project ACE (team PRODIGY9, key PROD9). Always scope queries to `project:"ACE"`.
-Roadmap lives in Linear; no local ROADMAP file.
+Lives in the **ACE** collection on Outline (self-hosted, via the `outline` MCP):
+<https://outline.prodigy9.co/collection/ace-hbmmUqagR9> — one doc per epic (A–L),
+each with its own checklist, plus a `Roadmap` doc for suggested ordering. The collection
+home page indexes every doc. There is no local roadmap/backlog file — the local
+consolidation and catalog notes were deleted once Outline took over (2026-07-22); recover
+them from git history if ever needed.
+
+Legacy: Linear project ACE (team PRODIGY9, key PROD9) — scope queries to
+`project:"ACE"`. Superseded by Outline; issue numbers survive as references only.

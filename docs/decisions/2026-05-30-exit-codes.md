@@ -141,7 +141,7 @@ strict refinements. This document *is* the contract from here on.
 
 ## Supersedes
 
-`docs/notes/2026-05-30-exit-code-audit.md` (deleted) — the original scan that
+`docs/scratch/2026-05-30-exit-code-audit.md` (deleted) — the original scan that
 proposed the scheme. It under-counted the `Other` overload, missed the
 `ace school validate` exit and the wrapper-delegation requirement, and floated an
 optional fifth `McpUnhealthy` code (dropped: `mcp check` stays informational at

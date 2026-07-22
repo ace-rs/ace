@@ -130,9 +130,9 @@ see ROADMAP.
 
 ## Releases & cross-build
 
-See [RELEASE.md](RELEASE.md) — the canonical runbook for cutting releases,
-cross-building binaries, prereqs, Homebrew, the `latest` marker, and the
-website notification step.
+See [docs/guides/release.md](docs/guides/release.md) — the canonical runbook for
+cutting releases, cross-building binaries, prereqs, Homebrew, the `latest` marker,
+and the website notification step.
 
 ## License
 

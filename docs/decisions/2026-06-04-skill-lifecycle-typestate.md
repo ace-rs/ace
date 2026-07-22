@@ -26,7 +26,7 @@ This supersedes the *in-memory mechanism* of
 [name admission policy](2026-05-30-skill-name-admission-policy.md) (select-over-everything
 + `rejected()` as a view); the admission predicate and its discovery-gate placement are
 unchanged. Resolves fork 1 (metadata placement) of
-[the rearchitect note](../notes/2026-06-02-skill-model-rearchitect.md); forks 2 (MatchHandle),
+[the rearchitect note](../scratch/2026-06-02-skill-model-rearchitect.md); forks 2 (MatchHandle),
 3 (packages), and 4 (naming) resolved 2026-06-05 (§ Open / downstream).
 
 ## Context
@@ -211,7 +211,7 @@ philosophy reinforce rather than duplicate each other.
 
 ## References
 
-- [the rearchitect note](../notes/2026-06-02-skill-model-rearchitect.md) — defect catalogue +
+- [the rearchitect note](../scratch/2026-06-02-skill-model-rearchitect.md) — defect catalogue +
   the four forks.
 - Partially supersedes [name admission policy](2026-05-30-skill-name-admission-policy.md)
   (in-memory mechanism only).
