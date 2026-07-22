@@ -112,26 +112,39 @@ impl AddImport<'_> {
 
         let toml_path = self.school_root.join("school.toml");
         let mut school = config::school_toml::load(&toml_path)?;
-
-        // Match against the canonical plural set, not just the singular
-        // alias — a decl using the new `skills = [...]` form must still
-        // be detected as a duplicate for the same skill.
-        let needle = skill.locator.as_str();
-        let entry = school
-            .imports
-            .iter_mut()
-            .find(|i| i.patterns().contains(&needle));
-        match entry {
-            Some(existing) => existing.source = self.source.to_string(),
-            None => school.imports.push(ImportDecl {
-                source: self.source.to_string(),
-                skills: vec![skill.locator.as_str().to_string()],
-                ..ImportDecl::default()
-            }),
-        }
+        merge_import(&mut school.imports, self.source, skill.locator.as_str());
 
         config::school_toml::save(&toml_path, &school)?;
         Ok(())
+    }
+}
+
+/// Record `name` under `source`, reusing the decl that already covers it.
+///
+/// Three cases, in order: the skill is already declared somewhere (re-point that
+/// decl at the new source), a literal decl for this source exists (fold the name
+/// into its `skills`), or neither (append a decl). Without the middle case every
+/// import appends a fresh `[[imports]]` block for a source the file already
+/// lists — which a multi-skill import would do once per pick.
+fn merge_import(imports: &mut Vec<ImportDecl>, source: &str, name: &str) {
+    if let Some(existing) = imports.iter_mut().find(|i| i.patterns().contains(&name)) {
+        existing.source = source.to_string();
+        return;
+    }
+
+    // Glob decls are left alone: a concrete name added to `skills = ["*"]`
+    // is already covered by the pattern and only adds noise.
+    let literal = imports
+        .iter_mut()
+        .find(|i| i.source == source && !i.patterns().iter().any(|p| crate::glob::is_glob(p)));
+
+    match literal {
+        Some(decl) => decl.skills.push(name.to_string()),
+        None => imports.push(ImportDecl {
+            source: source.to_string(),
+            skills: vec![name.to_string()],
+            ..ImportDecl::default()
+        }),
     }
 }
 
@@ -148,4 +161,55 @@ fn warn_if_rejected(skill: &Skill<Discovered>, ace: &mut Ace) -> bool {
         ace.hint(FRONTMATTER_WARNING_HINT);
     }
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn decl(source: &str, skills: &[&str]) -> ImportDecl {
+        ImportDecl {
+            source: source.to_string(),
+            skills: skills.iter().map(|s| s.to_string()).collect(),
+            ..ImportDecl::default()
+        }
+    }
+
+    #[test]
+    fn merge_appends_decl_when_source_is_new() {
+        let mut imports = vec![decl("gh:other/repo", &["alpha"])];
+        merge_import(&mut imports, "gh:acme/skills", "beta");
+
+        assert_eq!(imports.len(), 2);
+        assert_eq!(imports[1].skills, vec!["beta"]);
+    }
+
+    #[test]
+    fn merge_folds_into_existing_decl_for_same_source() {
+        let mut imports = vec![decl("gh:acme/skills", &["alpha"])];
+        merge_import(&mut imports, "gh:acme/skills", "beta");
+
+        assert_eq!(imports.len(), 1);
+        assert_eq!(imports[0].skills, vec!["alpha", "beta"]);
+    }
+
+    #[test]
+    fn merge_repoints_source_when_skill_already_declared() {
+        let mut imports = vec![decl("gh:old/repo", &["alpha"])];
+        merge_import(&mut imports, "gh:new/repo", "alpha");
+
+        assert_eq!(imports.len(), 1);
+        assert_eq!(imports[0].source, "gh:new/repo");
+        assert_eq!(imports[0].skills, vec!["alpha"]);
+    }
+
+    #[test]
+    fn merge_leaves_glob_decl_alone() {
+        let mut imports = vec![decl("gh:acme/skills", &["*"])];
+        merge_import(&mut imports, "gh:acme/skills", "beta");
+
+        assert_eq!(imports.len(), 2);
+        assert_eq!(imports[0].skills, vec!["*"]);
+        assert_eq!(imports[1].skills, vec!["beta"]);
+    }
 }

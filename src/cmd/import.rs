@@ -1,7 +1,8 @@
 use crate::ace::Ace;
-use crate::actions::school::{AddImport, AddImportError, AddImportResult};
+use crate::actions::school::{AddImport, AddImportResult};
 use crate::config::school_toml::{self, ImportDecl};
 use crate::git;
+use crate::skills::name;
 
 use super::CmdError;
 
@@ -69,26 +70,41 @@ fn run_inner(
     match result {
         AddImportResult::Done => {}
         AddImportResult::NeedsSelection(skills) => {
-            // Raw identities: the picked value is matched back against
-            // `s.locator` below, so it must be the verbatim identity, not the
-            // sanitized Display form.
-            let names: Vec<String> = skills
+            // Picks come back as indices, so labels are free to be the
+            // sanitized display form rather than the verbatim identity.
+            let labels = skills
                 .iter()
-                .map(|s| s.locator.as_str().to_string())
+                .map(|s| name::render(&s.locator).to_string())
                 .collect();
-            let selected = ace.prompt_select("Multiple skills found, pick one:", names)?;
+            let picked = ace.prompt_multiselect("Pick skills to import", labels, false)?;
 
-            let skill = skills
-                .iter()
-                .find(|s| s.locator == selected.as_str())
-                .ok_or_else(|| AddImportError::SkillNotFound(selected.to_string()))?;
-
-            AddImport {
-                source: &normalized,
-                skill: Some(skill.locator.as_str()),
-                school_root: &school_root,
+            if picked.is_empty() {
+                ace.info("no skills selected");
+                return Ok(());
             }
-            .install_selected(skill, ace)?;
+
+            let import = AddImport {
+                source: &normalized,
+                skill: None,
+                school_root: &school_root,
+            };
+            // One bad skill must not strand the rest of the batch — report it
+            // and carry on, failing only if nothing at all landed.
+            let mut installed = 0;
+            for (_, skill) in skills
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| picked.contains(i))
+            {
+                match import.install_selected(skill, ace) {
+                    Ok(()) => installed += 1,
+                    Err(e) => ace.warn(&format!("{}: {e}", name::render(&skill.locator))),
+                }
+            }
+
+            if installed == 0 {
+                return Err(CmdError::failed("no skills were imported"));
+            }
         }
     }
     Ok(())
