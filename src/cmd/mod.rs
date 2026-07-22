@@ -3,7 +3,6 @@ mod diff;
 mod explain;
 mod fmt;
 mod import;
-mod learn;
 mod link;
 mod main;
 mod maverick;
@@ -23,7 +22,7 @@ use clap::{Parser, Subcommand};
 use crate::ace::{Ace, IoError};
 use crate::actions::project::PrepareError;
 use crate::actions::project::RegisterMcpError;
-use crate::actions::project::{LearnError, SetupError};
+use crate::actions::project::SetupError;
 use crate::actions::school::InitError;
 use crate::actions::school::{AddImportError, PullImportsError};
 use crate::config::ace_toml::{AceToml, Trust};
@@ -192,7 +191,9 @@ enum Command {
     Pull,
     /// Re-link school folders into the project (no pull)
     Link,
-    /// Study the project, edit instructions file, narrow `skills` filter
+    /// Removed — narrowing `skills` is a school skill now. Kept as a tombstone
+    /// so muscle memory gets a redirect instead of "unexpected argument".
+    #[command(hide = true)]
     Learn,
     /// Start a fresh session (skip auto-resume)
     New {
@@ -258,8 +259,6 @@ pub(crate) enum CmdError {
     Skill(#[from] crate::skills::SkillError),
     #[error("{0}")]
     Setup(#[from] SetupError),
-    #[error("{0}")]
-    Learn(#[from] LearnError),
     #[error("{0}")]
     Prepare(#[from] PrepareError),
     #[error("{0}")]
@@ -356,7 +355,6 @@ impl CmdError {
             Self::School(e) => school_exit_code(e),
             Self::Skill(e) => skill_exit_code(e),
             Self::Setup(e) => setup_exit_code(e),
-            Self::Learn(e) => learn_exit_code(e),
             Self::Prepare(e) => prepare_exit_code(e),
             Self::McpRegister(e) => mcp_register_exit_code(e),
             Self::Import(e) => add_import_exit_code(e),
@@ -416,24 +414,19 @@ fn skill_exit_code(e: &crate::skills::SkillError) -> ExitCode {
     }
 }
 
+/// `ace learn` moved out of the binary. Usage class: the fix is to run
+/// something else, not to set anything up.
+fn learn_removed() -> CmdError {
+    CmdError::usage("`ace learn` was removed")
+        .with_hint("narrowing `skills` is a school skill now — ask your agent to do it")
+        .with_hint("or edit the `skills` list in ace.toml directly")
+}
+
 fn setup_exit_code(e: &SetupError) -> ExitCode {
     match e {
         SetupError::Config(c) => config_exit_code(c),
         SetupError::NotInGitRepo => ExitCode::Unavailable,
         SetupError::AlreadySetUp => ExitCode::Usage,
-    }
-}
-
-fn learn_exit_code(e: &LearnError) -> ExitCode {
-    match e {
-        LearnError::School(s) => school_exit_code(s),
-        LearnError::Skill(s) => skill_exit_code(s),
-        LearnError::Config(c) => config_exit_code(c),
-        LearnError::Backend(b) => backend_exit_code(b),
-        LearnError::Prompt(p) => io_exit_code(p),
-        LearnError::BackendSpawn(_)
-        | LearnError::BackendNonZero { .. }
-        | LearnError::TomlWrite(_) => ExitCode::Operational,
     }
 }
 
@@ -550,7 +543,7 @@ pub fn run(ace: &mut Ace, cli: Cli) {
         Command::Explain { name } => explain::run(ace, &name),
         Command::Pull => pull::run(ace),
         Command::Link => link::run(ace),
-        Command::Learn => learn::run(ace),
+        Command::Learn => exit_on_err(ace, Err(learn_removed())),
         Command::New { backend_args } => main::run(ace, backend_args, false, cli.one_shot_prompt),
         Command::Auto => yolo::run(ace, crate::config::ace_toml::Trust::Auto),
         Command::Yolo => yolo::run(ace, crate::config::ace_toml::Trust::Yolo),

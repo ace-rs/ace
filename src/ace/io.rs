@@ -244,18 +244,6 @@ impl Io {
         p.prompt().map_err(map_inquire_err)
     }
 
-    pub fn prompt_confirm(&mut self, prompt: &str, default: bool) -> Result<bool, IoError> {
-        if self.mode != OutputMode::Human {
-            return Ok(default);
-        }
-
-        self.clear_spinner();
-        inquire::Confirm::new(prompt)
-            .with_default(default)
-            .prompt()
-            .map_err(map_inquire_err)
-    }
-
     pub fn prompt_select(&mut self, prompt: &str, options: Vec<String>) -> Result<String, IoError> {
         self.clear_spinner();
         inquire::Select::new(prompt, options)

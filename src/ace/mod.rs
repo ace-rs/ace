@@ -310,10 +310,6 @@ impl Ace {
         self.io.prompt_text(prompt, initial)
     }
 
-    pub fn prompt_confirm(&mut self, prompt: &str, default: bool) -> Result<bool, IoError> {
-        self.io.prompt_confirm(prompt, default)
-    }
-
     pub fn prompt_select(&mut self, prompt: &str, options: Vec<String>) -> Result<String, IoError> {
         self.io.prompt_select(prompt, options)
     }

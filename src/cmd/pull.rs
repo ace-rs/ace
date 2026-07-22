@@ -1,5 +1,4 @@
 use crate::ace::Ace;
-use crate::actions::project::pull::PullOutcome;
 use crate::actions::project::{Pull, clone};
 use crate::config::school_paths;
 
@@ -42,10 +41,6 @@ fn run_inner(ace: &mut Ace) -> Result<(), CmdError> {
         })
         .run(ace)?;
         outcome.emit(ace);
-
-        if let PullOutcome::Updated { changes } = &outcome {
-            crate::school::skill_count::maybe_hint_relearn(ace, changes);
-        }
     }
 
     Ok(())

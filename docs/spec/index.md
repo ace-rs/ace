@@ -35,8 +35,6 @@ off to the underlying AI coding tool.
   import seeded on `ace school init`.
 - [testing.md](testing.md) — Integration test strategy, TestEnv pattern.
 - [upgrade.md](upgrade.md) — Self-update: version check, background upgrade, `ace upgrade`.
-- [learn.md](learn.md) — `ace learn`: project study, instructions-file edit, `ace.toml`
-  skills filter narrowing.
 
 ## Philosophy
 

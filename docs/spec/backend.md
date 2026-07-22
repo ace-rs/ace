@@ -57,8 +57,8 @@ Each backend must provide:
   env, extra args; no resume, trust, or session prompt — the non-interactive entry point
   doesn't take approval modes or system-prompt injection). Returns
   `io::Result<std::process::Output>` — caller inspects `status.success()` and `stderr` for
-  non-zero exits. Used by `ace -p` (CLI) and ACE-internal consumers (e.g. `ace learn`)
-  that need a programmatic backend invocation. See
+  non-zero exits. `ace -p` is the only caller — ACE itself no longer drives the backend
+  programmatically. See
   `docs/decisions/2026-05-07-polymorphic-flags.md`.
 - **`mcp_list()`** — list currently registered MCP server names.
 - **`mcp_add(entry)`** — register a remote MCP server.

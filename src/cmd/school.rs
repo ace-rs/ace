@@ -206,8 +206,5 @@ fn run_pull(ace: &mut Ace) -> Result<(), CmdError> {
         PullImportsResult::Updated => {}
     }
 
-    // Imports may have grown the school skill count — offer learn.
-    crate::school::skill_count::maybe_offer_learn(ace)?;
-
     Ok(())
 }

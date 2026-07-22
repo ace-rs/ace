@@ -60,8 +60,7 @@ If the user declined an offer or chose an option once, `ace` does not ask
 again on the next invocation. The product of N consecutive runs should not
 include N copies of the same yes/no.
 
-This applies to: opt-in offers (`ace learn` offering to record a skill),
-discoverability nudges, upgrade prompts, MCP-registration suggestions, and
+This applies to: opt-in offers, discoverability nudges, upgrade prompts, MCP-registration suggestions, and
 any other "want me to also…" surface.
 
 Concretely:

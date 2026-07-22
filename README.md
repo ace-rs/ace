@@ -69,7 +69,6 @@ ace school update                            # re-fetch all imported skills
 | `ace skills [include\|exclude\|reset]` | List resolved skills, or narrow the selection in `ace.toml` |
 | `ace explain <skill>` | Explain why a skill is included or excluded |
 | `ace config [get\|set\|explain]` | Print, read, write, or trace effective configuration |
-| `ace learn` | Ask the backend to pick the skills this project needs |
 | `ace link` | Re-link school folders into the project without fetching |
 | `ace new` | Start a fresh session, ignoring resume |
 | `ace fmt` | Format `ace.toml` |
