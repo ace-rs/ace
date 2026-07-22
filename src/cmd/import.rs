@@ -1,4 +1,4 @@
-use crate::ace::Ace;
+use crate::ace::{Ace, OutputMode};
 use crate::actions::school::{AddImport, AddImportResult};
 use crate::config::school_toml::{self, ImportDecl};
 use crate::git;
@@ -78,7 +78,18 @@ fn run_inner(
                 .collect();
             let picked = ace.prompt_multiselect("Pick skills to import", labels, false)?;
 
+            // An empty pick means two different things. Interactively the user
+            // declined, which is a valid outcome. Without a terminal there was
+            // no picker at all, and exiting 0 would report success for an
+            // import that never happened.
             if picked.is_empty() {
+                if ace.mode() != OutputMode::Human {
+                    return Err(CmdError::usage(
+                        "multiple skills found and no terminal to pick from",
+                    )
+                    .with_hint("pass `--skill <name>` or `--all`"));
+                }
+
                 ace.info("no skills selected");
                 return Ok(());
             }

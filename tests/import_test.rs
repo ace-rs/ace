@@ -620,6 +620,28 @@ skills = ["shared"]
     env.assert_exists("skills/shared/SKILL.md");
 }
 
+// A multi-skill source with no `--skill` needs the picker, and there is no
+// terminal to pick in. Exiting 0 having imported nothing would report success
+// for work never done (ux.md §7) — it must fail with a way forward instead.
+#[test]
+fn import_multiple_skills_without_selection_errors_when_not_interactive() {
+    let env = TestEnv::new();
+    env.git_init();
+    env.write_dogfood_school("name = \"test-school\"\n");
+    env.mkdir("skills");
+
+    env.setup_tiered_origin("multi/source", &["skills/foo", "skills/bar"]);
+
+    env.ace()
+        .args(["import", "multi/source"])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("--skill"));
+
+    env.assert_not_exists("skills/foo/SKILL.md");
+    env.assert_not_exists("skills/bar/SKILL.md");
+}
+
 #[test]
 fn import_reuses_source_cache_on_second_call() {
     let env = TestEnv::new();

@@ -132,8 +132,9 @@ fn merge_import(imports: &mut Vec<ImportDecl>, source: &str, name: &str) {
         return;
     }
 
-    // Glob decls are left alone: a concrete name added to `skills = ["*"]`
-    // is already covered by the pattern and only adds noise.
+    // Glob decls get their own entry rather than absorbing the name. An
+    // explicit name bypasses the tier filter a pattern is subject to, so the
+    // literal decl carries meaning the glob cannot express.
     let literal = imports
         .iter_mut()
         .find(|i| i.source == source && !i.patterns().iter().any(|p| crate::glob::is_glob(p)));
