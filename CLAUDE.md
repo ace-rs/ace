@@ -19,11 +19,12 @@ for the picker.
 
 ## Load these skills
 
-Default skill set for this project (also reflected in `ace.toml`):
-`general-coding`, `rust-coding`, `shell`, `markdown-writing`,
-`issue-creator`, `skill-creator`, and the full `ace*` family
-(`ace`, `ace-audit`, `ace-realign`, `ace-save`, `ace-school`) — this repo IS
-the ACE tool.
+This repo IS the ACE tool, so the full `ace*` family applies (`ace`, `ace-afk`,
+`ace-audit`, `ace-connect`, `ace-docs`, `ace-init`, `ace-realign`, `ace-save`,
+`ace-school`) — those come from the user-level config, not `ace.toml`.
+
+Project-level additions live in `ace.toml`: `general-coding`, `rust-coding`,
+`skill-creator`, `skill-reviewer`.
 
 ## Coding Style
 
