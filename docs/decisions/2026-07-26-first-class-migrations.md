@@ -22,13 +22,17 @@ hand-rolled case.
 
 Migrations become a declared mechanism rather than a pattern re-implemented per change:
 
-- **One layout version, in `index.toml`** — the single internal metadata file, already
-  ACE-owned and already read at startup. No new dotfile, no per-store metadata. User
-  config (`ace.toml`, `school.toml`) never carries bookkeeping.
+- **One `layout_version` key in `index.toml`** — the single internal metadata file,
+  already ACE-owned and already read at startup. No new dotfile, no per-store metadata.
+  User config (`ace.toml`, `school.toml`) never carries bookkeeping.
+- **The value is the ISO date the layout change landed**, not the ACE release version and
+  not semver. On-disk shape changes on its own schedule; dating it avoids expressing
+  steps as version ranges and rewriting the key for releases that changed nothing. Dates
+  sort lexicographically and line up with the dated decision doc behind each step.
 - Version is recorded, never inferred. State newer than the running binary is refused
   with an upgrade hint, not migrated.
-- Steps are units of work in `src/actions/migrate/`, registered as one ordered
-  `from`→`to` list, run once at startup.
+- Steps are units of work in `src/actions/migrate/`, registered as one date-ordered list,
+  run once at startup.
 - **Tear and rebuild is the default.** Re-derivable state is deleted so the next command
   re-fetches it; in-place transforms are not written for data a re-clone reproduces. The
   narrow exception is state that exists nowhere else — a dirty or ahead-of-origin school
@@ -59,6 +63,10 @@ closes the remaining gap — automatic, but never invisible.
   and it makes a wrong-version read impossible rather than merely detectable. Rejected:
   it strands every previous generation on disk by construction, which is exactly the
   untidiness this decision exists to end.
+- **A monotonic counter (`layout = 2`) or the ACE release version.** The counter works but
+  carries no meaning at a glance; the release version drags semver ranges into the
+  registry and churns on releases that touch nothing. A date does both jobs — ordered and
+  self-explaining.
 - **Keep shape-sniffing, no recorded version.** Cheapest for one more change. Rejected:
   it cannot distinguish "layout I have never seen" from "layout from the future", so an
   old binary meeting a new tree does the wrong thing confidently.

@@ -20,29 +20,38 @@ Three properties drive the design:
 metadata file. It gains one top-level key:
 
 ```toml
-layout = 2
+layout_version = "2026-07-26"
 ```
 
 It is already read at startup and already ACE-owned, so the version costs no new file.
 `ace.toml`, `ace.local.toml`, and `school.toml` are user-edited config and never carry
 bookkeeping — the split is by *who writes it*, not by what it describes.
 
-The version is recorded, never inferred from directory shape. Recording it is what makes
-the state readable by a binary that does not understand it: a `layout` **newer** than the
-running ACE is not migrated at all — the command fails with an upgrade hint rather than
-migrating downward or rewriting a tree it cannot model. Shape-sniffing cannot express
-that, because an unrecognized shape and a future shape look identical.
+The value is the ISO date the layout change landed, **not** the ACE release version and
+not semver. It describes the shape of the state on disk, which changes on its own
+schedule: tying it to releases would mean expressing every step as a version range,
+rewriting the key on releases that changed nothing, and remembering which releases
+happened to alter layout. ISO dates sort lexicographically, so "am I current" is a string
+compare, and each step lines up with the dated decision doc that introduced it. One step
+per date — if two layout changes land the same day, they are one step.
 
-A missing `layout` key means version 0, the pre-versioning era — the only version a step
-may detect by shape, and only to identify what to clean up. A missing `index.toml`
-entirely means a fresh install: nothing to migrate, write the current version.
+The version is recorded, never inferred from directory shape. Recording it is what makes
+the state readable by a binary that does not understand it: a `layout_version` **newer**
+than the running ACE is not migrated at all — the command fails with an upgrade hint
+rather than migrating downward or rewriting a tree it cannot model. Shape-sniffing cannot
+express that, because an unrecognized shape and a future shape look identical.
+
+A missing `layout_version` key means the pre-versioning era — the only state a step may
+detect by shape, and only to identify what to clean up. A missing `index.toml` entirely
+means a fresh install: nothing to migrate, write the current version.
 
 ## Registry
 
-Steps are declared as one ordered list, each with a `from` and `to` version exactly one
-apart. No branching, no skipping: upgrading from 0 to 3 runs three steps in order, each
-logging its own line. A step is a unit of work (`struct` + `run(&self, ace)`, per the
-action pattern) in `src/actions/migrate/`, and it owns whatever paths it touches.
+Steps are declared as one list ordered by date. No branching, no skipping: state three
+steps behind runs all three in order, oldest first, each logging its own line. A step is
+a unit of work (`struct` + `run(&self, ace)`, per the action pattern) in
+`src/actions/migrate/`, named for its date, and it owns whatever paths it touches. The
+current layout version is the date of the last step in the list.
 
 Execution happens once at startup, before command dispatch, and costs one file read that
 already happens.
@@ -71,8 +80,8 @@ Every migration that changes anything on disk emits exactly **one** line naming 
 version transition and what actually happened to the files:
 
 ```
-Migrated layout v1 → v2 (host-scoped import paths; removed 3 stale clones from ~/.cache/ace/imports)
-Migrated layout v0 → v1 (moved index.toml to ~/.local/share/ace)
+Migrated layout to 2026-07-26 (host-scoped import paths; removed 3 stale clones from ~/.cache/ace/imports)
+Migrated layout to 2026-04-22 (moved index.toml to ~/.local/share/ace)
 ```
 
 Rules:
