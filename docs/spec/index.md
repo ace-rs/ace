@@ -33,6 +33,7 @@ off to the underlying AI coding tool.
 - [school/school-commands.md](school/school-commands.md) — `ace school` subcommands.
 - [school/standard-imports.md](school/standard-imports.md) — Standard `ace-rs/school`
   import seeded on `ace school init`.
+- [migrations.md](migrations.md) — On-disk stores, layout versions, migration policy.
 - [testing.md](testing.md) — Integration test strategy, TestEnv pattern.
 - [upgrade.md](upgrade.md) — Self-update: version check, background upgrade, `ace upgrade`.
 
