@@ -196,10 +196,6 @@ enum Command {
         #[arg(long)]
         force: bool,
     },
-    /// Removed — narrowing `skills` is a school skill now. Kept as a tombstone
-    /// so muscle memory gets a redirect instead of "unexpected argument".
-    #[command(hide = true)]
-    Learn,
     /// Start a fresh session (skip auto-resume)
     New {
         /// Extra arguments passed through to the backend, after --
@@ -434,14 +430,6 @@ fn skill_exit_code(e: &crate::skills::SkillError) -> ExitCode {
     }
 }
 
-/// `ace learn` moved out of the binary. Usage class: the fix is to run
-/// something else, not to set anything up.
-fn learn_removed() -> CmdError {
-    CmdError::usage("`ace learn` was removed")
-        .with_hint("narrowing `skills` is a school skill now — ask your agent to do it")
-        .with_hint("or edit the `skills` list in ace.toml directly")
-}
-
 fn setup_exit_code(e: &SetupError) -> ExitCode {
     match e {
         SetupError::Config(c) => config_exit_code(c),
@@ -565,7 +553,6 @@ pub fn run(ace: &mut Ace, cli: Cli) {
         Command::Explain { name } => explain::run(ace, &name),
         Command::Pull => pull::run(ace),
         Command::Link { force } => link::run(ace, force),
-        Command::Learn => exit_on_err(ace, Err(learn_removed())),
         Command::New { backend_args } => main::run(ace, backend_args, false, cli.one_shot_prompt),
         Command::Auto => yolo::run(ace, crate::config::ace_toml::Trust::Auto),
         Command::Yolo => yolo::run(ace, crate::config::ace_toml::Trust::Yolo),

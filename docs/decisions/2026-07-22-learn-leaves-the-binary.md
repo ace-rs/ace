@@ -21,9 +21,10 @@ and `ace` startup; the `maybe_hint_relearn` soft nudge; `prompt_learn.md`; and
 ACE now has no yes/no prompt anywhere (sets are offered as checklists, per
 [the selection-prompt ruling](2026-07-22-batch-selection-prompts.md)).
 
-`ace learn` survives as a hidden tombstone that errors with a redirect. Removing the verb
-outright would surface only clap's "unexpected argument", which tells a user with muscle
-memory nothing.
+The verb is gone outright. A hidden tombstone erroring with a redirect was kept at first,
+on the reasoning that clap's bare "unexpected argument" tells muscle memory nothing; that
+was reversed on 2026-07-26. The breaking-release note carries the redirect instead, so the
+tombstone bought nothing the note does not.
 
 ## Rationale
 
