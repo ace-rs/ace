@@ -15,14 +15,23 @@ use crate::config::index_toml::{self, LAYOUT_VERSION};
 /// than transformed in place.
 #[derive(Debug, thiserror::Error)]
 pub enum MigrateError {
-    #[error(
-        "{path} was written by a newer ace (layout {found}, this binary knows {LAYOUT_VERSION})"
-    )]
+    #[error("{path} is from a newer ace (layout {found})")]
     FromTheFuture { path: PathBuf, found: String },
     #[error(transparent)]
     Config(#[from] ConfigError),
     #[error(transparent)]
     Io(#[from] std::io::Error),
+}
+
+impl MigrateError {
+    /// Recovery hint, per `docs/spec/ux.md` §3. Wrapped variants leave it to
+    /// their own leaf error.
+    pub fn hint(&self) -> Option<&'static str> {
+        match self {
+            Self::FromTheFuture { .. } => Some("upgrade ace to use this install"),
+            Self::Config(_) | Self::Io(_) => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

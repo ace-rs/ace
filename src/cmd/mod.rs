@@ -341,6 +341,7 @@ impl CmdError {
     pub fn hints(&self) -> Vec<String> {
         match self {
             Self::School(e) => e.hint().map(str::to_string).into_iter().collect(),
+            Self::Migrate(e) => e.hint().map(str::to_string).into_iter().collect(),
             Self::Adhoc { hints, .. } => hints.clone(),
             _ => Vec::new(),
         }
@@ -738,6 +739,18 @@ mod tests {
         let inner = crate::school::SchoolError::TreeLoad(ConfigError::NoConfigDir);
         let err = CmdError::School(inner);
         assert!(err.hints().is_empty());
+    }
+
+    #[test]
+    fn cmd_error_hints_migrate_delegates_to_leaf() {
+        let err = CmdError::Migrate(MigrateError::FromTheFuture {
+            path: std::path::PathBuf::from("/tmp/index.toml"),
+            found: "9999-01-01".to_string(),
+        });
+        assert_eq!(
+            err.hints(),
+            vec!["upgrade ace to use this install".to_string()]
+        );
     }
 
     #[test]
