@@ -182,7 +182,7 @@ required.
 - **School clones**: `~/.local/share/ace/{owner/repo}/` (XDG_DATA_HOME). Schools are user
   data — `PullOutcome::Dirty` / `AheadOfOrigin` states can carry in-progress work that
   must survive OS cache hygiene.
-- **Import source cache**: `~/.cache/ace/imports/{owner/repo}/` (XDG_CACHE_HOME).
+- **Import source cache**: `~/.cache/ace/imports/{host}/{path…}/` (XDG_CACHE_HOME).
   Read-only upstream snapshots used during `ace import` and `ace school pull`; safe to
   delete.
 - **Index**: `~/.local/share/ace/index.toml` (XDG_DATA_HOME) — tracks downloaded schools.
@@ -195,21 +195,36 @@ required.
 
 Both `ace import <source>` and `ace school pull` pull skills from upstream repositories.
 Rather than re-cloning each source into a fresh `tempfile::tempdir()` on every invocation,
-ACE maintains a persistent cache at `~/.cache/ace/imports/{owner/repo}/` and uses
+ACE maintains a persistent cache at `~/.cache/ace/imports/{host}/{path…}/` and uses
 `git::ensure_source_cache(source)`:
 
-- **First call** — `git clone https://github.com/{owner/repo}.git` into the cache path.
-  Returns the on-disk path.
+- **First call** — `git clone <url>` into the cache path. Returns the on-disk path.
 - **Subsequent calls** — `git fetch origin` + `git merge --ff-only origin/<branch>` on the
   existing clone. Returns the same path.
 
+A source is parsed once into the clone URL and the cache path it maps to. Intake is
+liberal — `owner/repo` shorthand, any `scheme://` URL, and the scp-like `git@host:path`
+form — and whatever names a host is handed to `git clone` as typed, so private hosting and
+nested group paths work. The cache path is the conservative half: it is rebuilt from the
+parsed host and path segments, never joined from the raw string. Splitting on `/` at parse
+time means no segment can carry a separator, and `.` / `..` segments are rewritten, so a
+hostile source cannot escape the cache root — containment is structural rather than
+filtered for. Characters outside `[A-Za-z0-9._-]` are mapped to `_`, so two sources that
+differ only in those characters may share a cache directory; the cost is a re-fetch.
+
+Keying by host means the same `owner/repo` on two different hosts no longer collides.
+
 The cache is ACE-managed — users should not edit it. Unlike the school clone (in
 XDG_DATA_HOME), the import cache is safe to sweep; next invocation re-clones. Parent
-callers resolve the cache root via `config::paths::ace_import_cache_dir()`.
+callers resolve the cache root via `config::paths::ace_import_cache_dir()`. The move from
+the flat `{owner}/{repo}` layout is a registered migration — see
+[migrations.md](../migrations.md).
 
 ### `index.toml`
 
 ```toml
+layout_version = "2026-07-26"
+
 [[school]]
 specifier = "ace-rs/school"
 repo      = "ace-rs/school"
@@ -221,6 +236,9 @@ repo      = "jedi/academy"
 path      = "school"
 ```
 
+- `layout_version` — ISO date of the last on-disk layout migration applied. This is
+  ACE's only internal metadata file, so the version lives here rather than in a
+  file of its own. See [migrations.md](../migrations.md).
 - `specifier` — full specifier as written in `ace.toml`
 - `repo` — `owner/repo` portion (git clone target)
 - `path` — subfolder within the repo containing `school.toml` (empty string if root)

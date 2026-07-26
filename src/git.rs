@@ -5,6 +5,8 @@ use crate::ace::OutputMode;
 
 #[derive(Debug, thiserror::Error)]
 pub enum GitError {
+    #[error("invalid import source `{raw}`: expected owner/repo or a git URL")]
+    InvalidSource { raw: String },
     #[error("git {cmd}: {source}")]
     Exec { cmd: String, source: std::io::Error },
     #[error("git {cmd}: {status}{}", if stderr.is_empty() { String::new() } else { format!("\n{stderr}") })]
@@ -34,10 +36,9 @@ pub fn ensure_source_cache(source: &str) -> Result<std::path::PathBuf, GitError>
         cmd: "ensure_source_cache: resolve cache root".to_string(),
         source: std::io::Error::other(e.to_string()),
     })?;
-    let normalized = normalize_github_source(source);
-    let url = format!("https://github.com/{normalized}.git");
-    let dest = cache_root.join(&normalized);
-    ensure_source_cache_in(&dest, &url)?;
+    let parsed = parse_source(source)?;
+    let dest = cache_root.join(&parsed.cache_rel);
+    ensure_source_cache_in(&dest, &parsed.url)?;
     Ok(dest)
 }
 
@@ -216,10 +217,107 @@ impl<'a> Git<'a> {
     }
 }
 
+/// An import source split into the two things it is used for: the URL handed to
+/// `git clone` untouched, and the cache directory derived from it.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Source {
+    pub url: String,
+    pub cache_rel: PathBuf,
+}
+
+/// Parse an import source. Intake is liberal — plain `owner/repo`, any
+/// `scheme://` URL, and the scp-like `git@host:path` form all pass through to
+/// `git clone` as typed, so private hosting works. The cache path is the
+/// conservative half: it is rebuilt from parsed host and path segments, never
+/// joined from raw input, so it cannot escape the cache root.
+pub fn parse_source(raw: &str) -> Result<Source, GitError> {
+    let raw = raw.trim();
+    let invalid = || GitError::InvalidSource {
+        raw: raw.to_string(),
+    };
+
+    let (url, host, path) = split_source(raw).ok_or_else(invalid)?;
+    let cache_rel = cache_path(host, path).ok_or_else(invalid)?;
+
+    Ok(Source { url, cache_rel })
+}
+
+/// Split a source into the clone URL, the host, and the repo path. The URL is what the
+/// user typed for every form that already names a host — rebuilding it would only be a
+/// chance to get it wrong.
+fn split_source(raw: &str) -> Option<(String, &str, &str)> {
+    if let Some((_scheme, rest)) = raw.split_once("://") {
+        let (authority, path) = rest.split_once('/')?;
+        return Some((raw.to_string(), strip_userinfo(authority), path));
+    }
+
+    // scp-like `[user@]host:path`. The colon must come before any slash, or this is a
+    // plain path that happens to contain one.
+    if let Some((authority, path)) = raw.split_once(':')
+        && !authority.contains('/')
+    {
+        return Some((raw.to_string(), strip_userinfo(authority), path));
+    }
+
+    // `owner/repo` shorthand — GitHub is the assumed host.
+    let path = raw.trim_end_matches('/');
+    if path.split('/').filter(|s| !s.is_empty()).count() < 2 {
+        return None;
+    }
+
+    let repo = path.strip_suffix(".git").unwrap_or(path);
+    Some((format!("https://github.com/{repo}.git"), "github.com", path))
+}
+
+fn strip_userinfo(authority: &str) -> &str {
+    match authority.rsplit_once('@') {
+        Some((_userinfo, host)) => host,
+        None => authority,
+    }
+}
+
+/// Rebuild the cache path from parsed parts. Splitting on `/` ourselves is what makes
+/// containment structural: a segment cannot carry a separator, and `.`/`..` are rewritten,
+/// so the join can only ever descend.
+fn cache_path(host: &str, path: &str) -> Option<PathBuf> {
+    let host = sanitize_segment(host);
+    if host.is_empty() {
+        return None;
+    }
+
+    let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    let (last, leading) = segments.split_last()?;
+    let repo = last.strip_suffix(".git").unwrap_or(last);
+
+    let mut cache_rel = PathBuf::from(host);
+    for segment in leading {
+        cache_rel.push(sanitize_segment(segment));
+    }
+    cache_rel.push(sanitize_segment(repo));
+    Some(cache_rel)
+}
+
+fn sanitize_segment(segment: &str) -> String {
+    let mapped: String = segment
+        .chars()
+        .map(|c| match c {
+            c if c.is_ascii_alphanumeric() => c,
+            '.' | '_' | '-' => c,
+            _ => '_',
+        })
+        .collect();
+
+    match mapped.as_str() {
+        "." => "_".to_string(),
+        ".." => "__".to_string(),
+        _ => mapped,
+    }
+}
+
 /// Normalize a GitHub source: strip URL prefix and `.git` suffix.
 /// Accepts `https://github.com/owner/repo`, `https://github.com/owner/repo.git`,
 /// or plain `owner/repo`. Returns `owner/repo`.
-pub fn normalize_github_source(source: &str) -> String {
+pub fn normalize_source(source: &str) -> String {
     let s = source
         .strip_prefix("https://github.com/")
         .or_else(|| source.strip_prefix("http://github.com/"))
@@ -298,28 +396,142 @@ mod tests {
         );
     }
 
+    fn parse(raw: &str) -> Source {
+        parse_source(raw).unwrap_or_else(|e| panic!("parse {raw}: {e}"))
+    }
+
+    fn cache_rel(raw: &str) -> String {
+        parse(raw).cache_rel.to_string_lossy().replace('\\', "/")
+    }
+
+    #[test]
+    fn parse_shorthand_defaults_to_github() {
+        let parsed = parse("ace-rs/school");
+        assert_eq!(parsed.url, "https://github.com/ace-rs/school.git");
+        assert_eq!(cache_rel("ace-rs/school"), "github.com/ace-rs/school");
+        assert_eq!(parsed, parse("ace-rs/school.git"));
+    }
+
+    #[test]
+    fn parse_https_url_is_cloned_as_typed() {
+        let parsed = parse("https://github.com/ace-rs/school.git");
+        assert_eq!(parsed.url, "https://github.com/ace-rs/school.git");
+        assert_eq!(parsed.cache_rel, parse("ace-rs/school").cache_rel);
+    }
+
+    #[test]
+    fn parse_private_host_keeps_scheme_and_host() {
+        let parsed = parse("https://git.acme.co/infra/school.git");
+        assert_eq!(parsed.url, "https://git.acme.co/infra/school.git");
+        assert_eq!(
+            cache_rel("https://git.acme.co/infra/school.git"),
+            "git.acme.co/infra/school"
+        );
+    }
+
+    #[test]
+    fn parse_scp_form_is_cloned_as_typed() {
+        let parsed = parse("git@git.acme.co:infra/school.git");
+        assert_eq!(parsed.url, "git@git.acme.co:infra/school.git");
+        assert_eq!(
+            cache_rel("git@git.acme.co:infra/school.git"),
+            "git.acme.co/infra/school"
+        );
+    }
+
+    #[test]
+    fn parse_ssh_url_with_port() {
+        let parsed = parse("ssh://git@git.acme.co:2222/infra/school.git");
+        assert_eq!(parsed.url, "ssh://git@git.acme.co:2222/infra/school.git");
+        assert_eq!(
+            cache_rel("ssh://git@git.acme.co:2222/infra/school.git"),
+            "git.acme.co_2222/infra/school"
+        );
+    }
+
+    #[test]
+    fn parse_keeps_nested_group_path() {
+        assert_eq!(
+            cache_rel("https://gitlab.com/grp/sub/school.git"),
+            "gitlab.com/grp/sub/school"
+        );
+    }
+
+    #[test]
+    fn parse_distinct_hosts_do_not_share_a_cache_dir() {
+        assert_ne!(
+            cache_rel("https://gitlab.com/infra/school"),
+            cache_rel("https://git.acme.co/infra/school")
+        );
+    }
+
+    #[test]
+    fn parse_neutralizes_traversal_segments() {
+        // Every segment is rebuilt, so `..` cannot climb out of the cache root.
+        assert_eq!(
+            cache_rel("../../../tmp/evil"),
+            "github.com/__/__/__/tmp/evil"
+        );
+        assert_eq!(cache_rel("owner/../../etc"), "github.com/owner/__/__/etc");
+        assert_eq!(
+            cache_rel("https://git.acme.co/../../etc/cron.d"),
+            "git.acme.co/__/__/etc/cron.d"
+        );
+    }
+
+    #[test]
+    fn parse_cache_rel_is_always_relative_and_contained() {
+        let hostile = [
+            "../../../tmp/evil",
+            "/etc/cron.d/x",
+            "owner/../etc",
+            "https://git.acme.co//../..//etc",
+            "git@git.acme.co:../../etc",
+        ];
+
+        for raw in hostile {
+            let Ok(parsed) = parse_source(raw) else {
+                continue;
+            };
+            let rel = &parsed.cache_rel;
+            assert!(rel.is_relative(), "{raw}: absolute cache path {rel:?}");
+            assert!(
+                rel.components()
+                    .all(|c| matches!(c, std::path::Component::Normal(_))),
+                "{raw}: non-normal component in {rel:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_rejects_sources_with_no_repo_path() {
+        for raw in ["", "   ", "owner", "https://github.com/", "https://"] {
+            assert!(parse_source(raw).is_err(), "expected rejection for {raw:?}");
+        }
+    }
+
     #[test]
     fn normalize_plain_specifier() {
-        assert_eq!(normalize_github_source("owner/repo"), "owner/repo");
+        assert_eq!(normalize_source("owner/repo"), "owner/repo");
     }
 
     #[test]
     fn normalize_strips_https_prefix() {
         assert_eq!(
-            normalize_github_source("https://github.com/owner/repo"),
+            normalize_source("https://github.com/owner/repo"),
             "owner/repo"
         );
     }
 
     #[test]
     fn normalize_strips_git_suffix() {
-        assert_eq!(normalize_github_source("owner/repo.git"), "owner/repo");
+        assert_eq!(normalize_source("owner/repo.git"), "owner/repo");
     }
 
     #[test]
     fn normalize_strips_both() {
         assert_eq!(
-            normalize_github_source("https://github.com/owner/repo.git"),
+            normalize_source("https://github.com/owner/repo.git"),
             "owner/repo"
         );
     }
@@ -327,7 +539,7 @@ mod tests {
     #[test]
     fn normalize_strips_trailing_slash() {
         assert_eq!(
-            normalize_github_source("https://github.com/owner/repo/"),
+            normalize_source("https://github.com/owner/repo/"),
             "owner/repo"
         );
     }
@@ -335,31 +547,31 @@ mod tests {
     #[test]
     fn normalize_http_prefix() {
         assert_eq!(
-            normalize_github_source("http://github.com/owner/repo"),
+            normalize_source("http://github.com/owner/repo"),
             "owner/repo"
         );
     }
 
     #[test]
     fn normalize_preserves_dot_specifier() {
-        assert_eq!(normalize_github_source("."), ".");
+        assert_eq!(normalize_source("."), ".");
     }
 
     #[test]
     fn normalize_space_separated_specifier() {
-        assert_eq!(normalize_github_source("prod9 school"), "prod9/school");
+        assert_eq!(normalize_source("prod9 school"), "prod9/school");
     }
 
     #[test]
     fn normalize_space_separated_collapses_extra_whitespace() {
-        assert_eq!(normalize_github_source("prod9   school"), "prod9/school");
-        assert_eq!(normalize_github_source("prod9\tschool"), "prod9/school");
+        assert_eq!(normalize_source("prod9   school"), "prod9/school");
+        assert_eq!(normalize_source("prod9\tschool"), "prod9/school");
     }
 
     #[test]
     fn normalize_leaves_three_token_input_untouched() {
         // Not a valid owner/repo — don't guess, leave it as typed.
-        assert_eq!(normalize_github_source("a b c"), "a b c");
+        assert_eq!(normalize_source("a b c"), "a b c");
     }
 
     #[test]

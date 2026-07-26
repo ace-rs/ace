@@ -158,7 +158,11 @@ This section documents the file shape.
 
 #### Fields
 
-- `source`               — GitHub `owner/repo` shorthand for the upstream skills repo.
+- `source`               — upstream skills repo. `owner/repo` shorthand resolves against
+                           GitHub; a full `scheme://` URL or the scp-like
+                           `git@host:group/repo` form clones as typed, so private and
+                           self-hosted git works. See
+                           [import source cache](../skills/sync.md#import-source-cache-gitensure_source_cache).
 - `skills`               — list of match handles. Required (or its backcompat alias
                            `skill`).
 - `exclude_skills`       — list of match handles subtracted from `skills`. Optional.

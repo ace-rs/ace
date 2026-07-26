@@ -4,11 +4,18 @@ use std::path::{Path, PathBuf};
 use super::ConfigError;
 use super::paths::{ace_cache_dir, ace_data_dir};
 
+/// ISO date of the newest on-disk layout migration this binary knows about. Recorded in
+/// `index.toml` — ACE's only internal metadata file — so an older binary can tell "state
+/// from the future" apart from "state I have never seen". See `docs/spec/migrations.md`.
+pub const LAYOUT_VERSION: &str = "2026-07-26";
+
 /// ~/.local/share/ace/index.toml — tracks downloaded schools. Schools themselves live
 /// alongside at `~/.local/share/ace/{owner}/{repo}/` — index is user data, not cache,
 /// so losing it to cache sweep would silently forget installed schools.
 ///
 /// ```toml
+/// layout_version = "2026-07-26"
+///
 /// [[school]]
 /// specifier = "ace-rs/school"
 /// repo = "ace-rs/school"
@@ -22,6 +29,8 @@ use super::paths::{ace_cache_dir, ace_data_dir};
 #[derive(Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct IndexToml {
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub layout_version: String,
     pub school: Vec<SchoolEntry>,
 }
 
@@ -42,22 +51,6 @@ pub fn legacy_index_path() -> Result<PathBuf, ConfigError> {
     Ok(ace_cache_dir()?.join("index.toml"))
 }
 
-/// Load the index, one-shot migrating from the legacy cache location if needed.
-/// If the new path exists, use it. Otherwise if the legacy path exists, load it
-/// and write it to the new path (legacy file is left in place; the startup
-/// `warn_stray_cache_dirs` hint surfaces it for manual cleanup).
-pub fn load_or_migrate(new: &Path, legacy: &Path) -> Result<IndexToml, ConfigError> {
-    if new.exists() {
-        return load(new);
-    }
-    if legacy.exists() {
-        let index = load(legacy)?;
-        save(new, &index)?;
-        return Ok(index);
-    }
-    Ok(IndexToml::default())
-}
-
 pub fn load(path: &Path) -> Result<IndexToml, ConfigError> {
     let content = match std::fs::read_to_string(path) {
         Ok(c) => c,
@@ -68,11 +61,20 @@ pub fn load(path: &Path) -> Result<IndexToml, ConfigError> {
     Ok(index)
 }
 
+/// Write the index, stamping the current layout. Only a binary that has already
+/// migrated ever writes this file, so what it writes is current by definition —
+/// which is also how a fresh install ends up versioned without a migration running.
 pub fn save(path: &Path, index: &IndexToml) -> Result<(), ConfigError> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let content = toml::to_string(index)?;
+
+    let stamped = IndexToml {
+        layout_version: LAYOUT_VERSION.to_string(),
+        school: index.school.clone(),
+    };
+
+    let content = toml::to_string(&stamped)?;
     std::fs::write(path, content)?;
     Ok(())
 }
@@ -114,6 +116,46 @@ mod tests {
     use super::*;
 
     #[test]
+    fn layout_version_survives_a_roundtrip_alongside_schools() {
+        // TOML rejects a bare key after a table, so the version must serialize
+        // ahead of the [[school]] entries or saving an indexed install fails.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("index.toml");
+
+        let mut index = IndexToml::default();
+        upsert(&mut index, "ace-rs/school");
+        index.layout_version = "2026-07-26".to_string();
+
+        save(&path, &index).expect("save with schools and a version");
+        let loaded = load(&path).expect("load");
+
+        assert_eq!(loaded.layout_version, "2026-07-26");
+        assert_eq!(loaded.school.len(), 1);
+    }
+
+    #[test]
+    fn absent_layout_version_reads_as_pre_versioning() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("index.toml");
+        std::fs::write(&path, "[[school]]\nspecifier = \"ace-rs/school\"\n").expect("seed");
+
+        let loaded = load(&path).expect("load");
+
+        assert_eq!(loaded.layout_version, "");
+        assert!(loaded.layout_version.as_str() < LAYOUT_VERSION);
+    }
+
+    #[test]
+    fn unversioned_index_omits_the_key() {
+        let mut index = IndexToml::default();
+        upsert(&mut index, "ace-rs/school");
+
+        let text = toml::to_string(&index).expect("serialize");
+
+        assert!(!text.contains("layout_version"), "got: {text}");
+    }
+
+    #[test]
     fn upsert_deduplicates() {
         let mut index = IndexToml::default();
         upsert(&mut index, "ace-rs/school");
@@ -135,51 +177,6 @@ mod tests {
         let path = tmp.path().join("missing").join("index.toml");
         let index = load(&path).expect("missing file should return default");
         assert!(index.school.is_empty());
-    }
-
-    #[test]
-    fn load_or_migrate_moves_legacy_to_new() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let legacy = tmp.path().join("cache").join("index.toml");
-        let new = tmp.path().join("data").join("index.toml");
-
-        let mut seed = IndexToml::default();
-        upsert(&mut seed, "ace-rs/school");
-        save(&legacy, &seed).expect("seed legacy");
-
-        let loaded = load_or_migrate(&new, &legacy).expect("migrate");
-        assert_eq!(loaded.school.len(), 1);
-        assert_eq!(loaded.school[0].specifier, "ace-rs/school");
-        assert!(new.exists(), "new path should be written after migration");
-    }
-
-    #[test]
-    fn load_or_migrate_prefers_new_when_both_exist() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let legacy = tmp.path().join("cache").join("index.toml");
-        let new = tmp.path().join("data").join("index.toml");
-
-        let mut legacy_seed = IndexToml::default();
-        upsert(&mut legacy_seed, "legacy/school");
-        save(&legacy, &legacy_seed).expect("seed legacy");
-
-        let mut new_seed = IndexToml::default();
-        upsert(&mut new_seed, "new/school");
-        save(&new, &new_seed).expect("seed new");
-
-        let loaded = load_or_migrate(&new, &legacy).expect("load");
-        assert_eq!(loaded.school.len(), 1);
-        assert_eq!(loaded.school[0].specifier, "new/school");
-    }
-
-    #[test]
-    fn load_or_migrate_returns_default_when_neither_exists() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let legacy = tmp.path().join("cache").join("index.toml");
-        let new = tmp.path().join("data").join("index.toml");
-
-        let loaded = load_or_migrate(&new, &legacy).expect("load");
-        assert!(loaded.school.is_empty());
     }
 
     #[test]

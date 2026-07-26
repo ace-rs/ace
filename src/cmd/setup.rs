@@ -56,17 +56,16 @@ fn run_inner(ace: &mut Ace, specifier: Option<&str>) -> Result<(), CmdError> {
 fn normalize_specifier(spec: &str) -> String {
     match spec.split_once(':') {
         Some((source, path)) => {
-            let normalized = git::normalize_github_source(source);
+            let normalized = git::normalize_source(source);
             format!("{normalized}:{path}")
         }
-        None => git::normalize_github_source(spec),
+        None => git::normalize_source(spec),
     }
 }
 
 fn resolve_from_cache(ace: &mut Ace) -> Result<String, CmdError> {
     let index_path = index_toml::index_path()?;
-    let legacy_path = index_toml::legacy_index_path()?;
-    let index = index_toml::load_or_migrate(&index_path, &legacy_path)?;
+    let index = index_toml::load(&index_path)?;
 
     let specs = index_toml::list_specifiers(&index);
     match specs.len() {

@@ -165,11 +165,21 @@ impl TestEnv {
     }
 
     pub fn git_init(&self) {
+        self.git_init_in(&self.root);
+    }
+
+    /// `git init` a subdirectory of the sandbox — for fixtures that need a repo
+    /// somewhere other than the project root, e.g. a legacy cache clone.
+    pub fn git_init_at(&self, rel: &str) {
+        self.git_init_in(&self.path(rel));
+    }
+
+    fn git_init_in(&self, dir: &Path) {
         let status = std::process::Command::new("git")
             .args(["init", "--quiet", "--template="])
             .env_clear()
             .env("PATH", std::env::var("PATH").unwrap_or_default())
-            .current_dir(&self.root)
+            .current_dir(dir)
             .status()
             .expect("git init");
         assert!(status.success(), "git init failed");
@@ -365,7 +375,7 @@ impl TestEnv {
             ],
         );
 
-        let index_path = self.path("cache/ace/index.toml");
+        let index_path = self.path("data/ace/index.toml");
         std::fs::create_dir_all(index_path.parent().expect("index parent"))
             .expect("create index parent");
         std::fs::write(
@@ -501,7 +511,7 @@ impl TestEnv {
     /// binary; per-test cost is a small `cp -R`.
     pub fn seed_ace_school_imports(&self) {
         let tpl = ace_school_template();
-        let dest = self.path("cache/ace/imports/ace-rs/school");
+        let dest = self.path("cache/ace/imports/github.com/ace-rs/school");
         copy_tree(&tpl.root, &dest);
         append_gitconfig_redirect(
             &self.path(".gitconfig"),

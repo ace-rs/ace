@@ -39,7 +39,7 @@ fn run_inner(
         ));
     }
 
-    let normalized = git::normalize_github_source(source);
+    let normalized = git::normalize_source(source);
     let school_root = ace.require_school()?.root.clone();
 
     // --all is shorthand for --skill "*"

@@ -69,7 +69,7 @@ fn setup_remote_school_smoke() {
     );
 
     // Index entry exists.
-    env.assert_contains("cache/ace/index.toml", "test/school");
+    env.assert_contains("data/ace/index.toml", "test/school");
 
     // Project dir has ace.toml and is a git repo.
     env.assert_contains("ace.toml", "school = \"test/school\"");

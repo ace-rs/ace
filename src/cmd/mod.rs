@@ -20,6 +20,7 @@ use std::collections::HashMap;
 use clap::{Parser, Subcommand};
 
 use crate::ace::{Ace, IoError};
+use crate::actions::migrate::MigrateError;
 use crate::actions::project::PrepareError;
 use crate::actions::project::RegisterMcpError;
 use crate::actions::project::SetupError;
@@ -272,6 +273,8 @@ pub(crate) enum CmdError {
     #[error("{0}")]
     Git(#[from] GitError),
     #[error("{0}")]
+    Migrate(#[from] MigrateError),
+    #[error("{0}")]
     Prompt(#[from] IoError),
     /// Ad-hoc error built at a call site. Its exit class is mandatory at
     /// construction (`usage`/`unavailable`/`failed`) — there is no
@@ -360,6 +363,7 @@ impl CmdError {
             Self::Import(e) => add_import_exit_code(e),
             Self::InitSchool(e) => init_exit_code(e),
             Self::PullImports(e) => pull_imports_exit_code(e),
+            Self::Migrate(e) => migrate_exit_code(e),
         }
     }
 }
@@ -385,6 +389,16 @@ fn config_exit_code(e: &ConfigError) -> ExitCode {
         | ConfigError::NoCacheDir
         | ConfigError::NoDataDir => ExitCode::Unavailable,
         ConfigError::Io(_) => ExitCode::Operational,
+    }
+}
+
+fn migrate_exit_code(e: &MigrateError) -> ExitCode {
+    match e {
+        // State this binary is too old to read is a missing precondition, not a
+        // failed operation — upgrading fixes it.
+        MigrateError::FromTheFuture { .. } => ExitCode::Unavailable,
+        MigrateError::Config(c) => config_exit_code(c),
+        MigrateError::Io(_) => ExitCode::Operational,
     }
 }
 
@@ -667,7 +681,7 @@ fn parse_env_overrides(entries: &[String]) -> Result<HashMap<String, String>, Cm
     Ok(out)
 }
 
-fn exit_on_err(ace: &mut Ace, result: Result<(), CmdError>) {
+pub(crate) fn exit_on_err(ace: &mut Ace, result: Result<(), CmdError>) {
     if let Err(e) = result {
         let hints = e.hints();
         ace.error(&e.to_string());

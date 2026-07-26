@@ -38,13 +38,69 @@ fn startup_migrates_legacy_index_toml_to_data_dir() {
 }
 
 #[test]
-fn startup_leaves_legacy_index_toml_in_place() {
+fn startup_removes_legacy_index_toml_once_adopted() {
     let env = TestEnv::new();
     env.write_file(LEGACY_INDEX, SEED_LEGACY);
 
     run_ace_paths(&env);
 
-    env.assert_exists(LEGACY_INDEX);
+    env.assert_exists(NEW_INDEX);
+    env.assert_not_exists(LEGACY_INDEX);
+}
+
+#[test]
+fn startup_stamps_the_layout_version() {
+    let env = TestEnv::new();
+    env.write_file(LEGACY_INDEX, SEED_LEGACY);
+
+    run_ace_paths(&env);
+
+    let migrated = env.read_file(NEW_INDEX);
+    assert!(
+        migrated.contains("layout_version"),
+        "migrated index should record the layout it was brought up to; got {migrated:?}",
+    );
+}
+
+#[test]
+fn startup_sweeps_flat_layout_import_clones() {
+    let env = TestEnv::new();
+    env.write_file(NEW_INDEX, SEED_LEGACY);
+    env.mkdir("cache/ace/imports/owner/repo");
+    env.mkdir("cache/ace/imports/github.com/owner/repo");
+
+    run_ace_paths(&env);
+
+    env.assert_not_exists("cache/ace/imports/owner");
+    env.assert_exists("cache/ace/imports/github.com/owner/repo");
+}
+
+#[test]
+fn startup_keeps_a_legacy_clone_that_holds_unpushed_work() {
+    let env = TestEnv::new();
+    env.write_file(LEGACY_INDEX, SEED_LEGACY);
+    env.mkdir("cache/ace/acme/school");
+    env.write_file("cache/ace/acme/school/notes.md", "unsaved\n");
+    env.git_init_at("cache/ace/acme/school");
+
+    run_ace_paths(&env);
+
+    env.assert_exists("cache/ace/acme/school/notes.md");
+}
+
+#[test]
+fn startup_migration_is_silent_on_the_second_run() {
+    let env = TestEnv::new();
+    env.write_file(LEGACY_INDEX, SEED_LEGACY);
+
+    run_ace_paths(&env);
+    let output = run_ace_paths(&env);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.to_lowercase().contains("migrat"),
+        "migration should announce once, not on every startup; got stderr={stderr:?}",
+    );
 }
 
 #[test]
@@ -96,18 +152,25 @@ fn startup_no_migration_hint_when_no_legacy() {
 }
 
 #[test]
-fn startup_no_migration_hint_when_new_already_exists() {
+fn startup_keeps_the_new_index_and_still_clears_the_legacy_one() {
     let env = TestEnv::new();
     env.write_file(LEGACY_INDEX, SEED_LEGACY);
-    env.write_file(NEW_INDEX, SEED_LEGACY);
-
-    let output = run_ace_paths(&env);
-
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        !stderr.to_lowercase().contains("migrat"),
-        "should not re-announce migration on subsequent startups; got stderr={stderr:?}",
+    env.write_file(
+        NEW_INDEX,
+        r#"[[school]]
+specifier = "acme/school"
+repo = "acme/school"
+"#,
     );
+
+    run_ace_paths(&env);
+
+    let new_content = env.read_file(NEW_INDEX);
+    assert!(
+        new_content.contains("acme/school") && !new_content.contains("ace-rs/school"),
+        "the live index wins; got {new_content:?}",
+    );
+    env.assert_not_exists(LEGACY_INDEX);
 }
 
 #[test]

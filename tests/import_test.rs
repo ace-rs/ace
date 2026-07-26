@@ -447,7 +447,7 @@ fn import_populates_persistent_source_cache() {
         .assert()
         .success();
 
-    let cache_path = env.path("cache/ace/imports/cached/source");
+    let cache_path = env.path("cache/ace/imports/github.com/cached/source");
     assert!(
         cache_path.exists(),
         "import should populate persistent cache at {cache_path:?}",
@@ -657,7 +657,7 @@ fn import_reuses_source_cache_on_second_call() {
         .success();
 
     // Drop a sentinel inside the cache. A re-clone would wipe it; a fetch preserves it.
-    let cache_path = env.path("cache/ace/imports/cached/source");
+    let cache_path = env.path("cache/ace/imports/github.com/cached/source");
     let sentinel = cache_path.join(".ace-test-sentinel");
     std::fs::write(&sentinel, "preserve me").expect("write sentinel");
 

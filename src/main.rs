@@ -31,52 +31,14 @@ fn main() {
 
     let project_dir = std::env::current_dir().expect("cannot determine current directory");
     let mut ace = ace::Ace::new(project_dir, mode);
-    migrate_legacy_index_toml(&mut ace);
-    warn_stray_cache_dirs(&mut ace);
+    migrate_layout(&mut ace);
     cmd::run(&mut ace, cli);
 }
 
-/// One-shot read-migration for the pre-PROD9-76 `~/.cache/ace/index.toml` location.
-/// Moves content to `~/.local/share/ace/index.toml` on first startup after upgrade.
-/// Legacy file is left in place and surfaced by `warn_stray_cache_dirs`. Silent on
-/// failure — later setup/clone paths retry, and the user's data is never lost.
-fn migrate_legacy_index_toml(ace: &mut ace::Ace) {
-    let (Ok(new), Ok(legacy)) = (
-        config::index_toml::index_path(),
-        config::index_toml::legacy_index_path(),
-    ) else {
-        return;
-    };
-    if new.exists() || !legacy.exists() {
-        return;
-    }
-    if config::index_toml::load_or_migrate(&new, &legacy).is_ok() {
-        ace.done(&format!(
-            "Migrated index.toml to {} (legacy file left at {} for manual cleanup)",
-            new.display(),
-            legacy.display(),
-        ));
-    }
-}
-
-/// Startup hint: if the old flat cache layout (`~/.cache/ace/{owner/repo}/`)
-/// has stray entries, nudge the user to clean them up. Self-silences once the user
-/// deletes the strays. New layout: `~/.local/share/ace/` (schools) +
-/// `~/.cache/ace/imports/` (upstream source snapshots).
-fn warn_stray_cache_dirs(ace: &mut ace::Ace) {
-    let Ok(cache_root) = config::paths::ace_cache_dir() else {
-        return;
-    };
-
-    let stray = config::paths::detect_stray_cache_dirs(&cache_root);
-    if stray.is_empty() {
-        return;
-    }
-
-    ace.warn(&format!(
-        "old ACE cache layout detected at {} ({} stray entr{}); safe to delete",
-        cache_root.display(),
-        stray.len(),
-        if stray.len() == 1 { "y" } else { "ies" },
-    ));
+/// Bring on-disk state up to the layout this binary understands, before any command
+/// reads it. See `docs/spec/migrations.md`. A failure here means ACE cannot trust what
+/// it is about to read, so it stops rather than operating on a half-known layout.
+fn migrate_layout(ace: &mut ace::Ace) {
+    let result = actions::migrate::Migrate.run(ace).map_err(Into::into);
+    cmd::exit_on_err(ace, result);
 }

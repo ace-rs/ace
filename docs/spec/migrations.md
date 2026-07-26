@@ -48,10 +48,11 @@ means a fresh install: nothing to migrate, write the current version.
 ## Registry
 
 Steps are declared as one list ordered by date. No branching, no skipping: state three
-steps behind runs all three in order, oldest first, each logging its own line. A step is
-a unit of work (`struct` + `run(&self, ace)`, per the action pattern) in
-`src/actions/migrate/`, named for its date, and it owns whatever paths it touches. The
-current layout version is the date of the last step in the list.
+steps behind runs all three in order, oldest first, each logging its own line. A step
+lives in `src/actions/migrate/`, named for what it does rather than when — the date is a
+`VERSION` constant it declares — and owns whatever paths it touches. The current layout
+version is the date of the last step in the list; the registry asserts that in a test, so
+adding a step without bumping the version cannot compile past CI.
 
 Execution happens once at startup, before command dispatch, and costs one file read that
 already happens.
@@ -71,8 +72,10 @@ layout change would require it, the step reports what it found and leaves the st
 No backup files. A `.bak` for re-derivable data is residue with extra steps, and for
 non-derivable data the answer is not to touch it in the first place.
 
-Failure of a rebuild step is not fatal — warn and continue, since the next command
-retries. Failure to migrate `index.toml` itself is fatal for the command that needed it.
+A single entry that resists deletion is warned about and skipped — one locked directory
+must not block the rest. But a step that fails outright aborts the command: the layout is
+then half-known, and reading it as if it were current is how a migration turns into
+corruption. Nothing is stamped on that path, so the next run retries from where it was.
 
 ## Log lines
 
