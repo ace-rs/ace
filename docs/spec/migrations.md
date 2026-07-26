@@ -65,17 +65,26 @@ the next command rebuild it.** Transforming a tree in place is more code, more f
 modes, and buys nothing when a re-clone produces a provably correct result.
 
 The exception is narrow and concrete: state that exists nowhere else. A school clone with
-uncommitted work or commits ahead of origin (`UpdateOutcome::Dirty` / `AheadOfOrigin`),
-and the contents of `index.toml` itself. A step never deletes those on a guess; if a
-layout change would require it, the step reports what it found and leaves the state alone.
+uncommitted work or commits ahead of origin (`UpdateOutcome::Dirty` / `AheadOfOrigin`) is
+never deleted on a guess; the step reports what it found and leaves it alone. `index.toml`
+is not in that category — it records the layout stamp and school entries that are
+re-resolved from `ace.toml` anyway, so an unreadable one is discarded and rebuilt, at the
+cost of one re-resolve.
 
 No backup files. A `.bak` for re-derivable data is residue with extra steps, and for
 non-derivable data the answer is not to touch it in the first place.
 
-A single entry that resists deletion is warned about and skipped — one locked directory
-must not block the rest. But a step that fails outright aborts the command: the layout is
-then half-known, and reading it as if it were current is how a migration turns into
-corruption. Nothing is stamped on that path, so the next run retries from where it was.
+Migration is not all-or-nothing, because a step that gives up on one entry has still left
+the layout coherent. An entry that resists deletion, a clone held back for its unsaved
+work, a legacy index too corrupt to adopt: each is warned about and stepped over, and the
+stamp still advances. **Only failure to write the stamp aborts the command** — at that
+point ACE cannot record what it just did, and a later run would re-derive the layout from
+a version it never managed to store.
+
+Nothing revisits what a step stepped over. The stamp has moved, so that step never looks
+at those paths again — which makes the warning the user's only notice. Every one of them
+names the path and says to delete it manually; a migration that quietly leaves a few
+hundred megabytes behind is a worse outcome than one that failed loudly.
 
 ## Log lines
 

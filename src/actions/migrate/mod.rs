@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use crate::ace::Ace;
 use crate::config::ConfigError;
-use crate::config::index_toml::{self, LAYOUT_VERSION};
+use crate::config::index_toml::{self, IndexToml, LAYOUT_VERSION};
 
 /// On-disk layout migrations. See `docs/spec/migrations.md`.
 ///
@@ -66,7 +66,10 @@ pub struct Migrate;
 impl Migrate {
     pub fn run(&self, ace: &mut Ace) -> Result<(), MigrateError> {
         let path = index_toml::index_path()?;
-        let index = index_toml::load(&path)?;
+        let (index, rebuilt) = load_or_rebuild(&path)?;
+        if let Some(note) = rebuilt {
+            ace.warn(&note);
+        }
         guard_not_from_the_future(&path, &index.layout_version)?;
 
         let pending = pending_steps(&index.layout_version);
@@ -91,11 +94,40 @@ impl Migrate {
         }
 
         // `save` stamps the current layout — steps above may have rewritten the file,
-        // so re-read rather than writing back the copy we loaded before they ran.
-        let migrated = index_toml::load(&path)?;
+        // so re-read rather than writing back the copy we loaded before they ran. A
+        // rebuild here is the same one already announced above.
+        let (migrated, _) = load_or_rebuild(&path)?;
         index_toml::save(&path, &migrated)?;
         Ok(())
     }
+}
+
+/// `index.toml` holds nothing that cannot be re-derived — the layout stamp and the
+/// school entries ACE resolves from `ace.toml` anyway. So an unreadable one is
+/// rebuilt rather than treated as fatal; the cost is one re-resolve. A read that
+/// fails for any other reason still propagates: state we cannot read *or* rewrite
+/// is not something to paper over.
+///
+/// Returns the note the user should hear, if any. The caller decides whether to say
+/// it — the file is read twice per run and a rebuild is one event, not two.
+fn load_or_rebuild(path: &std::path::Path) -> Result<(IndexToml, Option<String>), MigrateError> {
+    match index_toml::load(path) {
+        Err(ConfigError::Parse(e)) => {
+            let note = format!("{} is unreadable ({e}); rebuilding it", path.display());
+            Ok((IndexToml::default(), Some(note)))
+        }
+        other => Ok((other?, None)),
+    }
+}
+
+/// One voice for everything a step declines to delete. Nothing revisits these — the
+/// stamp advances either way — so the warning has to name the path and hand the
+/// cleanup to the user, or the space is leaked silently.
+fn warn_left_behind(ace: &mut Ace, path: &std::path::Path, why: &str) {
+    ace.warn(&format!(
+        "keeping {} — {why}; delete it manually once you no longer need it",
+        path.display(),
+    ));
 }
 
 /// Refuse state from a newer ACE rather than migrating it downward. Dates compare

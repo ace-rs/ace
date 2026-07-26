@@ -174,6 +174,62 @@ repo = "acme/school"
 }
 
 #[test]
+fn startup_rebuilds_an_unparseable_index() {
+    let env = TestEnv::new();
+    env.write_file(NEW_INDEX, "this is not toml {{{\n");
+
+    let output = run_ace_paths(&env);
+
+    let rebuilt = env.read_file(NEW_INDEX);
+    assert!(
+        rebuilt.contains("layout_version") && !rebuilt.contains("not toml"),
+        "unreadable index should be discarded and rebuilt; got {rebuilt:?}",
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("index.toml"),
+        "rebuild should warn and name the file; got stderr={stderr:?}",
+    );
+    assert_eq!(
+        stderr.matches("rebuilding it").count(),
+        1,
+        "the index is read twice per run, but a rebuild is one event; got stderr={stderr:?}",
+    );
+}
+
+#[test]
+fn startup_continues_when_the_legacy_index_cannot_be_adopted() {
+    let env = TestEnv::new();
+    env.write_file(LEGACY_INDEX, "this is not toml {{{\n");
+
+    run_ace_paths(&env);
+
+    env.assert_not_exists(LEGACY_INDEX);
+    let rebuilt = env.read_file(NEW_INDEX);
+    assert!(
+        rebuilt.contains("layout_version"),
+        "an unadoptable legacy index should not stop the migration; got {rebuilt:?}",
+    );
+}
+
+#[test]
+fn startup_tells_the_user_to_delete_what_it_kept() {
+    let env = TestEnv::new();
+    env.write_file(LEGACY_INDEX, SEED_LEGACY);
+    env.mkdir("cache/ace/acme/school");
+    env.write_file("cache/ace/acme/school/notes.md", "unsaved\n");
+    env.git_init_at("cache/ace/acme/school");
+
+    let output = run_ace_paths(&env);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("cache/ace/acme/school") && stderr.contains("delete it"),
+        "a kept directory should name itself and say to delete it; got stderr={stderr:?}",
+    );
+}
+
+#[test]
 fn startup_does_nothing_when_neither_index_exists() {
     let env = TestEnv::new();
 

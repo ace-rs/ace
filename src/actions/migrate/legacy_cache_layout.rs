@@ -18,7 +18,7 @@ pub fn run(ace: &mut Ace) -> Result<Option<String>, MigrateError> {
         return Ok(None);
     }
 
-    let index_moved = adopt_legacy_index()?;
+    let index_moved = adopt_legacy_index(ace)?;
     let (removed, kept) = remove_stale_clones(ace, &strays);
 
     let mut parts = Vec::new();
@@ -33,7 +33,7 @@ pub fn run(ace: &mut Ace) -> Result<Option<String>, MigrateError> {
         ));
     }
     if kept > 0 {
-        parts.push(format!("kept {kept} with local work"));
+        parts.push(format!("kept {kept}, warned about above"));
     }
 
     match parts.is_empty() {
@@ -44,7 +44,12 @@ pub fn run(ace: &mut Ace) -> Result<Option<String>, MigrateError> {
 
 /// Read the pre-move `index.toml` into the data dir if that is still the only copy.
 /// The legacy file itself is deleted by the stray sweep below.
-fn adopt_legacy_index() -> Result<bool, MigrateError> {
+///
+/// Adoption is best-effort: everything in the file is re-derivable, so a legacy copy
+/// we cannot read or write is warned about and abandoned rather than blocking the
+/// sweep behind it. Not knowing *where* the file belongs is a different failure and
+/// still propagates.
+fn adopt_legacy_index(ace: &mut Ace) -> Result<bool, MigrateError> {
     let new = index_toml::index_path()?;
     let legacy = index_toml::legacy_index_path()?;
 
@@ -52,9 +57,16 @@ fn adopt_legacy_index() -> Result<bool, MigrateError> {
         return Ok(false);
     }
 
-    let index = index_toml::load(&legacy)?;
-    index_toml::save(&new, &index)?;
-    Ok(true)
+    match index_toml::load(&legacy).and_then(|i| index_toml::save(&new, &i)) {
+        Ok(()) => Ok(true),
+        Err(e) => {
+            ace.warn(&format!(
+                "could not adopt {} ({e}); starting a fresh index",
+                legacy.display(),
+            ));
+            Ok(false)
+        }
+    }
 }
 
 /// Returns (removed, kept). A legacy clone is re-cloneable, so it goes — unless it
@@ -66,10 +78,7 @@ fn remove_stale_clones(ace: &mut Ace, strays: &[PathBuf]) -> (usize, usize) {
 
     for stray in strays {
         if let Some(unsaved) = holds_unsaved_work(stray) {
-            ace.warn(&format!(
-                "keeping {} — {unsaved} (delete it once the work is pushed)",
-                stray.display(),
-            ));
+            super::warn_left_behind(ace, stray, &unsaved);
             kept += 1;
             continue;
         }
@@ -77,7 +86,7 @@ fn remove_stale_clones(ace: &mut Ace, strays: &[PathBuf]) -> (usize, usize) {
         match remove(stray) {
             Ok(()) => removed += 1,
             Err(e) => {
-                ace.warn(&format!("could not remove {}: {e}", stray.display()));
+                super::warn_left_behind(ace, stray, &format!("could not remove it ({e})"));
                 kept += 1;
             }
         }

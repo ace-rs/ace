@@ -21,7 +21,7 @@ pub fn run(ace: &mut Ace) -> Result<Option<String>, MigrateError> {
     for entry in &flat {
         match std::fs::remove_dir_all(entry) {
             Ok(()) => removed += 1,
-            Err(e) => ace.warn(&format!("could not remove {}: {e}", entry.display())),
+            Err(e) => super::warn_left_behind(ace, entry, &format!("could not remove it ({e})")),
         }
     }
 
