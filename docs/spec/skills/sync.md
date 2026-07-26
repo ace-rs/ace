@@ -144,7 +144,8 @@ root: an embedded school (`school = "."`) or a path specifier. There is no recor
 that root used to be, and inventing one would mean guessing on the user's behalf.
 
 ACE does not guess. An outside-root symlink at a name the resolved set wants is a **hard
-failure**, carrying `ace link --force` as its hint. Every command that links — bare `ace`,
+failure**, carrying `ace link --force` as its hint
+([ruling](../../decisions/2026-07-26-skills-dir-belongs-to-ace.md)). Every command that links — bare `ace`,
 `ace setup`, `ace pull`, `ace link` — runs the same action and so fails the same way, and
 `--force` replaces exactly those colliding links. Outside-root symlinks that collide with
 nothing block nothing and are left alone.
