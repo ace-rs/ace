@@ -24,6 +24,9 @@ pub struct Link<'a> {
     /// managed-symlink predicate root so a school switch via `ace.toml`
     /// prunes leftover per-skill links pointing at the previous clone.
     pub ace_data_root: &'a Path,
+    /// Authorization to replace symlinks pointing outside every managed root.
+    /// Without it, such a link at a desired skill's name fails the run.
+    pub force: link_skills::Force,
 }
 
 impl Link<'_> {
@@ -45,8 +48,12 @@ impl Link<'_> {
                     self.ace_data_root,
                     &project_dir,
                     self.skills,
+                    self.force,
                 )
                 .map_err(PrepareError::Write)?;
+                if !result.blocked.is_empty() {
+                    return Err(PrepareError::BlockedLinks(result.blocked));
+                }
                 folders.push(FolderResult {
                     name,
                     linked: result.changed(),
@@ -500,8 +507,14 @@ mod tests {
                 // Test helper uses `school_root` for both managed-root args;
                 // all skill targets live under it, so the prefix check still
                 // classifies managed links correctly without a real data dir.
-                let result = link_skills::reconcile(school_root, school_root, &proj_dir, skills)
-                    .map_err(PrepareError::Write)?;
+                let result = link_skills::reconcile(
+                    school_root,
+                    school_root,
+                    &proj_dir,
+                    skills,
+                    link_skills::Force::No,
+                )
+                .map_err(PrepareError::Write)?;
                 folders.push(FolderResult {
                     name,
                     linked: result.changed(),

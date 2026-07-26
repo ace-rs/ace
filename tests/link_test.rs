@@ -87,6 +87,94 @@ fn link_prunes_stale_symlink_to_sibling_school_clone() {
     let _ = school;
 }
 
+/// Leftover from a school whose root sat outside the ACE data root — an
+/// embedded `school = "."` or a path specifier. Nothing records where that root
+/// was, so ACE refuses to guess and hands the call to the user.
+#[cfg(unix)]
+fn plant_outside_root_link(env: &TestEnv, name: &str) -> std::path::PathBuf {
+    let old_school_skill = env.path("old-embedded/skills").join(name);
+    std::fs::create_dir_all(&old_school_skill).expect("mkdir old school skill");
+
+    let link = env.path(".claude/skills").join(name);
+    let _ = std::fs::remove_file(&link);
+    std::os::unix::fs::symlink(&old_school_skill, &link).expect("plant outside-root link");
+    link
+}
+
+#[test]
+#[cfg(unix)]
+fn link_fails_when_a_previous_school_holds_a_skill_name() {
+    let env = TestEnv::new();
+    let _school = env.setup_remote_school("test/school");
+    env.ace().assert().success();
+
+    plant_outside_root_link(&env, "maverick");
+
+    let output = env.ace().args(["link"]).output().expect("ace link");
+    assert!(!output.status.success(), "blocked link should fail the run");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("maverick") && stderr.contains("ace link --force"),
+        "failure should name the skill and the way out; got stderr={stderr:?}",
+    );
+}
+
+#[test]
+#[cfg(unix)]
+fn every_linking_command_fails_the_same_way() {
+    // One link action behind `ace`, `ace setup` and `ace link`, so a blocked
+    // skill stops all of them rather than only the explicit verb. (`ace pull`
+    // updates the clone without linking, so it is not in this set.)
+    let env = TestEnv::new();
+    let _school = env.setup_remote_school("test/school");
+    env.ace().assert().success();
+
+    plant_outside_root_link(&env, "maverick");
+
+    env.ace().assert().failure();
+    env.ace().args(["setup"]).assert().failure();
+}
+
+#[test]
+#[cfg(unix)]
+fn forcing_replaces_a_previous_schools_link() {
+    let env = TestEnv::new();
+    let school = env.setup_remote_school("test/school");
+    env.ace().assert().success();
+
+    let link = plant_outside_root_link(&env, "maverick");
+
+    env.ace().args(["link", "--force"]).assert().success();
+
+    let target = std::fs::read_link(&link).expect("read symlink");
+    assert_eq!(
+        target,
+        school.cache.join("skills").join("maverick"),
+        "--force should repoint the link into the current school",
+    );
+
+    // The decision was made; the next ordinary run is quiet again.
+    env.ace().args(["link"]).assert().success();
+}
+
+#[test]
+#[cfg(unix)]
+fn a_dangling_link_is_repaired_without_asking() {
+    // Points nowhere, so it cannot be anyone's deliberate content.
+    let env = TestEnv::new();
+    let school = env.setup_remote_school("test/school");
+    env.ace().assert().success();
+
+    let link = env.path(".claude/skills/maverick");
+    std::fs::remove_file(&link).expect("remove link");
+    std::os::unix::fs::symlink(env.path("gone/skills/maverick"), &link).expect("dangling link");
+
+    env.ace().args(["link"]).assert().success();
+
+    let target = std::fs::read_link(&link).expect("read symlink");
+    assert_eq!(target, school.cache.join("skills").join("maverick"));
+}
+
 #[test]
 fn link_repairs_stale_whole_dir_symlink() {
     let env = TestEnv::new();

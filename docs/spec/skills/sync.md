@@ -120,7 +120,9 @@ resolved Included set:
 - Add a symlink for any new skill.
 - Re-point a managed symlink that targets a stale path (skill moved within the school).
 - Remove managed symlinks for skills no longer in the resolved set.
-- Skip and warn when an entry's name collides with a non-managed file or symlink.
+- Skip and warn when an entry's name collides with a real file or directory.
+- Fail when it collides with a symlink pointing outside every managed root, until
+  `ace link --force` clears it.
 - Drop the loser on backend-emit `skillName` collisions per
   [emit.md § Loser-drop on collision](emit.md#loser-drop-on-collision-flatten-branch-only),
   with a loud warning. Applies only on the flatten branch; nested-capable backends emit
@@ -128,12 +130,28 @@ resolved Included set:
 
 **ACE-managed predicate:** a symlink whose target path resolves textually inside either
 the current school clone OR the ACE data root (`~/.local/share/ace/`, parent of all
-school clones). No marker files. The data-root branch catches symlinks left over from a
-previous `school = "..."` value pointing into a sibling clone, so switching schools via
-`ace.toml` prunes those leftovers on the next link/setup. Anything else (real files, real
-subdirs, symlinks pointing outside every managed root) is treated as user content and
-left alone — except when its name collides with a desired skill, in which case the link
-is skipped with a warning so the user can resolve the conflict.
+school clones), plus any symlink whose target no longer exists. No marker files. The
+data-root branch catches symlinks left over from a previous `school = "..."` value
+pointing into a sibling clone; the dangling branch catches the same leftovers once the
+old clone is gone. A broken link inside the skills directory is never something a user
+maintains deliberately, so it is repointed or pruned without comment.
+
+The skills directory belongs to ACE. A project that has adopted ACE gets its own skills
+through the school or through `ace.toml` imports — hand-maintaining a symlink inside a
+directory ACE reconciles is not a supported workflow. So a **symlink pointing outside
+every managed root is ACE's own leftover**, from a school whose root sat outside the data
+root: an embedded school (`school = "."`) or a path specifier. There is no record of where
+that root used to be, and inventing one would mean guessing on the user's behalf.
+
+ACE does not guess. An outside-root symlink at a name the resolved set wants is a **hard
+failure**, carrying `ace link --force` as its hint. Every command that links — bare `ace`,
+`ace setup`, `ace pull`, `ace link` — runs the same action and so fails the same way, and
+`--force` replaces exactly those colliding links. Outside-root symlinks that collide with
+nothing block nothing and are left alone.
+
+A real file or directory at a desired name is different in kind: that is repo content,
+plausibly checked in, and not ours to replace. It keeps the older behavior — skipped with
+a warning so the user can resolve the conflict.
 
 ### Removal visibility (admission-evicted vs config-orphaned)
 

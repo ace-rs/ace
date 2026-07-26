@@ -191,7 +191,11 @@ enum Command {
     /// Fetch latest school changes (force, ignoring cooldown)
     Pull,
     /// Re-link school folders into the project (no pull)
-    Link,
+    Link {
+        /// Replace symlinks left behind by a previous school
+        #[arg(long)]
+        force: bool,
+    },
     /// Removed — narrowing `skills` is a school skill now. Kept as a tombstone
     /// so muscle memory gets a redirect instead of "unexpected argument".
     #[command(hide = true)]
@@ -342,6 +346,7 @@ impl CmdError {
         match self {
             Self::School(e) => e.hint().map(str::to_string).into_iter().collect(),
             Self::Migrate(e) => e.hint().map(str::to_string).into_iter().collect(),
+            Self::Prepare(e) => e.hint().map(str::to_string).into_iter().collect(),
             Self::Adhoc { hints, .. } => hints.clone(),
             _ => Vec::new(),
         }
@@ -449,6 +454,8 @@ fn prepare_exit_code(e: &PrepareError) -> ExitCode {
     match e {
         PrepareError::Config(c) => config_exit_code(c),
         PrepareError::Clone(_) | PrepareError::Write(_) => ExitCode::Operational,
+        // The tree is intact; it is waiting on a decision only the user can make.
+        PrepareError::BlockedLinks(_) => ExitCode::Unavailable,
     }
 }
 
@@ -557,7 +564,7 @@ pub fn run(ace: &mut Ace, cli: Cli) {
         } => skills::run(ace, command, all, names),
         Command::Explain { name } => explain::run(ace, &name),
         Command::Pull => pull::run(ace),
-        Command::Link => link::run(ace),
+        Command::Link { force } => link::run(ace, force),
         Command::Learn => exit_on_err(ace, Err(learn_removed())),
         Command::New { backend_args } => main::run(ace, backend_args, false, cli.one_shot_prompt),
         Command::Auto => yolo::run(ace, crate::config::ace_toml::Trust::Auto),

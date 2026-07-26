@@ -6,12 +6,12 @@ use crate::config::school_paths;
 
 use super::CmdError;
 
-pub fn run(ace: &mut Ace) {
-    let result = run_inner(ace);
+pub fn run(ace: &mut Ace, force: bool) {
+    let result = run_inner(ace, force);
     super::exit_on_err(ace, result);
 }
 
-fn run_inner(ace: &mut Ace) -> Result<(), CmdError> {
+fn run_inner(ace: &mut Ace, force: bool) -> Result<(), CmdError> {
     let specifier = ace
         .require_resolved()?
         .school_specifier
@@ -36,6 +36,10 @@ fn run_inner(ace: &mut Ace) -> Result<(), CmdError> {
         backend_dir,
         skills: &prepared.desired,
         ace_data_root: &ace_data_root,
+        force: match force {
+            true => link_skills::Force::Yes,
+            false => link_skills::Force::No,
+        },
     }
     .run(ace)?;
 

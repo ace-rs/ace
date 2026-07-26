@@ -7,10 +7,17 @@
 //!
 //! ACE-managed predicate: a symlink whose target resolves textually inside
 //! either the current school root OR the ACE data root
-//! (`~/.local/share/ace/`, parent of all school clones). The data-root check
-//! catches stragglers from a previous `school = "..."` value pointing into a
-//! sibling clone; the school-root check covers embedded schools
-//! (`school = "."`) whose root sits outside the data root. No marker files.
+//! (`~/.local/share/ace/`, parent of all school clones), plus any symlink
+//! whose target is gone. The data-root check catches stragglers from a
+//! previous `school = "..."` value pointing into a sibling clone; the
+//! school-root check covers embedded schools (`school = "."`) whose root sits
+//! outside the data root; the dangling check catches either once the old root
+//! is deleted. No marker files.
+//!
+//! A live symlink outside every managed root is ACE's own leftover from a
+//! school root nothing records anymore. Rather than guess, a run that wants
+//! that name fails and `ace link --force` decides. See
+//! `docs/spec/skills/sync.md § Reconciliation`.
 
 use std::collections::HashSet;
 use std::fs;
@@ -39,18 +46,44 @@ pub struct CurrentEntry {
 pub enum EntryKind {
     /// Symlink whose target resolves inside a managed root — safe to manage.
     ManagedSymlink { target: PathBuf },
-    /// Symlink with a target outside every managed root — leave alone.
+    /// Live symlink pointing outside every managed root — a leftover of ours
+    /// from a school we can no longer name. Blocks the skill that wants it.
     ForeignSymlink { target: PathBuf },
-    /// Real file or directory placed by the user — leave alone.
+    /// Real file or directory: repo content, not ours to replace — leave alone.
     ForeignEntry,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LinkAction {
-    Create { name: String, target: PathBuf },
-    Repoint { name: String, target: PathBuf },
-    Remove { name: String },
-    SkipForeign { name: String, reason: String },
+    Create {
+        name: String,
+        target: PathBuf,
+    },
+    Repoint {
+        name: String,
+        target: PathBuf,
+    },
+    Remove {
+        name: String,
+    },
+    SkipForeign {
+        name: String,
+        reason: String,
+    },
+    /// A symlink out of every managed root sits where a skill belongs. It is
+    /// ACE's own leftover from a school root we no longer know, so replacing it
+    /// is the user's call: `ace link --force`.
+    BlockedForeign {
+        name: String,
+        target: PathBuf,
+    },
+}
+
+/// Whether the user has authorized replacing outside-root symlinks this run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Force {
+    No,
+    Yes,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -59,12 +92,12 @@ pub struct LinkPlan {
 }
 
 /// Compute the reconciliation plan. Pure: no I/O.
-pub fn plan(desired: &[DesiredLink], current: &[CurrentEntry]) -> LinkPlan {
+pub fn plan(desired: &[DesiredLink], current: &[CurrentEntry], force: Force) -> LinkPlan {
     let desired_names: HashSet<&str> = desired.iter().map(|d| d.name.as_str()).collect();
 
     let actions_for_desired = desired.iter().filter_map(|want| {
         let existing = current.iter().find(|c| c.name == want.name);
-        decide_action(want, existing)
+        decide_action(want, existing, force)
     });
 
     let actions_for_orphans = current.iter().filter_map(|entry| {
@@ -87,7 +120,11 @@ pub fn plan(desired: &[DesiredLink], current: &[CurrentEntry]) -> LinkPlan {
 
 /// Decide what to do with one desired link given the current state of that
 /// name's entry. `None` means "already correct, no action needed."
-fn decide_action(want: &DesiredLink, existing: Option<&CurrentEntry>) -> Option<LinkAction> {
+fn decide_action(
+    want: &DesiredLink,
+    existing: Option<&CurrentEntry>,
+    force: Force,
+) -> Option<LinkAction> {
     let Some(entry) = existing else {
         return Some(LinkAction::Create {
             name: want.name.clone(),
@@ -100,12 +137,13 @@ fn decide_action(want: &DesiredLink, existing: Option<&CurrentEntry>) -> Option<
             name: want.name.clone(),
             target: want.target.clone(),
         }),
-        EntryKind::ForeignSymlink { target } => Some(LinkAction::SkipForeign {
+        EntryKind::ForeignSymlink { .. } if force == Force::Yes => Some(LinkAction::Repoint {
             name: want.name.clone(),
-            reason: format!(
-                "symlink points outside ace-managed roots: {}",
-                target.display()
-            ),
+            target: want.target.clone(),
+        }),
+        EntryKind::ForeignSymlink { target } => Some(LinkAction::BlockedForeign {
+            name: want.name.clone(),
+            target: target.clone(),
         }),
         EntryKind::ForeignEntry => Some(LinkAction::SkipForeign {
             name: want.name.clone(),
@@ -129,6 +167,9 @@ pub fn classify(name: &str, kind_input: ClassifyInput, managed_roots: &[&Path]) 
                 EntryKind::ForeignSymlink { target }
             }
         }
+        // Wherever it points, it points at nothing. Nobody maintains a broken
+        // link in a directory ACE rewrites, so this is ours to clean up.
+        ClassifyInput::DanglingSymlink(target) => EntryKind::ManagedSymlink { target },
         ClassifyInput::Other => EntryKind::ForeignEntry,
     };
     CurrentEntry {
@@ -141,6 +182,7 @@ pub fn classify(name: &str, kind_input: ClassifyInput, managed_roots: &[&Path]) 
 /// into one of these variants.
 pub enum ClassifyInput {
     Symlink(PathBuf),
+    DanglingSymlink(PathBuf),
     Other,
 }
 
@@ -275,7 +317,9 @@ pub struct PreparedSkills {
 ///   a symlink, unlink it) and ensures `project_skills_dir` is a real dir.
 /// - Reads current entries, classifies against `school_root` + `ace_data_root`,
 ///   plans, executes.
-/// - Returns reconciliation summary including warnings for foreign entries.
+/// - Returns a reconciliation summary: warnings for real entries in the way,
+///   and `blocked` for names an outside-root symlink holds, which the caller
+///   turns into a failed run unless `force` says otherwise.
 ///
 /// `school_root` covers the current school clone (and the project itself for
 /// embedded `school = "."`). `ace_data_root` (`~/.local/share/ace/`) covers
@@ -288,6 +332,7 @@ pub fn reconcile(
     ace_data_root: &Path,
     project_skills_dir: &Path,
     desired: &[DesiredLink],
+    force: Force,
 ) -> io::Result<ReconcileResult> {
     if is_symlink(project_skills_dir) {
         std::fs::remove_file(project_skills_dir)?;
@@ -295,7 +340,7 @@ pub fn reconcile(
     std::fs::create_dir_all(project_skills_dir)?;
 
     let current = scan_current(project_skills_dir, school_root, ace_data_root)?;
-    let plan = plan(desired, &current);
+    let plan = plan(desired, &current, force);
 
     let mut result = ReconcileResult::default();
     for action in &plan.actions {
@@ -327,6 +372,11 @@ pub fn reconcile(
                 result
                     .warnings
                     .push(format!("cannot link {name}: {reason}"));
+            }
+            LinkAction::BlockedForeign { name, target } => {
+                result
+                    .blocked
+                    .push(format!("{name} (currently points at {})", target.display()));
             }
         }
     }
@@ -409,6 +459,9 @@ pub struct ReconcileResult {
     pub repointed: usize,
     pub removed: usize,
     pub warnings: Vec<String>,
+    /// Skills that could not be linked because an outside-root symlink holds
+    /// their name. Non-empty means the run fails: see `sync.md § Reconciliation`.
+    pub blocked: Vec<String>,
 }
 
 impl ReconcileResult {
@@ -446,8 +499,11 @@ fn scan_current(
         };
         let path = entry.path();
         if is_symlink(&path) {
-            let resolved = fs::canonicalize(&path).or_else(|_| fs::read_link(&path))?;
-            out.push(classify(&name, ClassifyInput::Symlink(resolved), &roots));
+            let input = match fs::canonicalize(&path) {
+                Ok(resolved) => ClassifyInput::Symlink(resolved),
+                Err(_) => ClassifyInput::DanglingSymlink(fs::read_link(&path)?),
+            };
+            out.push(classify(&name, input, &roots));
         } else if path.is_dir() {
             // Tentatively descend: a real dir that contains only managed
             // symlinks (or other such dirs) is an ACE-managed nested
@@ -561,6 +617,33 @@ mod tests {
         }
     }
 
+    /// The plan under each authorization, so the cases below read as intent
+    /// rather than as a boolean argument.
+    fn plan(desired: &[DesiredLink], current: &[CurrentEntry]) -> LinkPlan {
+        super::plan(desired, current, Force::No)
+    }
+
+    fn plan_forced(desired: &[DesiredLink], current: &[CurrentEntry]) -> LinkPlan {
+        super::plan(desired, current, Force::Yes)
+    }
+
+    /// Disk-level cases below are all about link mechanics, never about
+    /// authorization — they run unforced.
+    fn reconcile(
+        school_root: &Path,
+        ace_data_root: &Path,
+        project_skills_dir: &Path,
+        desired: &[DesiredLink],
+    ) -> io::Result<ReconcileResult> {
+        super::reconcile(
+            school_root,
+            ace_data_root,
+            project_skills_dir,
+            desired,
+            Force::No,
+        )
+    }
+
     fn foreign_entry(name: &str) -> CurrentEntry {
         CurrentEntry {
             name: name.to_string(),
@@ -617,16 +700,70 @@ mod tests {
     }
 
     #[test]
-    fn foreign_symlink_is_skipped_with_reason() {
+    fn foreign_symlink_at_a_desired_name_blocks() {
+        // The skills dir is ACE's: a symlink out of every managed root is our own
+        // leftover from a school whose root sat outside the data root. We cannot
+        // tell which school, so the user decides via `ace link --force`.
         let p = plan(
             &desired(&[("a", "/sch/a")]),
-            &[foreign_link("a", "/elsewhere")],
+            &[foreign_link("a", "/old-embedded/skills/a")],
         );
+        assert_eq!(
+            p.actions,
+            vec![LinkAction::BlockedForeign {
+                name: "a".into(),
+                target: "/old-embedded/skills/a".into(),
+            }]
+        );
+    }
+
+    #[test]
+    fn foreign_symlink_orphan_blocks_nothing() {
+        let p = plan(
+            &desired(&[]),
+            &[foreign_link("a", "/old-embedded/skills/a")],
+        );
+        assert!(p.actions.is_empty());
+    }
+
+    #[test]
+    fn forcing_replaces_a_blocking_foreign_symlink() {
+        let p = plan_forced(
+            &desired(&[("a", "/sch/a")]),
+            &[foreign_link("a", "/old-embedded/skills/a")],
+        );
+        assert_eq!(
+            p.actions,
+            vec![LinkAction::Repoint {
+                name: "a".into(),
+                target: "/sch/a".into(),
+            }]
+        );
+    }
+
+    #[test]
+    fn forcing_still_leaves_real_entries_alone() {
+        // `--force` answers the question ACE could not: which school a stray link
+        // came from. A real directory is repo content and was never that question.
+        let p = plan_forced(&desired(&[("a", "/sch/a")]), &[foreign_entry("a")]);
         assert_eq!(p.actions.len(), 1);
         assert!(matches!(p.actions[0], LinkAction::SkipForeign { .. }));
-        if let LinkAction::SkipForeign { reason, .. } = &p.actions[0] {
-            assert!(reason.contains("/elsewhere"));
-        }
+    }
+
+    #[test]
+    fn classify_dangling_symlink_is_managed() {
+        // A broken link inside the skills dir is never deliberate.
+        let entry = classify(
+            "a",
+            ClassifyInput::DanglingSymlink(PathBuf::from("/gone/skills/a")),
+            &[Path::new("/sch/skills")],
+        );
+        assert_eq!(
+            entry.kind,
+            EntryKind::ManagedSymlink {
+                target: PathBuf::from("/gone/skills/a")
+            }
+        );
     }
 
     #[test]

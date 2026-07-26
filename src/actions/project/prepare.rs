@@ -17,6 +17,18 @@ pub enum PrepareError {
     Clone(String),
     #[error("write failed: {0}")]
     Write(std::io::Error),
+    #[error("skills blocked by leftover links: {}", .0.join(", "))]
+    BlockedLinks(Vec<String>),
+}
+
+impl PrepareError {
+    /// Recovery hint, per `docs/spec/ux.md` §3.
+    pub fn hint(&self) -> Option<&'static str> {
+        match self {
+            Self::BlockedLinks(_) => Some("run `ace link --force` to replace them"),
+            Self::Config(_) | Self::Clone(_) | Self::Write(_) => None,
+        }
+    }
 }
 
 /// Ensure school is ready: install if not cached, update if cached, link into project.
@@ -79,6 +91,9 @@ impl Prepare<'_> {
             backend_dir: self.backend.backend_dir(),
             skills: &prepared.desired,
             ace_data_root: &ace_data_root,
+            // Only `ace link --force` carries that authorization; every other
+            // entry point fails and points the user at it.
+            force: link_skills::Force::No,
         }
         .run(ace)?;
         for folder in &result.folders {
