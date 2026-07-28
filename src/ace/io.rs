@@ -103,8 +103,21 @@ impl OutputMode {
 pub enum IoError {
     #[error("cancelled")]
     Cancelled,
+    #[error("no terminal to answer \"{prompt}\"")]
+    NoTerminal { prompt: String },
     #[error("{0}")]
     Io(#[from] std::io::Error),
+}
+
+impl IoError {
+    pub fn hint(&self) -> Option<&'static str> {
+        match self {
+            Self::NoTerminal { .. } => {
+                Some("run this in an interactive terminal, or set the value with `ace config set`")
+            }
+            Self::Cancelled | Self::Io(_) => None,
+        }
+    }
 }
 
 pub struct Io {
@@ -236,6 +249,8 @@ impl Io {
     // -- input --
 
     pub fn prompt_text(&mut self, prompt: &str, initial: Option<&str>) -> Result<String, IoError> {
+        self.require_terminal(prompt)?;
+
         self.clear_spinner();
         let mut p = inquire::Text::new(prompt);
         if let Some(val) = initial {
@@ -245,10 +260,24 @@ impl Io {
     }
 
     pub fn prompt_select(&mut self, prompt: &str, options: Vec<String>) -> Result<String, IoError> {
+        self.require_terminal(prompt)?;
+
         self.clear_spinner();
         inquire::Select::new(prompt, options)
             .prompt()
             .map_err(map_inquire_err)
+    }
+
+    /// Free-form prompts have no defensible headless answer — unlike a
+    /// checklist, which falls back to all-or-none. Refuse rather than invent
+    /// one on the user's behalf.
+    fn require_terminal(&self, prompt: &str) -> Result<(), IoError> {
+        match self.mode {
+            OutputMode::Human => Ok(()),
+            OutputMode::Porcelain | OutputMode::Silent => Err(IoError::NoTerminal {
+                prompt: prompt.to_string(),
+            }),
+        }
     }
 
     /// Present a checklist and return the indices of the ticked options.
@@ -314,6 +343,56 @@ fn map_inquire_err(e: inquire::InquireError) -> IoError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // A pipe has nowhere to type an answer. Substituting a default would put
+    // words in the user's mouth, so both free-form prompts refuse instead.
+    const HEADLESS: [OutputMode; 2] = [OutputMode::Porcelain, OutputMode::Silent];
+
+    #[test]
+    fn text_prompt_refuses_without_a_terminal() {
+        for mode in HEADLESS {
+            let mut io = Io::new(mode);
+
+            let err = io
+                .prompt_text("School name:", None)
+                .expect_err("no terminal to answer on");
+
+            assert!(matches!(err, IoError::NoTerminal { .. }));
+            assert!(err.to_string().contains("School name:"));
+            assert!(err.hint().is_some());
+        }
+    }
+
+    #[test]
+    fn select_prompt_refuses_without_a_terminal() {
+        for mode in HEADLESS {
+            let mut io = Io::new(mode);
+
+            let err = io
+                .prompt_select("Pick a backend:", vec!["claude".to_string()])
+                .expect_err("no terminal to answer on");
+
+            assert!(matches!(err, IoError::NoTerminal { .. }));
+        }
+    }
+
+    // The checklist keeps its all-or-none resolution — it has a defensible
+    // default the free-form prompts lack.
+    #[test]
+    fn multiselect_still_resolves_without_a_terminal() {
+        let mut io = Io::new(OutputMode::Porcelain);
+        let options = vec!["a".to_string(), "b".to_string()];
+
+        let all = io
+            .prompt_multiselect("Pick:", options.clone(), true)
+            .expect("resolves headlessly");
+        let none = io
+            .prompt_multiselect("Pick:", options, false)
+            .expect("resolves headlessly");
+
+        assert_eq!(all, vec![0, 1]);
+        assert!(none.is_empty());
+    }
 
     #[test]
     fn cleanup_bytes_cursor_only_when_no_alt_screen() {

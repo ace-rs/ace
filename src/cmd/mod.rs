@@ -343,6 +343,7 @@ impl CmdError {
             Self::School(e) => e.hint().map(str::to_string).into_iter().collect(),
             Self::Migrate(e) => e.hint().map(str::to_string).into_iter().collect(),
             Self::Prepare(e) => e.hint().map(str::to_string).into_iter().collect(),
+            Self::Prompt(e) => e.hint().map(str::to_string).into_iter().collect(),
             Self::Adhoc { hints, .. } => hints.clone(),
             _ => Vec::new(),
         }
@@ -375,6 +376,8 @@ impl CmdError {
 fn io_exit_code(e: &IoError) -> ExitCode {
     match e {
         IoError::Cancelled => ExitCode::Cancelled,
+        // Ambient precondition, not something the user mis-typed.
+        IoError::NoTerminal { .. } => ExitCode::Unavailable,
         IoError::Io(_) => ExitCode::Operational,
     }
 }
