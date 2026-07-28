@@ -67,8 +67,8 @@ See [backend.md](backend.md#mcp-server-registration) for per-backend CLI command
 
 ### Skipping servers
 
-Both bare `ace` (default startup) and `ace mcp` offer the missing servers as one
-checklist before registering. Unticking a server appends its name to `exclude_mcp` in
+Bare `ace` (default startup) offers the missing servers as one checklist before
+registering. Unticking a server appends its name to `exclude_mcp` in
 `ace.local.toml`; subsequent runs silently skip those names. The exclusion list is unioned
 across user, project, and local `ace.toml` scopes (same merge as `exclude_skills`).
 
@@ -110,13 +110,15 @@ This is informational only — ACE does not block on auth completion.
 
 ## Inspection
 
-`ace mcp list` reports where every server stands without probing anything: one
+Bare `ace mcp` reports where every server stands without probing anything: one
 `name<TAB>state` line per row, school order first, then backend servers the school never
 declared. States are `registered`, `not registered`, `excluded`, and `not in school`; an
 exclusion outranks registration, since it is the user's standing decision.
 
-The command must stay cheap — it exists precisely so inspection does not pay for a health
-probe. Health belongs to `ace mcp check`.
+Listing is what the bare noun does, matching `ace skills` and `ace config`. It is
+read-only and must stay cheap — it exists precisely so inspection does not pay for a
+health probe. Health belongs to `ace mcp check`; registering missing servers belongs to
+bare `ace`.
 
 ## Health Checks
 
@@ -148,12 +150,12 @@ carries a server name and a boolean ok/not-ok status. See
 
 ### Integration
 
-`ace mcp` runs health checks after registering missing servers and prompts the user to
-re-register broken ones. `ace mcp check` runs a read-only health report.
+`ace mcp check` is the only path that runs `mcp_check()`. No other command probes health:
+a check costs a backend subprocess round-trip per server, which is too slow to sit on
+startup or on an inspection command.
 
-Whether ACE automatically runs `mcp_check()` after registration in the shared startup flow
-(bare `ace` command) is a separate cross-backend decision. Currently health checks are
-only triggered via explicit `ace mcp` invocation.
+Repairing a broken server is `ace mcp unregister <name>` followed by
+`ace mcp register <name>`.
 
 ## Transport
 

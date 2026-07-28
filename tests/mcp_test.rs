@@ -2,8 +2,6 @@ mod common;
 
 use common::TestEnv;
 
-// -- ace mcp reset --
-
 const SCHOOL_TOML_TWO_SERVERS: &str = r#"
 name = "test-school"
 
@@ -15,6 +13,36 @@ url = "https://mcp.linear.app/mcp"
 name = "github"
 url = "https://api.githubcopilot.com/mcp/"
 "#;
+
+// -- ace mcp (bare) --
+
+#[test]
+fn mcp_bare_lists_state() {
+    let env = TestEnv::new();
+    env.setup_flaude_school(SCHOOL_TOML_TWO_SERVERS);
+    env.write_flaude_mcp_list(&["linear"]);
+
+    let output = env.ace().args(["mcp"]).output().expect("should run");
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("linear\tregistered"),
+        "should report linear as registered: {stdout}"
+    );
+    assert!(
+        stdout.contains("github\tnot registered"),
+        "should report github as missing: {stdout}"
+    );
+
+    let records = env.read_flaude_mcp_records();
+    assert!(
+        records.is_empty(),
+        "bare `ace mcp` is read-only, got: {records:?}"
+    );
+}
+
+// -- ace mcp reset --
 
 #[test]
 fn mcp_reset_removes_all_registered() {
@@ -31,23 +59,6 @@ fn mcp_reset_removes_all_registered() {
 }
 
 #[test]
-fn mcp_reset_removes_specific_server() {
-    let env = TestEnv::new();
-    env.setup_flaude_school(SCHOOL_TOML_TWO_SERVERS);
-    env.write_flaude_mcp_list(&["linear", "github"]);
-
-    env.ace()
-        .args(["mcp", "reset", "linear"])
-        .assert()
-        .success();
-
-    // Only linear should be removed
-    let list_content = env.read_file(".flaude-mcp-list");
-    assert!(!list_content.contains("linear"), "linear should be removed");
-    assert!(list_content.contains("github"), "github should remain");
-}
-
-#[test]
 fn mcp_reset_noop_when_nothing_registered() {
     let env = TestEnv::new();
     env.setup_flaude_school(SCHOOL_TOML_TWO_SERVERS);
@@ -57,15 +68,54 @@ fn mcp_reset_noop_when_nothing_registered() {
 }
 
 #[test]
-fn mcp_clear_is_alias_for_reset() {
+fn mcp_reset_rejects_name_arg() {
     let env = TestEnv::new();
     env.setup_flaude_school(SCHOOL_TOML_TWO_SERVERS);
-    env.write_flaude_mcp_list(&["linear"]);
+    env.write_flaude_mcp_list(&["linear", "github"]);
 
-    env.ace().args(["mcp", "clear"]).assert().success();
+    env.ace()
+        .args(["mcp", "reset", "linear"])
+        .assert()
+        .failure();
+
+    // Nothing may be removed on a rejected invocation.
+    let list_content = env.read_file(".flaude-mcp-list");
+    assert!(list_content.contains("linear"), "linear should remain");
+    assert!(list_content.contains("github"), "github should remain");
+}
+
+// -- ace mcp unregister --
+
+#[test]
+fn mcp_unregister_removes_named() {
+    let env = TestEnv::new();
+    env.setup_flaude_school(SCHOOL_TOML_TWO_SERVERS);
+    env.write_flaude_mcp_list(&["linear", "github"]);
+
+    env.ace()
+        .args(["mcp", "unregister", "linear"])
+        .assert()
+        .success();
 
     let list_content = env.read_file(".flaude-mcp-list");
     assert!(!list_content.contains("linear"), "linear should be removed");
+    assert!(list_content.contains("github"), "github should remain");
+}
+
+#[test]
+fn mcp_remove_is_alias_for_unregister() {
+    let env = TestEnv::new();
+    env.setup_flaude_school(SCHOOL_TOML_TWO_SERVERS);
+    env.write_flaude_mcp_list(&["linear", "github"]);
+
+    env.ace()
+        .args(["mcp", "remove", "linear"])
+        .assert()
+        .success();
+
+    let list_content = env.read_file(".flaude-mcp-list");
+    assert!(!list_content.contains("linear"), "linear should be removed");
+    assert!(list_content.contains("github"), "github should remain");
 }
 
 // -- ace mcp check --
@@ -113,20 +163,7 @@ fn mcp_check_reports_missing_servers() {
     );
 }
 
-// -- ace mcp (default) --
-
-#[test]
-fn mcp_default_registers_missing_and_checks() {
-    let env = TestEnv::new();
-    env.setup_flaude_school(SCHOOL_TOML_TWO_SERVERS);
-    // Nothing registered yet
-
-    env.ace().args(["mcp"]).assert().success();
-
-    // Should have registered both servers
-    let records = env.read_flaude_mcp_records();
-    assert_eq!(records.len(), 2, "should register both missing servers");
-}
+// -- bare ace (startup registration) --
 
 const SCHOOL_TOML_OAUTH: &str = r#"
 name = "test-school"
@@ -233,20 +270,6 @@ fn mcp_register_unknown_name_errors() {
 }
 
 #[test]
-fn mcp_default_skips_excluded_servers() {
-    let env = TestEnv::new();
-    env.setup_flaude_school(SCHOOL_TOML_TWO_SERVERS);
-    env.write_file("ace.local.toml", "exclude_mcp = [\"github\"]\n");
-
-    env.ace().args(["mcp"]).assert().success();
-
-    // Only linear should be registered (github excluded)
-    let records = env.read_flaude_mcp_records();
-    assert_eq!(records.len(), 1, "expected only linear, got: {records:?}");
-    assert_eq!(records[0].name, "linear");
-}
-
-#[test]
 fn bare_ace_skips_excluded_servers() {
     let env = TestEnv::new();
     env.setup_flaude_school(SCHOOL_TOML_TWO_SERVERS);
@@ -266,7 +289,7 @@ fn mcp_skips_already_registered_servers() {
     // Pre-register one of the two servers.
     env.write_flaude_mcp_list(&["linear"]);
 
-    env.ace().args(["mcp"]).assert().success();
+    env.ace().assert().success();
 
     // Only the missing server should get an mcp_add record.
     let records = env.read_flaude_mcp_records();

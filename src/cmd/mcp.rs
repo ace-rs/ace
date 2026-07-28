@@ -1,145 +1,46 @@
 use std::collections::HashSet;
-use std::path::Path;
 
 use clap::Subcommand;
 
-use crate::ace::{Ace, partition_picked};
-use crate::actions::project::{
-    RegisterMcp, RemoveMcp, edit_mcp_config, register_mcp, register_missing_mcp,
-};
-use crate::backend::{Backend, McpStatus};
+use crate::ace::Ace;
+use crate::actions::project::{RegisterMcp, RemoveMcp, edit_mcp_config};
+use crate::backend::McpStatus;
 use crate::config::school_toml::McpDecl;
 
 use super::CmdError;
 
 #[derive(Subcommand)]
 pub enum Command {
-    /// List school-declared MCP servers and their registration state
-    List,
     /// Health-check registered MCP servers (read-only)
     Check,
-    /// Remove registered MCP servers, then re-add with `ace mcp`
-    Reset {
-        /// Specific server name to remove (omit for all school-defined)
-        name: Option<String>,
-    },
-    /// Remove registered MCP servers (alias for reset)
-    #[command(hide = true)]
-    Clear {
-        /// Specific server name to remove (omit for all school-defined)
-        name: Option<String>,
-    },
+    /// Remove every registered school-defined MCP server
+    Reset,
     /// Register a single MCP server by name (clears it from `exclude_mcp` if present)
     Register {
         /// Server name (must be defined in the active school)
+        name: String,
+    },
+    /// Remove a single registered MCP server by name
+    #[command(visible_alias = "remove")]
+    Unregister {
+        /// Server name
         name: String,
     },
 }
 
 pub fn run(ace: &mut Ace, command: Option<Command>) {
     let result = match command {
-        None => run_default(ace),
-        Some(Command::List) => run_list(ace),
+        None => run_list(ace),
         Some(Command::Check) => run_check(ace),
-        Some(Command::Reset { name } | Command::Clear { name }) => run_reset(ace, name),
+        Some(Command::Reset) => run_reset(ace),
         Some(Command::Register { name }) => run_register(ace, name),
+        Some(Command::Unregister { name }) => run_unregister(ace, name),
     };
     super::exit_on_err(ace, result);
 }
 
-/// `ace mcp` — add missing, check health, prompt to re-register broken.
-fn run_default(ace: &mut Ace) -> Result<(), CmdError> {
-    ace.require_resolved()?;
-
-    let (backend, entries, project_dir) = load_school_mcp(ace)?;
-    if entries.is_empty() {
-        ace.info("no MCP servers defined in school");
-        return Ok(());
-    }
-
-    // -- add missing (one checklist; unticked entries append to exclude_mcp) --
-
-    let local_path = ace.require_paths()?.local.clone();
-    register_missing_mcp(ace, &backend, &entries, &project_dir, &local_path)?;
-
-    // -- health check registered servers --
-
-    let registered = backend.mcp_list(&project_dir);
-    let check_names: Vec<String> = entries
-        .iter()
-        .map(|e| e.name.clone())
-        .filter(|n| registered.contains(n))
-        .collect();
-
-    if check_names.is_empty() {
-        return Ok(());
-    }
-
-    ace.progress("Checking MCP server health...");
-    let statuses = match backend.mcp_check(&check_names, &project_dir) {
-        Ok(s) => s,
-        Err(e) => {
-            ace.warn(&format!("health check failed: {e}"));
-            return Ok(());
-        }
-    };
-
-    if statuses.is_empty() {
-        ace.warn("health check returned no results");
-        return Ok(());
-    }
-
-    report_statuses(ace, &statuses);
-
-    // -- prompt to re-register broken --
-
-    let broken: Vec<McpDecl> = entries
-        .iter()
-        .filter(|e| statuses.iter().any(|s| s.name == e.name && !s.ok))
-        .cloned()
-        .collect();
-
-    if broken.is_empty() {
-        ace.done("all MCP servers healthy");
-        return Ok(());
-    }
-
-    let names = broken.iter().map(|e| e.name.clone()).collect();
-    let picked = ace.prompt_multiselect("Re-register unhealthy servers", names, true)?;
-    let (chosen, _) = partition_picked(&broken, &picked);
-
-    for entry in &chosen {
-        reregister(ace, &backend, entry, &project_dir)?;
-    }
-
-    Ok(())
-}
-
-/// Drop and re-add a single server, warning rather than aborting on failure —
-/// one broken server must not stop the rest of the batch.
-fn reregister(
-    ace: &mut Ace,
-    backend: &Backend,
-    entry: &McpDecl,
-    project_dir: &Path,
-) -> Result<(), CmdError> {
-    if let Err(e) = backend.mcp_remove(&entry.name, project_dir) {
-        ace.warn(&format!("remove '{}' failed: {e}", entry.name));
-        return Ok(());
-    }
-
-    let resolved = register_mcp::resolve_headers(entry, ace)?;
-    let target = resolved.as_ref().unwrap_or(entry);
-
-    match backend.mcp_add(target, project_dir) {
-        Ok(()) => ace.done(&format!("Re-registered '{}'", entry.name)),
-        Err(e) => ace.warn(&format!("re-register '{}' failed: {e}", entry.name)),
-    }
-    Ok(())
-}
-
-/// `ace mcp list` — read-only inventory: what the school declares against what
-/// the backend has. Deliberately does not probe health; that costs a subprocess
+/// `ace mcp` — read-only inventory: what the school declares against what the
+/// backend has. Deliberately does not probe health; that costs a subprocess
 /// round-trip per server and belongs to `ace mcp check`.
 fn run_list(ace: &mut Ace) -> Result<(), CmdError> {
     ace.require_resolved()?;
@@ -278,35 +179,23 @@ fn run_check(ace: &mut Ace) -> Result<(), CmdError> {
     Ok(())
 }
 
-/// `ace mcp reset [name]` / `ace mcp clear [name]` — remove servers.
-fn run_reset(ace: &mut Ace, name: Option<String>) -> Result<(), CmdError> {
+/// `ace mcp reset` — remove every registered school-defined server.
+fn run_reset(ace: &mut Ace) -> Result<(), CmdError> {
     ace.require_resolved()?;
 
     let (backend, entries, project_dir) = load_school_mcp(ace)?;
     let registered = backend.mcp_list(&project_dir);
 
-    let names: Vec<String> = match name {
-        Some(n) => {
-            if !registered.contains(&n) {
-                ace.info(&format!("'{n}' is not registered, nothing to remove"));
-                return Ok(());
-            }
-            vec![n]
-        }
-        None => {
-            let school_registered: Vec<String> = entries
-                .iter()
-                .map(|e| e.name.clone())
-                .filter(|n| registered.contains(n))
-                .collect();
+    let names: Vec<String> = entries
+        .iter()
+        .map(|e| e.name.clone())
+        .filter(|n| registered.contains(n))
+        .collect();
 
-            if school_registered.is_empty() {
-                ace.info("no school-defined MCP servers are registered");
-                return Ok(());
-            }
-            school_registered
-        }
-    };
+    if names.is_empty() {
+        ace.info("no school-defined MCP servers are registered");
+        return Ok(());
+    }
 
     RemoveMcp {
         backend: &backend,
@@ -314,9 +203,27 @@ fn run_reset(ace: &mut Ace, name: Option<String>) -> Result<(), CmdError> {
         project_dir: &project_dir,
     }
     .run(ace)
-    .map_err(CmdError::failed)?;
+    .map_err(CmdError::failed)
+}
 
-    Ok(())
+/// `ace mcp unregister <name>` — remove one registered server.
+fn run_unregister(ace: &mut Ace, name: String) -> Result<(), CmdError> {
+    ace.require_resolved()?;
+
+    let (backend, _, project_dir) = load_school_mcp(ace)?;
+
+    if !backend.mcp_list(&project_dir).contains(&name) {
+        ace.info(&format!("'{name}' is not registered, nothing to remove"));
+        return Ok(());
+    }
+
+    RemoveMcp {
+        backend: &backend,
+        names: &[name],
+        project_dir: &project_dir,
+    }
+    .run(ace)
+    .map_err(CmdError::failed)
 }
 
 /// `ace mcp register <name>` — un-skip and register a single school-defined MCP.

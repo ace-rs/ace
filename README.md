@@ -44,7 +44,7 @@ ace setup ace-rs/school                       # clone a school, register MCP, wr
 ace                                          # launch the configured backend
 ace --codex                                  # temporarily use Codex for this invocation
 ace -- --continue                            # pass flags through to the backend
-ace mcp                                      # register/check school MCP servers
+ace mcp                                      # list school MCP servers and their state
 ace pull                                     # fetch latest school changes and relink
 ace import anthropics/skills --skill commit  # import a skill from an external repo
 ace school update                            # re-fetch all imported skills
@@ -58,9 +58,11 @@ ace school update                            # re-fetch all imported skills
 | `ace pull` | Fetch latest school changes and relink project folders |
 | `ace config` | Print effective configuration |
 | `ace paths [key]` | Print resolved filesystem paths (e.g. `ace paths school`) |
-| `ace mcp` | Add missing MCP servers, health-check, and help re-register broken ones |
+| `ace mcp` | List school-declared MCP servers and their registration state |
 | `ace mcp check` | Health-check registered MCP servers without mutating state |
-| `ace mcp reset [name]` | Remove registered MCP servers so they can be re-added cleanly |
+| `ace mcp register <name>` | Register one school-declared MCP server, un-skipping it if excluded |
+| `ace mcp unregister <name>` | Remove one registered MCP server (alias: `remove`) |
+| `ace mcp reset` | Remove every registered school-defined MCP server |
 | `ace import <source> [--skill <name>] [--all]` | Import a skill from an external repository (`--skill` accepts globs like `frontend-*`; `--all` imports every curated skill) |
 | `ace school init` | Initialize a new school repository |
 | `ace school update` | Re-fetch all imported skills from their sources |
