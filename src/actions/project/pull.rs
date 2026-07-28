@@ -41,6 +41,12 @@ impl PullOutcome {
             }
             PullOutcome::Updated { changes } => {
                 ace.done(&crate::skills::format_pull_summary(changes));
+
+                // Pull updates the clone only — `ace link` owns the project's
+                // symlinks. New or removed skills are not live until it runs.
+                if !changes.is_empty() {
+                    ace.hint("Run 'ace link' to update this project's skill links");
+                }
             }
             PullOutcome::Dirty { on_main: true, .. } => {
                 ace.warn("school has local changes — updates blocked");

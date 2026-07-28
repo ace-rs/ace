@@ -1,6 +1,7 @@
 mod common;
 
 use common::{RemoteSchool, TestEnv};
+use predicates::prelude::*;
 
 // -- Helpers --
 
@@ -73,6 +74,41 @@ fn pull_warns_about_unusable_skill_folder() {
         .assert()
         .success()
         .stderr(predicates::str::contains("not a usable skill folder"));
+}
+
+// `ace pull` only updates the clone; linking is `ace link`'s job. When a pull
+// actually brings in skill changes, the project's links are stale until the user
+// runs it, so the outcome carries the pointer rather than relinking behind their
+// back.
+#[test]
+fn pull_hints_to_link_when_skills_changed() {
+    let env = TestEnv::new();
+    let school = env.setup_remote_school("test/school");
+
+    env.ace().assert().success();
+
+    push_to_origin(&env, &school, "skills/brandnew/SKILL.md", "# Brand new\n");
+
+    env.ace()
+        .args(["pull"])
+        .assert()
+        .success()
+        .stderr(predicates::str::contains("ace link"));
+}
+
+// No skill changes means nothing to relink, so the hint would be noise.
+#[test]
+fn pull_stays_quiet_about_link_when_nothing_changed() {
+    let env = TestEnv::new();
+    env.setup_remote_school("test/school");
+
+    env.ace().assert().success();
+
+    env.ace()
+        .args(["pull"])
+        .assert()
+        .success()
+        .stderr(predicates::str::contains("ace link").not());
 }
 
 #[test]
