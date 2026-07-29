@@ -104,6 +104,8 @@ pub enum IoError {
     NoTerminal { prompt: String },
     #[error("nothing may answer \"{prompt}\" — asking was waived")]
     AskingWaived { prompt: String },
+    #[error("nothing may answer \"{prompt}\" — output is machine-readable")]
+    MachineReadable { prompt: String },
     #[error("{0}")]
     Io(#[from] std::io::Error),
 }
@@ -116,6 +118,9 @@ impl IoError {
             }
             Self::AskingWaived { .. } => {
                 Some("drop `--yes` (or unset CI) to answer, or set the value with `ace config set`")
+            }
+            Self::MachineReadable { .. } => {
+                Some("drop `--porcelain` to answer, or set the value with `ace config set`")
             }
             Self::Cancelled | Self::Io(_) => None,
         }
@@ -185,9 +190,11 @@ impl Io {
     }
 
     /// Whether a question can reach a human who will answer it: someone has to
-    /// be there, and they must not have waived being asked.
+    /// be there, they must not have waived being asked, and the output must not
+    /// be addressed to a machine — `--porcelain` means something is parsing
+    /// this, and a prompt would be a hang rather than a question.
     pub fn can_ask(&self) -> bool {
-        self.is_terminal && !self.yes && !self.ci
+        self.is_terminal && !self.porcelain && !self.yes && !self.ci
     }
 
     pub fn logo(&self) -> &'static str {
@@ -306,12 +313,20 @@ impl Io {
     /// checklist, which falls back to all-or-none. Refuse rather than invent
     /// one on the user's behalf, naming whichever cause the caller can act on.
     fn require_ask(&self, prompt: &str) -> Result<(), IoError> {
-        let prompt = prompt.to_string();
-        match (self.can_ask(), self.is_terminal) {
-            (true, _) => Ok(()),
-            (false, true) => Err(IoError::AskingWaived { prompt }),
-            (false, false) => Err(IoError::NoTerminal { prompt }),
+        if self.can_ask() {
+            return Ok(());
         }
+
+        // Most fundamental cause first: dropping a flag cannot conjure a
+        // terminal, so a pipe is named ahead of anything the caller passed.
+        let prompt = prompt.to_string();
+        if !self.is_terminal {
+            return Err(IoError::NoTerminal { prompt });
+        }
+        if self.porcelain {
+            return Err(IoError::MachineReadable { prompt });
+        }
+        Err(IoError::AskingWaived { prompt })
     }
 
     /// Present a checklist and return the indices of the ticked options.
@@ -409,12 +424,12 @@ mod tests {
         assert!(!io_with(true, false, false, true).should_colorize());
     }
 
-    // Presentation and interaction are independent: waiving prompts does not
-    // make output machine-readable, and --porcelain does not gag the prompts.
+    // Waiving prompts is an intention; machine-readable output is an
+    // environment. Answering yes in advance says nothing about how the output
+    // should look.
     #[test]
-    fn colorizing_is_independent_of_asking() {
+    fn waiving_prompts_does_not_suppress_color() {
         assert!(io_with(false, true, false, true).should_colorize());
-        assert!(io_with(true, false, false, true).can_ask());
     }
 
     // -- can_ask --
@@ -422,6 +437,13 @@ mod tests {
     #[test]
     fn cannot_ask_without_a_terminal() {
         assert!(!piped().can_ask());
+    }
+
+    // Machine-readable output means a machine is reading it. A prompt would be
+    // a hang, and a terminal being attached does not make one a person.
+    #[test]
+    fn cannot_ask_when_output_is_machine_readable() {
+        assert!(!io_with(true, false, false, true).can_ask());
     }
 
     #[test]
@@ -455,6 +477,23 @@ mod tests {
             .prompt_select("Pick a backend:", vec!["claude".to_string()])
             .expect_err("no terminal to answer on");
         assert!(matches!(err, IoError::NoTerminal { .. }));
+    }
+
+    // Porcelain is neither a waiver nor a missing terminal, so it gets its own
+    // cause — telling this caller to drop `--yes` would name a flag they never
+    // passed.
+    #[test]
+    fn free_form_prompts_name_porcelain_as_its_own_cause() {
+        let err = io_with(true, false, false, true)
+            .prompt_text("School name:", None)
+            .expect_err("output is machine-readable");
+
+        assert!(matches!(err, IoError::MachineReadable { .. }));
+        assert!(err.to_string().contains("School name:"));
+        assert!(
+            err.hint().expect("hint").contains("--porcelain"),
+            "the hint must name the flag actually in play"
+        );
     }
 
     // A terminal exists but the user waived the question, so the error names the

@@ -138,12 +138,17 @@ by separate inputs. Nothing derives one from the other.
 |--------------------|--------------------------------------------------|
 | Should it colorize? | a terminal is attached, and `--porcelain` is off |
 | Should it emit?     | the run has someone to report to |
-| May it ask?         | a terminal is attached, and neither `--yes` nor a set `CI` variable waived the question |
+| May it ask?         | a terminal is attached, output is not machine-readable, and neither `--yes` nor a set `CI` variable waived the question |
+
+Independence is a property of the *inputs*, not of the predicates. Each
+question is answered from whichever raw inputs bear on it, and `--porcelain`
+bears on two of them.
 
 Consequences worth stating outright:
 
-- `--porcelain` selects machine-readable output. It does **not** suppress
-  prompts — a script that must not be asked passes `--yes`.
+- `--porcelain` selects machine-readable output, and therefore suppresses
+  prompts. Something is parsing the output; a question it cannot answer is a
+  hang, not a prompt. An attached terminal does not make the reader a person.
 - `--yes` waives being asked. It does **not** downgrade output — a run with a
   terminal still gets colors and spinners.
 - A set `CI` (or `CONTINUOUS_INTEGRATION`) variable implies `--yes`. Nobody is
@@ -156,5 +161,7 @@ When ACE may not ask, each prompt resolves by what it can defend:
 - **Free-form and single-choice prompts** fail. There is no defensible answer
   to invent, and inventing one puts words in the user's mouth.
 
-A refusal names the cause the caller can act on: the waiver when one exists
-(`--yes` or CI), otherwise the missing terminal.
+A refusal names the cause the caller can act on, most fundamental first: the
+missing terminal, then `--porcelain`, then the waiver (`--yes` or CI). Dropping
+a flag cannot conjure a terminal, so a pipe is never blamed on a flag — and a
+caller is never told to drop a flag they did not pass.

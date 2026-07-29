@@ -380,7 +380,7 @@ fn io_exit_code(e: &IoError) -> ExitCode {
         IoError::Cancelled => ExitCode::Cancelled,
         // Ambient precondition, not something the user mis-typed.
         IoError::NoTerminal { .. } => ExitCode::Unavailable,
-        IoError::AskingWaived { .. } => ExitCode::Usage,
+        IoError::AskingWaived { .. } | IoError::MachineReadable { .. } => ExitCode::Usage,
         IoError::Io(_) => ExitCode::Operational,
     }
 }
