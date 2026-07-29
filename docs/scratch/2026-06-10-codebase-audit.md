@@ -3,8 +3,9 @@
 Not spec/decision because: findings, not rulings — each one still has to be argued and
 fixed on its own.
 
-**Status (re-verified 2026-07-22): still open.** Spot-checked against the tree — the
-imports-source traversal guard is still absent from `src/git.rs`, `copy_dir_recursive`
+**Status (re-verified 2026-07-29): mostly open.** The High imports-source traversal
+finding is **fixed** (`086dbd3`) — `cache_path` in `src/git.rs` rebuilds every path
+segment, so containment is structural. The rest of the spot-check stands: `copy_dir_recursive`
 still follows symlinks (the 2026-06-10 gitlink fix skips `.git`/`.gitmodules` only, not
 symlinks), `cmd/upgrade.rs` still calls `exit(1)` directly, the update check still has
 no `ureq` timeout, `src/school/skill_count.rs` still imports `ace`/`actions`/`cmd` from
