@@ -13,6 +13,10 @@ Resolved by merging (later overrides earlier):
 2. **Project** `ace.toml` (checked into git, shared with team)
 3. **Local** `ace.local.toml` (gitignored, per-machine overrides)
 
+Any one layer is enough. A user-level `ace.toml` alone resolves a workdir that has no
+`ace.toml` and no `ace.local.toml` of its own — the user layer is the default for every
+project that does not override it. Only the absence of all three is "no config found".
+
 ### Fields
 
 Each layer can set:

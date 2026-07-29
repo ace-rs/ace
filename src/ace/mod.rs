@@ -30,6 +30,7 @@ pub use io::{Io, IoError, partition_picked};
 /// how `Option<T>` caching behaved before the migration.
 pub struct Ace {
     project_dir: PathBuf,
+    paths: AcePaths,
     tree: OnceCell<Tree>,
     resolved: OnceCell<Resolved>,
     backend: OnceCell<Backend>,
@@ -42,9 +43,13 @@ pub struct Ace {
 }
 
 impl Ace {
-    pub fn new(project_dir: PathBuf, io: Io) -> Self {
+    /// `paths` is resolved by the caller — the ambient user config/cache
+    /// directories enter the process exactly once, at the edge, so nothing
+    /// downstream reads the host environment.
+    pub fn new(project_dir: PathBuf, paths: AcePaths, io: Io) -> Self {
         Self {
             project_dir,
+            paths,
             tree: OnceCell::new(),
             resolved: OnceCell::new(),
             backend: OnceCell::new(),
@@ -104,8 +109,7 @@ impl Ace {
     /// inspect declared `[[backends]]` after an unknown-backend error.
     pub fn require_tree(&self) -> Result<&Tree, ConfigError> {
         self.tree.get_or_try_init(|| {
-            let paths = config::paths::resolve(&self.project_dir)?;
-            let mut tree = Tree::load(&paths)?;
+            let mut tree = Tree::load(&self.paths)?;
             tree.load_school(&self.project_dir)?;
             Ok(tree)
         })
@@ -119,9 +123,8 @@ impl Ace {
         self.scope_override
     }
 
-    /// Resolve config paths for the current project directory.
-    pub fn require_paths(&self) -> Result<AcePaths, ConfigError> {
-        config::paths::resolve(&self.project_dir)
+    pub fn paths(&self) -> &AcePaths {
+        &self.paths
     }
 
     /// Lazy-load tree + school.toml + run the merge. Idempotent. The backend
@@ -336,8 +339,16 @@ mod tests {
 
     /// These tests exercise resolution, not output, so the session is built
     /// with presentation off.
+    /// Every layer roots inside `dir`, so no test reads the host's real user
+    /// config — a stray `~/.config/ace/ace.toml` must not change an outcome.
     fn ace_at(dir: &std::path::Path) -> Ace {
-        Ace::new(dir.to_path_buf(), Io::new(true, false))
+        let paths = AcePaths {
+            user: dir.join("config/ace.toml"),
+            project: dir.join("ace.toml"),
+            local: dir.join("ace.local.toml"),
+            cache: dir.join("cache"),
+        };
+        Ace::new(dir.to_path_buf(), paths, Io::new(true, false))
     }
 
     /// docs/spec/school/overview.md case 5: ace.toml with local specifier `.`,

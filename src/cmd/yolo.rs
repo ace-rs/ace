@@ -11,8 +11,8 @@ pub fn run(ace: &mut Ace, trust: Trust) {
 
 fn run_inner(ace: &mut Ace, trust: Trust) -> Result<(), CmdError> {
     let scope = ace.scope_override().unwrap_or(Scope::Local);
-    let paths = ace.require_paths()?;
-    let target = scope.path_in(&paths);
+    let paths = ace.paths();
+    let target = scope.path_in(paths);
 
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent)?;

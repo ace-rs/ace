@@ -243,7 +243,7 @@ fn run_register(ace: &mut Ace, name: String) -> Result<(), CmdError> {
                 .with_hint("run `ace mcp`")
         })?;
 
-    let local_path = ace.require_paths()?.local.clone();
+    let local_path = ace.paths().local.clone();
     edit_mcp_config::include(&local_path, &name)?;
 
     let entries = vec![entry];

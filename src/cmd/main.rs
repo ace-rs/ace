@@ -143,7 +143,7 @@ pub(super) fn prepare_school(ace: &mut Ace, specifier: &str) -> Result<PrepareRe
         return Ok(prepare_result);
     }
 
-    let local_path = ace.require_paths()?.local.clone();
+    let local_path = ace.paths().local.clone();
     if let Err(e) = register_missing_mcp(ace, &backend, &entries, &project_dir, &local_path) {
         ace.warn(&format!("MCP registration failed: {e}"));
     }

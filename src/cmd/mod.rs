@@ -238,7 +238,7 @@ pub(crate) enum ExitCode {
 }
 
 impl ExitCode {
-    fn code(self) -> i32 {
+    pub(crate) fn code(self) -> i32 {
         match self {
             Self::Usage => 1,
             Self::Unavailable => 2,

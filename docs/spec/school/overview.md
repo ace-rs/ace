@@ -57,14 +57,14 @@ exclusively from `ace.toml` 's specifier. The workdir's `school.toml` (if any) i
 consulted as a location signal — a school repo that wants to dogfood itself uses
 `school = "."` in its own `ace.toml`. Inputs:
 
-- **A** — `ace.toml` present in workdir
+- **A** — an `ace.toml` present in any layer: user, project, or local
 - **S** — `ace.toml` declares `school = ...`
 - **K** — specifier kind: local (`.` / `.:path`) vs remote (`owner/repo[:path]`)
 - **R** — `school.toml` present at the resolved school root
 
 | #   | A   | S   | K      | R   | Outcome                                         | Meaning                                         |
 | --- | --- | --- | ------ | --- | ----------------------------------------------- | ----------------------------------------------- |
-| 1   | no  | n/a | n/a    | n/a | `Err(TreeLoad(NoConfig))`                       | empty dir — intent unknowable                   |
+| 1   | no  | n/a | n/a    | n/a | `Err(TreeLoad(NoConfig))`                       | no config in any layer — intent unknowable      |
 | 2   | yes | no  | n/a    | n/a | `Err(NoSpecifier)` — "run `ace setup`"          | project-repo, specifier missing                 |
 | 3   | yes | yes | local  | yes | `Ok` resolved paths                             | embedded / dogfood / sibling school             |
 | 4   | yes | yes | local  | no  | `Err(NotInitialized)` — "run `ace school init`" | local specifier points at uninitialized dir     |
@@ -77,10 +77,12 @@ consulted as a location signal — a school repo that wants to dogfood itself us
 `SchoolError::NotInitialized`. The `is_dir()` guard preserves case 7 — when the clone dir
 is absent entirely, return `Ok` so `cmd/pull.rs` can self-heal by cloning.
 
-**Why case 1 is left as `NoConfig`.** Without an `ace.toml`, ACE has no signal of intent
-(project setup vs. school authoring). The generic "no config found" message stands; either
-`ace setup` or `ace school init` is the right next step depending on what the user means
-to do. `ace school <subcmd>` itself is a separate path that requires a `school.toml` in
+**Why case 1 is left as `NoConfig`.** With no `ace.toml` in *any* layer, ACE has no signal
+of intent (project setup vs. school authoring). The generic "no config found" message
+stands; either `ace setup` or `ace school init` is the right next step depending on what
+the user means to do. A user-level `ace.toml` is such a signal: it carries a default
+school for every project that does not set its own, so a workdir with no project or local
+file still resolves. Precedence is unchanged — local overrides project overrides user. `ace school <subcmd>` itself is a separate path that requires a `school.toml` in
 the cwd; see [school-commands.md](school-commands.md).
 
 ## Purpose

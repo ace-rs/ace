@@ -199,6 +199,32 @@ mod tests {
     }
 
     #[test]
+    fn school_user_propagates_when_others_unset() {
+        let t = Tree {
+            user: Some(ace("user-school", &[])),
+            project: None,
+            local: None,
+            school: None,
+        };
+        let r = merge(&t, &empty_overrides());
+        assert_eq!(r.school_specifier.value.as_deref(), Some("user-school"));
+        assert_eq!(r.school_specifier.from, Source::User);
+    }
+
+    #[test]
+    fn school_project_overrides_user() {
+        let t = Tree {
+            user: Some(ace("user-school", &[])),
+            project: Some(ace("project-school", &[])),
+            local: None,
+            school: None,
+        };
+        let r = merge(&t, &empty_overrides());
+        assert_eq!(r.school_specifier.value.as_deref(), Some("project-school"));
+        assert_eq!(r.school_specifier.from, Source::Project);
+    }
+
+    #[test]
     fn school_default_when_all_empty() {
         let t = tree(ace("", &[]), ace("", &[]));
         let r = merge(&t, &empty_overrides());

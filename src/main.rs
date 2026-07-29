@@ -30,7 +30,18 @@ fn main() {
     }
 
     let project_dir = std::env::current_dir().expect("cannot determine current directory");
-    let mut ace = ace::Ace::new(project_dir, io);
+    let paths = match config::paths::resolve(&project_dir) {
+        Ok(paths) => paths,
+        // Before `Ace` exists there is no `Io` to route through, but the exit
+        // class still comes from the one classifier.
+        Err(e) => {
+            let err = cmd::CmdError::Config(e);
+            eprintln!("ace: {err}");
+            std::process::exit(err.exit_code().code());
+        }
+    };
+
+    let mut ace = ace::Ace::new(project_dir, paths, io);
     migrate_layout(&mut ace);
     cmd::run(&mut ace, cli);
 }

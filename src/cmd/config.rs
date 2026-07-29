@@ -130,8 +130,8 @@ fn set(ace: &mut Ace, key: &str, value: &str) -> Result<(), CmdError> {
         .scope_override()
         .unwrap_or_else(|| Scope::default_for_key(config_key.scope_key()));
 
-    let paths = ace.require_paths()?;
-    let target = scope.path_in(&paths);
+    let paths = ace.paths();
+    let target = scope.path_in(paths);
 
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent)?;

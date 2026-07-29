@@ -8,6 +8,22 @@ revisit if multi-distro or network-dependent testing becomes necessary.
 Rationale: ACE's integration surface is filesystem + git + symlinks. A sandboxed temp directory
 covers this without container overhead.
 
+## No test reads the host
+
+A test outcome never depends on the machine it runs on. A developer's real
+`~/.config/ace/ace.toml`, `~/.gitconfig`, or data directory must not be able to turn a
+test green or red.
+
+Integration tests get this from `TestEnv`, which `env_clear()`s and points `HOME` and
+every `XDG_*` var at sandbox subdirs. Unit tests get it because ambient paths are not
+ambient: `AcePaths` is resolved once at the process edge (`main.rs`) and handed to
+`Ace::new`, so a unit test constructs an `Ace` whose every config layer roots inside its
+own tempdir.
+
+The check is empirical, not visual — run the suite against a *poisoned* user config
+(one that sets `school`, `backend`, `trust`) and against an empty home. Any test whose
+result differs between the two is reading the host.
+
 ## Test Categories
 
 ### Unit tests
