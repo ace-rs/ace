@@ -36,8 +36,7 @@ From a clean working tree on `main`:
 ./release.sh 0.7.2     # bump, build, patch formula, commit, tag, push, publish
 ```
 
-Then author the GitHub release notes (§7), notify the website agent (§8),
-and post the Discord announcement (§9).
+Then author the GitHub release notes (§7) and notify the website agent (§8).
 
 ## 3. What each script does
 
@@ -150,8 +149,8 @@ features that are actually downstream *manifestations* of the headline change
 (e.g. an admission-policy or validation tweak that the rearchitecture produced)
 belong under it, not promoted alongside it.
 
-The same headline summary feeds the website notify (§8) and the Discord post
-(§9) — author it once here, then adapt tone per surface. Write the body to
+The same headline summary feeds the website notify (§8) — author it once here,
+then adapt tone per surface. Write the body to
 `/tmp/ace-<ver>-ghnotes.md` (so the harness doesn't mangle
 backticks/angle-brackets) and keep the `Full Changelog` compare link at the
 bottom.
@@ -173,36 +172,7 @@ lists more than a couple of changes, write the full notes to a tmp file
 (`/tmp/ace-<ver>-www.md`) and send a short body that links to it, rather
 than stuffing the whole changelog into one line.
 
-## 9. Discord announcement
-
-After the release is live and the website agent has been notified, draft a brief
-Discord message (3–6 lines, casual tone) highlighting the cool new user-visible
-features. Lead with the version tag, then bullet the headline changes — skip
-internal refactors, doc-only edits, and chores.
-
-Write it to `/tmp/ace-<ver>-discord.md` so it can be copied verbatim without the
-harness mangling backticks/angle-brackets/etc.
-
-Discord-flavored markdown template (used for v0.7.0):
-
-```
-🎉 **ACE v<ver>** is out — <https://github.com/ace-rs/ace/releases/tag/v<ver>>
-
-- **<headline 1>**
-- **<headline 2>**
-- **<headline 3>**
-
-Plus: <comma-separated list of smaller user-visible changes>.
-```
-
-Notes on the template:
-- Wrap the URL in `<...>` so Discord doesn't auto-embed.
-- Bold the lead phrase of each bullet; inline-code (`` ` ``) for flag/command
-  names inside the bullet body.
-- Keep the "Plus:" line to one sentence — anything longer belongs in the
-  GitHub release notes, not Discord.
-
-## 10. Open gaps
+## 9. Open gaps
 
 - **Checksums / signing** — only the Homebrew sha256 is computed. Publishing
   a `SHA256SUMS` file alongside release assets and verifying it from
