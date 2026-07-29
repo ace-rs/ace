@@ -268,6 +268,7 @@ impl Ace {
 
     // -- output --
 
+    #[allow(dead_code)]
     pub fn enter_alt_screen(&self) {
         self.io.enter_alt_screen();
     }

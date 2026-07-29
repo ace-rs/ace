@@ -9,7 +9,11 @@ use indicatif::{ProgressBar, ProgressStyle};
 // ANSI escape sequences for terminal state management.
 // Alt screen is a separate buffer that preserves the user's scrollback.
 // Cursor hide/show prevents a flickering cursor during full-screen redraws.
+// Alt-screen entry currently has no caller. Kept, with its plumbing, for
+// full-screen UI work that is planned but not yet written.
+#[allow(dead_code)]
 const ENTER_ALT_SCREEN: &[u8] = b"\x1b[?1049h"; // switch to alt screen buffer
+#[allow(dead_code)]
 const HIDE_CURSOR: &[u8] = b"\x1b[?25l";
 
 const CLEANUP_CURSOR: &[u8] = b"\x1b[?25h";
@@ -64,6 +68,7 @@ impl TerminalGuard {
 
     /// Upgrade to alt-screen mode. Both drop and SIGINT will exit the
     /// alternate screen buffer in addition to restoring the cursor.
+    #[allow(dead_code)]
     pub fn enter_alt_screen(&self) {
         self.alt_screen.store(true, Ordering::Relaxed);
     }
@@ -123,6 +128,9 @@ impl IoError {
 pub struct Io {
     mode: OutputMode,
     spinner: Option<ProgressBar>,
+    /// Held for its `Drop`, which restores the cursor; read only by
+    /// `enter_alt_screen`, which is idle until full-screen UI lands.
+    #[allow(dead_code)]
     guard: Option<TerminalGuard>,
 }
 
@@ -159,6 +167,7 @@ impl Io {
 
     /// Enter alternate screen buffer. The guard will exit it on drop/SIGINT.
     /// No-op in Porcelain/Silent mode (no terminal to manage).
+    #[allow(dead_code)]
     pub fn enter_alt_screen(&self) {
         if let Some(guard) = &self.guard {
             guard.enter_alt_screen();

@@ -5,7 +5,6 @@ mod fmt;
 mod import;
 mod link;
 mod main;
-mod maverick;
 mod mcp;
 mod paths;
 mod pull;
@@ -217,9 +216,6 @@ enum Command {
         /// Specific version to install (requires --force)
         version: Option<String>,
     },
-    /// 🛩️
-    #[command(hide = true)]
-    Maverick,
     /// Print version information
     Version,
 }
@@ -564,7 +560,6 @@ pub fn run(ace: &mut Ace, cli: Cli) {
             force,
             version,
         } => upgrade::run(ace, silent, force, version),
-        Command::Maverick => maverick::run(ace),
         Command::Version => {
             println!(
                 "ace {}",
