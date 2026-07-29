@@ -1,4 +1,4 @@
-use crate::ace::{Ace, OutputMode};
+use crate::ace::Ace;
 use crate::actions::project::{Prepare, PrepareResult, register_missing_mcp};
 use crate::backend::{Kind, OneShotRequest, PromptInput, SessionRequest};
 use crate::config::ace_toml::Trust;
@@ -165,7 +165,7 @@ fn require_resolved_or_recover(ace: &mut Ace) -> Result<(), CmdError> {
 }
 
 fn recover_backend(ace: &mut Ace, attempted: &str) -> Result<(), CmdError> {
-    if ace.mode() != OutputMode::Human {
+    if !ace.can_ask() {
         ace.hint(&format!(
             "to fix: ace config set backend <name> (registry has no `{attempted}`)"
         ));

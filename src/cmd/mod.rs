@@ -113,6 +113,12 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub porcelain: bool,
 
+    /// Answer every checklist with its default instead of asking. Prompts with
+    /// no default (free-form and single-choice) fail rather than guess.
+    /// Implied by a set `CI` environment variable
+    #[arg(short = 'y', long, global = true)]
+    pub yes: bool,
+
     /// Extra arguments passed through to the backend (claude/codex), after --
     #[arg(last = true)]
     backend_args: Vec<String>,
@@ -374,6 +380,7 @@ fn io_exit_code(e: &IoError) -> ExitCode {
         IoError::Cancelled => ExitCode::Cancelled,
         // Ambient precondition, not something the user mis-typed.
         IoError::NoTerminal { .. } => ExitCode::Unavailable,
+        IoError::AskingWaived { .. } => ExitCode::Usage,
         IoError::Io(_) => ExitCode::Operational,
     }
 }

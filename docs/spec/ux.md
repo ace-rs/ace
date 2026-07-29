@@ -117,3 +117,33 @@ does not redo work that has no effect.
 Idempotency is a property of the *result*, not the *implementation*. The
 command may still touch disk to verify state; what matters is that the
 user can re-run it without fear and learn something from the output.
+
+## 8. Presentation and interaction are independent
+
+How output *looks* and whether ACE may *ask* are separate questions, decided
+by separate inputs. Nothing derives one from the other.
+
+| question | decided by |
+|--------------------|--------------------------------------------------|
+| Should it colorize? | a terminal is attached, and `--porcelain` is off |
+| Should it emit?     | the run has someone to report to |
+| May it ask?         | a terminal is attached, and neither `--yes` nor a set `CI` variable waived the question |
+
+Consequences worth stating outright:
+
+- `--porcelain` selects machine-readable output. It does **not** suppress
+  prompts — a script that must not be asked passes `--yes`.
+- `--yes` waives being asked. It does **not** downgrade output — a run with a
+  terminal still gets colors and spinners.
+- A set `CI` (or `CONTINUOUS_INTEGRATION`) variable implies `--yes`. Nobody is
+  watching an unattended run, so nothing may block on an answer.
+
+When ACE may not ask, each prompt resolves by what it can defend:
+
+- **Checklists** take their default, all or none. Every option is visible in
+  the declaration, so the default is a real answer.
+- **Free-form and single-choice prompts** fail. There is no defensible answer
+  to invent, and inventing one puts words in the user's mouth.
+
+A refusal names the cause the caller can act on: the waiver when one exists
+(`--yes` or CI), otherwise the missing terminal.

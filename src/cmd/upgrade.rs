@@ -2,51 +2,41 @@ use crate::ace::Ace;
 use crate::upgrade::{check, download, replace, target_triple};
 
 pub fn run(ace: &mut Ace, silent: bool, force: bool, version: Option<String>) {
-    let result = run_inner(ace, silent, force, version);
-    if let Err(e) = result {
-        if !silent {
-            ace.error(&e.to_string());
-        }
+    // The background spawn has no one to report to; silencing `Io` once here
+    // beats threading the flag past every message.
+    if silent {
+        ace.silence();
+    }
+
+    if let Err(e) = run_inner(ace, force, version) {
+        ace.error(&e.to_string());
         std::process::exit(1);
     }
 }
 
-fn run_inner(
-    ace: &mut Ace,
-    silent: bool,
-    force: bool,
-    version: Option<String>,
-) -> Result<(), super::CmdError> {
+fn run_inner(ace: &mut Ace, force: bool, version: Option<String>) -> Result<(), super::CmdError> {
     if std::env::var("ACE_SKIP_UPDATE").as_deref() == Ok("1") {
-        if !silent {
-            ace.done("update check skipped (ACE_SKIP_UPDATE=1)");
-        }
+        ace.done("update check skipped (ACE_SKIP_UPDATE=1)");
         return Ok(());
     }
     if let Ok(r) = ace.require_resolved()
         && r.skip_update.value
     {
-        if !silent {
-            ace.done("update check skipped (skip_update = true)");
-        }
+        ace.done("update check skipped (skip_update = true)");
         return Ok(());
     }
 
     let current = semver::Version::parse(env!("CARGO_PKG_VERSION"))
         .expect("CARGO_PKG_VERSION is valid semver");
-    let target_version = resolve_target_version(ace, silent, force, version.as_deref())?;
+    let target_version = resolve_target_version(ace, force, version.as_deref())?;
 
     if !force && !check::needs_update(&current, &target_version) {
-        if !silent {
-            ace.done(&format!("already at latest version ({current})"));
-        }
+        ace.done(&format!("already at latest version ({current})"));
         return Ok(());
     }
 
     let url = download::build_download_url(&target_version, target_triple());
-    if !silent {
-        ace.progress(&format!("downloading ace {target_version}..."));
-    }
+    ace.progress(&format!("downloading ace {target_version}..."));
 
     let binary = ureq::get(&url)
         .call()
@@ -70,15 +60,12 @@ fn run_inner(
         let _ = check::write_cache_marker(&marker, &target_version);
     }
 
-    if !silent {
-        ace.done(&format!("upgraded to {target_version}"));
-    }
+    ace.done(&format!("upgraded to {target_version}"));
     Ok(())
 }
 
 fn resolve_target_version(
     ace: &mut Ace,
-    silent: bool,
     force: bool,
     version: Option<&str>,
 ) -> Result<semver::Version, super::CmdError> {
@@ -90,9 +77,7 @@ fn resolve_target_version(
             .map_err(|e| super::CmdError::usage(format!("invalid version: {e}")));
     }
 
-    if !silent {
-        ace.progress("checking for updates...");
-    }
+    ace.progress("checking for updates...");
 
     let latest = check::fetch_latest_version().map_err(super::CmdError::failed)?;
 

@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use super::MigrateError;
-use crate::ace::{Ace, OutputMode};
+use crate::ace::Ace;
 use crate::config::index_toml;
 use crate::config::paths::{ace_cache_dir, detect_stray_cache_dirs};
 use crate::git::Git;
@@ -109,7 +109,7 @@ fn holds_unsaved_work(path: &Path) -> Option<String> {
     let clones = clones_within(path);
 
     for clone in clones {
-        let git = Git::new(&clone, OutputMode::Silent);
+        let git = Git::new(&clone, false);
 
         let dirty = git.is_dirty().unwrap_or(true);
         if dirty {

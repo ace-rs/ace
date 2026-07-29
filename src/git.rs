@@ -1,8 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 
-use crate::ace::OutputMode;
-
 #[derive(Debug, thiserror::Error)]
 pub enum GitError {
     #[error("invalid import source `{raw}`: expected owner/repo or a git URL")]
@@ -53,7 +51,7 @@ fn ensure_source_cache_in(dest: &Path, url: &str) -> Result<(), GitError> {
         return clone_repo(url, dest);
     }
 
-    let git = Git::new(dest, OutputMode::Silent);
+    let git = Git::new(dest, false);
     let branch = git.current_branch()?;
     git.fetch("origin", &branch)?;
     git.merge_ff_only(&format!("origin/{branch}"))
@@ -103,12 +101,12 @@ pub fn auth_hint() -> &'static str {
 
 pub struct Git<'a> {
     repo: &'a Path,
-    mode: OutputMode,
+    colorize: bool,
 }
 
 impl<'a> Git<'a> {
-    pub fn new(repo: &'a Path, mode: OutputMode) -> Self {
-        Self { repo, mode }
+    pub fn new(repo: &'a Path, colorize: bool) -> Self {
+        Self { repo, colorize }
     }
 
     pub fn is_dirty(&self) -> Result<bool, GitError> {
@@ -164,9 +162,10 @@ impl<'a> Git<'a> {
     }
 
     pub fn diff(&self) -> Result<String, GitError> {
-        let color = match self.mode {
-            OutputMode::Human => "--color=always",
-            OutputMode::Porcelain | OutputMode::Silent => "--color=never",
+        let color = if self.colorize {
+            "--color=always"
+        } else {
+            "--color=never"
         };
         self.output(&["diff", color])
     }
@@ -610,7 +609,7 @@ mod tests {
         let clone = TempDir::new().expect("clone tempdir");
         clone_repo(&remote_path.to_string_lossy(), clone.path()).expect("clone_repo");
 
-        let git = Git::new(clone.path(), OutputMode::Silent);
+        let git = Git::new(clone.path(), false);
         let count = git.output(&["rev-list", "--count", "HEAD"]).unwrap();
         let cnt: usize = count.trim().parse().unwrap();
         assert!(cnt > 1, "expected full history, got {}", cnt);
@@ -661,7 +660,7 @@ mod tests {
                 .expect("rev-parse branch");
             String::from_utf8_lossy(&out.stdout).trim().to_string()
         };
-        let git = Git::new(clone.path(), OutputMode::Silent);
+        let git = Git::new(clone.path(), false);
         git.fetch("origin", &branch_name).expect("fetch");
         git.merge_ff_only(&format!("origin/{}", branch_name))
             .expect("merge");

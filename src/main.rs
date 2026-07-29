@@ -15,22 +15,22 @@ mod skills;
 mod templates;
 mod upgrade;
 
-use ace::OutputMode;
+use ace::Io;
 use clap::Parser;
 use cmd::Cli;
 
 fn main() {
     let cli = Cli::parse();
-    let mode = OutputMode::detect(cli.porcelain);
+    let io = Io::new(cli.porcelain, cli.yes);
 
-    let logo = ace::logo(mode);
+    let logo = io.logo();
     if !logo.is_empty() {
         eprintln!("{logo}");
         eprintln!("  {}\n", env!("ACE_GIT_HASH"));
     }
 
     let project_dir = std::env::current_dir().expect("cannot determine current directory");
-    let mut ace = ace::Ace::new(project_dir, mode);
+    let mut ace = ace::Ace::new(project_dir, io);
     migrate_layout(&mut ace);
     cmd::run(&mut ace, cli);
 }

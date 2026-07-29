@@ -18,8 +18,7 @@ use crate::git::Git;
 use crate::school::{School, SchoolError};
 use crate::skills::{Decided, SkillError, Skills};
 
-use io::Io;
-pub use io::{IoError, OutputMode, logo, partition_picked};
+pub use io::{Io, IoError, partition_picked};
 
 /// Lazy-cached session view. All read accessors take `&self` and populate
 /// their cell on first call via `OnceCell`. Mutations (overrides, reload)
@@ -40,11 +39,10 @@ pub struct Ace {
     overrides: AceToml,
     scope_override: Option<Scope>,
     io: Io,
-    mode: OutputMode,
 }
 
 impl Ace {
-    pub fn new(project_dir: PathBuf, mode: OutputMode) -> Self {
+    pub fn new(project_dir: PathBuf, io: Io) -> Self {
         Self {
             project_dir,
             tree: OnceCell::new(),
@@ -55,8 +53,7 @@ impl Ace {
             skills: OnceCell::new(),
             overrides: AceToml::default(),
             scope_override: None,
-            io: Io::new(mode),
-            mode,
+            io,
         }
     }
 
@@ -64,8 +61,16 @@ impl Ace {
         &self.project_dir
     }
 
-    pub fn mode(&self) -> OutputMode {
-        self.mode
+    pub fn should_colorize(&self) -> bool {
+        self.io.should_colorize()
+    }
+
+    pub fn can_ask(&self) -> bool {
+        self.io.can_ask()
+    }
+
+    pub fn silence(&mut self) {
+        self.io.silence();
     }
 
     /// Replace the runtime-override layer wholesale. The CLI builds an
@@ -263,7 +268,7 @@ impl Ace {
     }
 
     pub fn git<'a>(&self, repo: &'a Path) -> Git<'a> {
-        Git::new(repo, self.mode)
+        Git::new(repo, self.io.should_colorize())
     }
 
     // -- output --
@@ -329,6 +334,12 @@ impl Ace {
 mod tests {
     use super::*;
 
+    /// These tests exercise resolution, not output, so the session is built
+    /// with presentation off.
+    fn ace_at(dir: &std::path::Path) -> Ace {
+        Ace::new(dir.to_path_buf(), Io::new(true, false))
+    }
+
     /// docs/spec/school/overview.md case 5: ace.toml with local specifier `.`,
     /// no school.toml at resolved root → MissingSchool, not Ok with stale paths.
     #[test]
@@ -339,7 +350,7 @@ mod tests {
             "school = \".\"\nbackend = \"flaude\"\n",
         )
         .unwrap();
-        let ace = Ace::new(tmp.path().to_path_buf(), OutputMode::Silent);
+        let ace = ace_at(tmp.path());
         let err = ace.require_school().expect_err("expected NotInitialized");
         assert!(matches!(err, SchoolError::NotInitialized), "got: {err:?}");
         assert_eq!(
@@ -361,7 +372,7 @@ mod tests {
         )
         .unwrap();
         std::fs::write(tmp.path().join("school.toml"), "name = \"x\"\n").unwrap();
-        let ace = Ace::new(tmp.path().to_path_buf(), OutputMode::Silent);
+        let ace = ace_at(tmp.path());
         let paths = ace.require_school().expect("Ok");
         assert_eq!(paths.root, tmp.path());
     }
@@ -374,7 +385,7 @@ mod tests {
     fn require_school_workdir_school_toml_without_ace_toml_errors() {
         let tmp = tempfile::TempDir::new().unwrap();
         std::fs::write(tmp.path().join("school.toml"), "name = \"x\"\n").unwrap();
-        let ace = Ace::new(tmp.path().to_path_buf(), OutputMode::Silent);
+        let ace = ace_at(tmp.path());
         let err = ace.require_school().expect_err("expected error");
         assert!(matches!(err, SchoolError::TreeLoad(_)), "got: {err:?}");
     }
@@ -384,7 +395,7 @@ mod tests {
     fn require_school_no_specifier_returns_no_specifier() {
         let tmp = tempfile::TempDir::new().unwrap();
         std::fs::write(tmp.path().join("ace.toml"), "backend = \"flaude\"\n").unwrap();
-        let ace = Ace::new(tmp.path().to_path_buf(), OutputMode::Silent);
+        let ace = ace_at(tmp.path());
         let err = ace.require_school().expect_err("expected NoSpecifier");
         assert!(matches!(err, SchoolError::NoSpecifier), "got: {err:?}");
         assert_eq!(err.hint(), Some("run `ace setup` to choose a school"));

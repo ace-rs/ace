@@ -3,7 +3,6 @@ use std::fs;
 use clap::Subcommand;
 
 use crate::ace::Ace;
-use crate::ace::OutputMode;
 use crate::actions::school::Validate;
 use crate::actions::school::{Init, InitError};
 use crate::actions::school::{PullImports, PullImportsResult};
@@ -153,7 +152,7 @@ fn run_skills(ace: &mut Ace) -> Result<(), CmdError> {
     let total_words: usize = skills.iter().map(|(_, _, w)| w).sum();
     let est_tokens = total_words * 4 / 3; // ~1.33 tokens per word
 
-    if ace.mode() == OutputMode::Human {
+    if ace.should_colorize() {
         for (i, (name, desc, words)) in skills.iter().enumerate() {
             if i > 0 {
                 ace.data("");
