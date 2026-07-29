@@ -2,6 +2,7 @@ use crate::ace::Ace;
 use crate::actions::project::{Prepare, PrepareResult, register_missing_mcp};
 use crate::backend::{Kind, OneShotRequest, PromptInput, SessionRequest};
 use crate::config::ace_toml::Trust;
+use crate::config::resolve::Source;
 use crate::templates::session::{SessionPromptInput, build_session_prompt};
 
 use super::CmdError;
@@ -24,13 +25,19 @@ fn run_inner(
 ) -> Result<(), CmdError> {
     require_resolved_or_recover(ace)?;
 
-    let specifier = {
+    let (specifier, school_from) = {
         let r = ace.require_resolved()?;
-        r.school_specifier
+        let specifier = r
+            .school_specifier
             .value
             .clone()
-            .ok_or(crate::school::SchoolError::NoSpecifier)?
+            .ok_or(crate::school::SchoolError::NoSpecifier)?;
+        (specifier, r.school_specifier.from)
     };
+
+    if let Some(notice) = school_source_notice(school_from, &specifier) {
+        ace.info(&notice);
+    }
 
     let prepare_result = prepare_school(ace, &specifier)?;
 
@@ -181,6 +188,17 @@ fn recover_backend(ace: &mut Ace, attempted: &str) -> Result<(), CmdError> {
     Ok(())
 }
 
+/// Announce a school that did not come from this repo's `ace.toml`. The
+/// project layer is the unremarkable case, and an override was just typed by
+/// hand — neither is worth a line.
+fn school_source_notice(from: Source, specifier: &str) -> Option<String> {
+    match from {
+        Source::User => Some(format!("school {specifier} — user config")),
+        Source::Local => Some(format!("school {specifier} — local config")),
+        Source::Project | Source::Override | Source::School | Source::Default => None,
+    }
+}
+
 fn list_known_backend_names(ace: &Ace) -> Result<Vec<String>, CmdError> {
     let tree = ace.require_tree()?;
     let mut names: Vec<String> = Kind::ALL.iter().map(|k| k.name().to_string()).collect();
@@ -196,4 +214,37 @@ fn list_known_backend_names(ace: &Ace) -> Result<Vec<String>, CmdError> {
     names.sort();
     names.dedup();
     Ok(names)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn user_school_is_announced() {
+        let notice = school_source_notice(Source::User, "ace-rs/school");
+        assert_eq!(
+            notice.as_deref(),
+            Some("school ace-rs/school — user config")
+        );
+    }
+
+    #[test]
+    fn local_school_is_announced() {
+        let notice = school_source_notice(Source::Local, "ace-rs/school");
+        assert_eq!(
+            notice.as_deref(),
+            Some("school ace-rs/school — local config")
+        );
+    }
+
+    #[test]
+    fn project_school_is_silent() {
+        assert!(school_source_notice(Source::Project, "ace-rs/school").is_none());
+    }
+
+    #[test]
+    fn typed_override_is_silent() {
+        assert!(school_source_notice(Source::Override, "ace-rs/school").is_none());
+    }
 }

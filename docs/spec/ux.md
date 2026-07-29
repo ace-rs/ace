@@ -104,6 +104,17 @@ Channel choice is about *what kind of message this is*, not about how
 attention-grabbing it should look. Decoration follows from channel; channel
 does not follow from desired loudness.
 
+### Startup announces what isn't the repo's own
+
+Bare `ace` prints one `info` line when the resolved school did not come from
+the project's `ace.toml` — `school X — user config` or `school X — local
+config`. A project-layer school is the unremarkable case and stays silent, as
+does a specifier the user just typed on the command line.
+
+The layer names match `ace config`'s vocabulary (`user`/`project`/`local`)
+rather than naming files, and the line states provenance without claiming an
+override — a user or local school also wins when the project declares none.
+
 ## 7. Re-running is safe and informative
 
 Every command must be safe to re-run. If the desired state already holds,
