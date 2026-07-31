@@ -12,7 +12,7 @@ The pen is not part of `cargo test`. Integration tests use Flaude and nothing el
 
 ```sh
 ./scripts/harnesses.sh            # status of every known backend
-./scripts/harnesses.sh hermes     # clone-or-pull, build, link .harnesses/bin/hermes
+./scripts/harnesses.sh hermes     # clone-or-pull, build, wrap as .harnesses/bin/hermes
 ./scripts/harnesses.sh clean      # remove the pen
 ```
 
@@ -28,6 +28,19 @@ Run a provisioned binary through the link, never through whatever is on `$PATH`:
 That distinction is the point. A global install drifts with your machine; the pen is a
 fresh shallow clone of upstream `main`, so what you observe is what upstream ships today.
 Delete it whenever it gets stale and provision again.
+
+## Keeping the writes inside
+
+A backend run against your real home defeats the pen — a single `hermes --version` is
+enough to create `~/.hermes`. So `.harnesses/bin/<name>` is a generated wrapper, not a
+symlink: it points the XDG variables and the backend's own state variable at
+`.harnesses/state/<name>` before exec'ing the binary. Invoking through the wrapper is
+therefore the contained path, and invoking the built binary directly is not.
+
+This is soft containment. A backend that hardcodes `~` or shells out to something that
+does will still reach the host; the wrapper covers the well-behaved majority and nothing
+more. If you find state landing outside the pen, add the variable that governs it to the
+table in `scripts/harnesses.sh` rather than working around it at the callsite.
 
 ## Registry
 
