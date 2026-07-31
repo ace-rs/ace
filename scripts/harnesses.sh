@@ -75,6 +75,10 @@ ENTRY
   mkdir -p "$bin"
   wrapper="$bin/$name"
 
+  # Unlink first: `>` follows a symlink and writes through to its target, and an
+  # earlier version of this script left symlinks here pointing into the venv.
+  rm -f "$wrapper"
+
   # A wrapper, not a symlink: whatever the backend writes should land in the pen
   # without the caller having to remember an env var. State goes in the clone —
   # a backend given an empty state dir tries to install itself into it, and the
