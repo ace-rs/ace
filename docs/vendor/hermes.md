@@ -15,6 +15,7 @@ repo `NousResearch/hermes-agent`.
 | Binary      | `hermes`                                    |
 | Config      | `~/.hermes/config.yaml`                     |
 | Credentials | `~/.hermes/.env`                            |
+| Install     | `uv tool install` — see `backend-install.md` |
 
 ## Invocation
 

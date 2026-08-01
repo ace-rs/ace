@@ -19,7 +19,6 @@ bin="$pen/bin"
 # backend's state dir, on top of the XDG vars every wrapper pins
 backends() {
   cat <<'TABLE'
-hermes|https://github.com/NousResearch/hermes-agent|uv sync|.venv/bin/hermes|HERMES_HOME
 codex|https://github.com/openai/codex|cargo build --release --manifest-path codex-rs/Cargo.toml|codex-rs/target/release/codex|CODEX_HOME
 opencode|https://github.com/sst/opencode|bun install|packages/opencode/bin/opencode|OPENCODE_CONFIG_DIR
 TABLE
