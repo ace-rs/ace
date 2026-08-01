@@ -15,30 +15,33 @@ behavior changes under you mid-session.
 | `claude`   | native installer                     | `claude update` (self)       | `~/.local/share/claude/versions/<v>`, shim `~/.local/bin/claude` |
 | `codex`    | Homebrew **cask** `codex`            | `brew upgrade --cask codex`  | `/opt/homebrew/Caskroom/codex/<v>/`       |
 | `opencode` | Homebrew **formula** `opencode`      | `brew upgrade opencode`      | `/opt/homebrew/Cellar/opencode/<v>/`      |
-| `hermes`   | `uv tool install` (`hermes-agent`)   | `uv tool upgrade hermes-agent` | `~/.local/bin/{hermes,hermes-acp,hermes-agent}` |
+| `hermes`   | `uv tool install --editable <checkout>` | `hermes update` (git-pull)   | shims `~/.local/bin/{hermes,hermes-acp,hermes-agent}`, code in the checkout |
 
 Versions observed 2026-08-01: `claude` 2.1.220 · `codex-cli` 0.145.0 · `opencode` 1.18.5
-· `hermes-agent` 0.19.0.
+· `hermes-agent` 0.19.1 (upstream `e444d165`).
 
-## Hermes has two update paths, and they fight
+## Hermes runs from a checkout through a uv shim
 
 Hermes is a Python app with no compiled artifact — the thing on `$PATH` is a console
 script whose shebang points into a virtualenv, so there is nothing to copy to `~/bin`.
-`uv tool install` gives it a managed venv of its own and shims in `~/.local/bin`.
 
-It also ships its own updater: a top-level `hermes update` (`hermes_cli/main.py`,
-`cmd_update`) which git-pulls the install tree when the install is a checkout. Install
-method is read from a `.install_method` stamp in that tree, with fallback detection
-(`hermes_cli/config.py`, `detect_install_method`) — which is why `hermes --version` run
-against a clone reports `Install method: git`.
+On this machine the two halves come from different places. `uv tool` owns the venv and the
+`~/.local/bin` shims, but it was installed **editable**: site-packages holds only an
+`__editable__.hermes_agent-*.pth` finder, and every import resolves into
+`~/Documents/chakrit/hermes-agent`. So `uv tool list` reports the version recorded at
+install time while `hermes --version` reports the checkout's current commit, and the two
+drift apart on every `git pull`.
 
-A `uv tool` install has no `.git` in its install tree, so detection cannot report `git`
-there. **Which branch `hermes update` then takes is untraced** — do not assume it is a
-no-op. Upgrade through `uv tool upgrade hermes-agent`, and treat a version from
-`hermes --version` as describing whichever copy you invoked.
+That also settles which updater applies. `hermes update` (`hermes_cli/main.py`,
+`cmd_update`) git-pulls the install tree when the install is a checkout; install method
+comes from a `.install_method` stamp next to the running code, falling back to `.git`
+detection (`hermes_cli/config.py`, `detect_install_method`). There is no stamp here, the
+running code sits in a clone, so detection reports `git` and `hermes update` pulls that
+clone. `uv tool upgrade hermes-agent` is the wrong lever — it would rebuild the shim
+against the same checkout.
 
-The same split shows up if a source checkout also exists: `uv tool list` and a checkout's
-`.venv/bin/hermes` are independent installs that drift.
+Consequence for ACE: a hermes version can change under a running session with no package
+manager involved, and `hermes --version` describes whichever copy was invoked.
 
 ## Building from source instead
 
