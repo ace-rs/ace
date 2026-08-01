@@ -26,10 +26,15 @@ Hermes is a Python app with no compiled artifact — the thing on `$PATH` is a c
 script whose shebang points into a virtualenv, so there is nothing to copy to `~/bin`.
 `uv tool install` gives it a managed venv of its own and shims in `~/.local/bin`.
 
-It also ships its own updater. `hermes --version` reports `Install method: git` and
-`hermes update` pulls a checkout — but under `uv tool` the checkout it wants and the venv
-`$PATH` resolves to are different copies, so the self-updater moves one and the shim keeps
-serving the other. Upgrade through `uv tool upgrade hermes-agent`; treat a version from
+It also ships its own updater: a top-level `hermes update` (`hermes_cli/main.py`,
+`cmd_update`) which git-pulls the install tree when the install is a checkout. Install
+method is read from a `.install_method` stamp in that tree, with fallback detection
+(`hermes_cli/config.py`, `detect_install_method`) — which is why `hermes --version` run
+against a clone reports `Install method: git`.
+
+A `uv tool` install has no `.git` in its install tree, so detection cannot report `git`
+there. **Which branch `hermes update` then takes is untraced** — do not assume it is a
+no-op. Upgrade through `uv tool upgrade hermes-agent`, and treat a version from
 `hermes --version` as describing whichever copy you invoked.
 
 The same split shows up if a source checkout also exists: `uv tool list` and a checkout's
