@@ -10,12 +10,15 @@ Each backend owns its own update story, and they disagree — two self-update in
 two are managed by a package manager. That mismatch matters whenever a backend's
 behavior changes under you mid-session.
 
-| Backend    | Install                              | Upgrade                      | Lands at                                  |
-| ---------- | ------------------------------------ | ---------------------------- | ----------------------------------------- |
-| `claude`   | native installer                     | `claude update` (self)       | `~/.local/share/claude/versions/<v>`, shim `~/.local/bin/claude` |
-| `codex`    | Homebrew **cask** `codex`            | `brew upgrade --cask codex`  | `/opt/homebrew/Caskroom/codex/<v>/`       |
-| `opencode` | Homebrew **formula** `opencode`      | `brew upgrade opencode`      | `/opt/homebrew/Cellar/opencode/<v>/`      |
-| `hermes`   | `uv tool install --editable <checkout>` | `hermes update` (git-pull)   | shims `~/.local/bin/{hermes,hermes-acp,hermes-agent}`, code in the checkout |
+| Backend    | Install                                 | Upgrade                     | Lands at                             |
+| ---------- | --------------------------------------- | --------------------------- | ------------------------------------ |
+| `claude`   | native installer                        | `claude update` (self)      | `~/.local/share/claude/versions/<v>` |
+| `codex`    | Homebrew **cask** `codex`               | `brew upgrade --cask codex` | `/opt/homebrew/Caskroom/codex/<v>/`  |
+| `opencode` | Homebrew **formula** `opencode`         | `brew upgrade opencode`     | `/opt/homebrew/Cellar/opencode/<v>/` |
+| `hermes`   | `uv tool install --editable <checkout>` | `hermes update` (git-pull)  | the checkout, via a uv-owned shim    |
+
+Shims land in `~/.local/bin`: `claude` for the native installer, and
+`{hermes,hermes-acp,hermes-agent}` for the uv tool.
 
 Versions observed 2026-08-01: `claude` 2.1.220 · `codex-cli` 0.145.0 · `opencode` 1.18.5
 · `hermes-agent` 0.19.1 (upstream `e444d165`).
