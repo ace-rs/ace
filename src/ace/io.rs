@@ -320,14 +320,21 @@ impl Io {
             .args(parts)
             .stdin(std::process::Stdio::piped())
             .spawn()?;
-        child
+        // The temporary drops at end of statement, closing the pipe so the
+        // pager sees EOF. Quitting the pager mid-stream closes its stdin
+        // first — that BrokenPipe is the user's "seen enough", not a failure
+        // to fall back from.
+        let written = child
             .stdin
             .take()
             .expect("stdin was piped")
-            .write_all(content.as_bytes())?;
+            .write_all(content.as_bytes());
         child.wait()?;
 
-        Ok(())
+        match written {
+            Err(e) if e.kind() != std::io::ErrorKind::BrokenPipe => Err(e),
+            _ => Ok(()),
+        }
     }
 
     pub fn separator(&mut self) {
