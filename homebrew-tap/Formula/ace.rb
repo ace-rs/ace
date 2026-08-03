@@ -2,10 +2,10 @@ class Ace < Formula
   desc "Accelerated Coding Environment — setup and manage AI coding assistants"
   homepage "https://ace-rs.dev"
   license "MIT"
-  version "0.9.0"
+  version "0.9.1"
 
-  url "https://github.com/ace-rs/ace/releases/download/v0.9.0/ace-aarch64-apple-darwin"
-  sha256 "1fe0b4b92c699b849c9b5fd0fe7fb0ffb89afa9c40e62d7b09f13fa6f788fadc"
+  url "https://github.com/ace-rs/ace/releases/download/v0.9.1/ace-aarch64-apple-darwin"
+  sha256 "dd18efdf30b45487ec9808d454e2087706a3b1a008e4c0aa1c87b30a924c1ad2"
 
   depends_on arch: :arm64
   depends_on :macos
