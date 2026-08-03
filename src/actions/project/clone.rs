@@ -40,7 +40,7 @@ impl Clone<'_> {
         }
         ace.done(&format!("Cloned {repo}"));
 
-        update_index(&self.school.specifier)?;
+        update_index(&self.school.raw_specifier)?;
 
         let school_toml = school_toml::load(&self.school.toml_path())?;
         ace.done(&format!("School: {}", school_toml.name));

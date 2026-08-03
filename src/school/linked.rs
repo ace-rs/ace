@@ -9,7 +9,7 @@ use crate::config::paths::ace_data_dir;
 #[derive(Clone, Debug)]
 pub struct LinkedSchool {
     /// The raw `ace.toml` specifier, verbatim ("owner/repo:path").
-    pub specifier: String,
+    pub raw_specifier: String,
     /// The parsed source component: "owner/repo", or "." for embedded.
     pub source: String,
     pub clone_path: Option<PathBuf>,
@@ -29,7 +29,7 @@ impl LinkedSchool {
         let root = path.map(|p| base.join(p)).unwrap_or(base.clone());
 
         Ok(Self {
-            specifier: specifier.to_string(),
+            raw_specifier: specifier.to_string(),
             source,
             clone_path,
             root,
@@ -165,7 +165,10 @@ mod tests {
             let p = LinkedSchool::resolve(&project, spec)
                 .expect("resolve should succeed for remote spec");
 
-            assert_eq!(&p.specifier, spec, "specifier should be stored verbatim");
+            assert_eq!(
+                &p.raw_specifier, spec,
+                "specifier should be stored verbatim"
+            );
             let expected_source = spec.split_once(':').map_or(*spec, |(s, _)| s);
             assert_eq!(
                 p.source, expected_source,

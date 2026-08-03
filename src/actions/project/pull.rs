@@ -90,7 +90,7 @@ impl Pull<'_> {
         if !clone_path.join(".git").exists() {
             return Err(PrepareError::Clone(format!(
                 "school not installed: {}",
-                self.school.specifier
+                self.school.raw_specifier
             )));
         }
 
@@ -136,7 +136,7 @@ impl Pull<'_> {
             .rev_parse("HEAD")
             .map_err(|e| PrepareError::Clone(e.to_string()))?;
 
-        ace.progress(&format!("Fetching {}", self.school.specifier));
+        ace.progress(&format!("Fetching {}", self.school.raw_specifier));
         if let Err(e) = git.fetch("origin", "main") {
             ace.warn(&e.to_string());
             ace.hint(crate::git::auth_hint());
