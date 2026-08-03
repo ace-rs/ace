@@ -4,7 +4,7 @@ Not spec/decision because: it's the design exploration behind both, retained as 
 provenance those decisions cite.
 
 Status: **done.** The model was ruled on 2026-06-04 in two decisions —
-[skill lifecycle typestate](../decisions/2026-06-04-skill-lifecycle-typestate.md) and
+[skill lifecycle typestate](../spec/skills/lifecycle.md) and
 [admission eviction is non-overridable](../decisions/2026-06-04-admission-eviction-non-overridable.md)
 — the specs were reconciled 2026-06-05, and the implementation shipped in seven slices
 (2026-06-05) plus two audit passes (2026-06-08). Forks 2 and 3 were resolved by
@@ -57,7 +57,7 @@ model is compliance, not gold-plating.
 > lattice **`Raw → Validated → Judged`**: Sourced collapses into a Raw-stage field
 > (provenance), Emitted is `DesiredLink` (not a `Skill` state), and admission folds into a
 > `validate` partition rather than a stage. See
-> [the lifecycle decision](../decisions/2026-06-04-skill-lifecycle-typestate.md). The table
+> [the lifecycle decision](../spec/skills/lifecycle.md). The table
 > below is kept for its intent (design from the flow, not the current types), not its stages.
 
 Where a skill actually flows through the system. Design the data/metadata from this, not
@@ -108,7 +108,7 @@ Three mechanisms map onto this:
 4. **Naming** — **resolved (2026-06-05).** Markers `Discovered → Validated → Decided`; trait
    `Vetted`; identity type `Locator` (field `locator`) replacing `SkillId`/`id`; `Skill.name`
    dropped (callsites → `locator` / `frontmatter_name`). Rationale in the
-   [lifecycle decision § Open / downstream](../decisions/2026-06-04-skill-lifecycle-typestate.md).
+   [lifecycle decision § Open / downstream](../spec/skills/lifecycle.md).
    The atom (`Skill`) vs. collection (`Skills`) names stand.
 
 ## Approach
