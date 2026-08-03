@@ -85,7 +85,7 @@ e.g. `PrepareError::Config(ConfigError::Parse)` is `Usage`, `PrepareError::Clone
 | `ConfigError::Parse/Encode/Traversal*` | `Usage`                                    |
 | `ConfigError::NoConfig/NoConfigDir/NoCacheDir/NoDataDir` | `Unavailable`             |
 | `ConfigError::Io`                   | `Operational`                                 |
-| `SchoolError::NoSpecifier/NotInitialized/NoSchool` | `Unavailable`                  |
+| `SchoolError::NoSpecifier/NotInitialized/NotCloned/NoSchool` | `Unavailable`        |
 | `BackendError::Unknown`             | `Unavailable` (borderline, see above)         |
 | `BackendError::Unresolvable/KindMismatch` | `Usage`                                 |
 | `SetupError::NotInGitRepo`          | `Unavailable`                                 |

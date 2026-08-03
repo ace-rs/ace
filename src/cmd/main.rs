@@ -47,7 +47,7 @@ fn run_inner(
     let school_clone = ace.require_linked_school()?.clone_path.clone();
 
     let (school_name, school_session_prompt) = {
-        let school = ace.school()?.ok_or(SchoolError::NoSpecifier)?;
+        let school = ace.school()?;
         (school.name.clone(), school.session_prompt.clone())
     };
 

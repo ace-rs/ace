@@ -102,10 +102,9 @@ impl RegisterMcp<'_> {
                 ace.hint(hint);
             }
             let resolved = resolve_headers(entry, ace)?;
-            let target = resolved.as_ref().unwrap_or(entry);
 
             self.backend
-                .mcp_add(target, self.project_dir)
+                .mcp_add(&resolved, self.project_dir)
                 .map_err(|e| RegisterMcpError::Register(format!("{}: {e}", entry.name)))?;
 
             let msg =
@@ -138,14 +137,14 @@ fn registration_message(backend: Kind, name: &str, no_headers: bool) -> String {
 }
 
 /// Parse header values for `{{ placeholder }}` syntax, prompt the user, and return
-/// a resolved copy. Returns `None` if no placeholders were found.
-pub(crate) fn resolve_headers(entry: &McpDecl, ace: &mut Ace) -> Result<Option<McpDecl>, IoError> {
+/// a resolved copy. An entry without placeholders passes through unchanged.
+pub(crate) fn resolve_headers(entry: &McpDecl, ace: &mut Ace) -> Result<McpDecl, IoError> {
     // -- collect unique placeholders --
 
     let all_placeholders = collect_placeholders(&entry.headers);
 
     if all_placeholders.is_empty() {
-        return Ok(None);
+        return Ok(entry.clone());
     }
 
     // -- prompt for values --
@@ -167,12 +166,12 @@ pub(crate) fn resolve_headers(entry: &McpDecl, ace: &mut Ace) -> Result<Option<M
         })
         .collect();
 
-    Ok(Some(McpDecl {
+    Ok(McpDecl {
         name: entry.name.clone(),
         url: entry.url.clone(),
         headers: resolved_headers,
         instructions: entry.instructions.clone(),
-    }))
+    })
 }
 
 fn instruction_hint(entry: &McpDecl) -> Option<&str> {

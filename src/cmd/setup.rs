@@ -34,7 +34,11 @@ fn run_inner(ace: &mut Ace, specifier: Option<&str>) -> Result<(), CmdError> {
 
     let instructions = project_dir.join(backend.instructions_file());
     if !instructions.exists() {
-        let school_name = ace.school()?.map(|s| s.name.clone()).unwrap_or_default();
+        let school_name = match ace.school() {
+            Ok(s) => s.name.clone(),
+            Err(e) if e.is_absent() => String::new(),
+            Err(e) => return Err(e.into()),
+        };
 
         let backend_dir_name = backend.backend_dir();
         let tpl = templates::Template::parse(templates::builtins::PROJECT_CLAUDE_MD);

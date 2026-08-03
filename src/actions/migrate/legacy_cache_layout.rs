@@ -11,11 +11,11 @@ use crate::git::Git;
 /// startup thereafter; this step finishes the job.
 pub const VERSION: &str = "2026-04-22";
 
-pub fn run(ace: &mut Ace) -> Result<Option<String>, MigrateError> {
+pub fn run(ace: &mut Ace) -> Result<String, MigrateError> {
     let cache_root = ace_cache_dir()?;
     let strays = detect_stray_cache_dirs(&cache_root);
     if strays.is_empty() {
-        return Ok(None);
+        return Ok(String::new());
     }
 
     let index_moved = adopt_legacy_index(ace)?;
@@ -36,10 +36,7 @@ pub fn run(ace: &mut Ace) -> Result<Option<String>, MigrateError> {
         parts.push(format!("kept {kept}, warned about above"));
     }
 
-    match parts.is_empty() {
-        true => Ok(None),
-        false => Ok(Some(parts.join("; "))),
-    }
+    Ok(parts.join("; "))
 }
 
 /// Read the pre-move `index.toml` into the data dir if that is still the only copy.

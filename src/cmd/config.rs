@@ -82,14 +82,14 @@ fn show(ace: &Ace) -> Result<(), CmdError> {
     let output = toml::to_string_pretty(&effective).map_err(|e| CmdError::failed(e.to_string()))?;
     print!("{output}");
 
-    let school_output = ace
-        .school()?
-        .map(toml::to_string_pretty)
-        .transpose()
-        .map_err(|e| CmdError::failed(e.to_string()))?;
-    if let Some(s) = school_output {
-        println!("\n# school.toml");
-        print!("{s}");
+    match ace.school() {
+        Ok(school) => {
+            let s = toml::to_string_pretty(school).map_err(|e| CmdError::failed(e.to_string()))?;
+            println!("\n# school.toml");
+            print!("{s}");
+        }
+        Err(e) if e.is_absent() => {}
+        Err(e) => return Err(e.into()),
     }
 
     Ok(())
@@ -218,10 +218,11 @@ fn explain(ace: &Ace, key: Option<&str>) -> Result<(), CmdError> {
 
     if want(&ConfigKey::Backend) {
         let layers = scalar_layers(&tree, &overrides, |c| c.backend.clone());
-        let school_contrib = ace
-            .school_toml()?
-            .and_then(|s| s.backend.clone())
-            .filter(|s| !s.is_empty());
+        let school_contrib = match ace.school_toml() {
+            Ok(st) => st.backend.clone().filter(|s| !s.is_empty()),
+            Err(e) if e.is_absent() => None,
+            Err(e) => return Err(e.into()),
+        };
         blocks.push(format_block(
             "backend",
             &quoted(&resolved.backend_name.value),

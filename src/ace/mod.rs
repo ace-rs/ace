@@ -35,8 +35,8 @@ pub struct Ace {
     resolved: OnceCell<Resolved>,
     backend: OnceCell<Backend>,
     linked_school: OnceCell<LinkedSchool>,
-    school_toml: OnceCell<Option<SchoolToml>>,
-    school: OnceCell<Option<School>>,
+    school_toml: OnceCell<SchoolToml>,
+    school: OnceCell<School>,
     skills: OnceCell<Skills<Decided>>,
     overrides: AceToml,
     scope_override: Option<Scope>,
@@ -132,39 +132,34 @@ impl Ace {
     pub fn require_config(&self) -> Result<&Resolved, ConfigError> {
         self.resolved.get_or_try_init(|| {
             let tree = self.require_tree()?;
-            let school = self.school_toml()?;
+            let school = match self.school_toml() {
+                Ok(st) => Some(st),
+                Err(SchoolError::TreeLoad(e)) => return Err(e),
+                // Every non-TreeLoad variant is an absence state — a merge
+                // without a school layer is the correct read of all of them.
+                Err(_) => None,
+            };
             Ok(resolve::merge(tree, school, &self.overrides))
         })
     }
 
-    /// Lazy-load the linked school's `school.toml` content, raw. `Ok(None)`
-    /// when no school is configured, the school is uninitialized, or the file
-    /// is missing; a present-but-malformed file errors loudly. Prefer
-    /// `school()` for the bound domain view; this is for merge input and
-    /// config introspection, which need fields (backend, backends) the domain
-    /// view deliberately drops.
-    pub fn school_toml(&self) -> Result<Option<&SchoolToml>, ConfigError> {
-        let cached = self.school_toml.get_or_try_init(|| {
-            let linked = match self.require_linked_school() {
-                Ok(linked) => linked,
-                Err(SchoolError::TreeLoad(e)) => return Err(e),
-                Err(SchoolError::NoSpecifier | SchoolError::NotInitialized) => return Ok(None),
-                Err(SchoolError::NoSchool) => {
-                    unreachable!("only require_authoring_school mints NoSchool")
-                }
-            };
-
-            // An absent root is the resolved-but-not-yet-cloned state
-            // (overview.md case 8) — no school on disk is a legitimate None.
-            // Once the school is on disk, loading is strict: require_linked_school
-            // already guaranteed school.toml exists, so any failure here —
-            // malformed content included — errors loudly.
+    /// Lazy-load the linked school's `school.toml` content, raw. Absence is an
+    /// error, not a value: `NoSpecifier`/`NotInitialized` pass through from
+    /// resolution and an absent root is `NotCloned` (overview.md case 8 — not
+    /// yet installed); tolerant callers check `SchoolError::is_absent`. Once
+    /// the school is on disk, loading is strict — malformed content errors
+    /// loudly. Prefer `school()` for the bound domain view; this is for merge
+    /// input and config introspection, which need fields (backend, backends)
+    /// the domain view deliberately drops.
+    pub fn school_toml(&self) -> Result<&SchoolToml, SchoolError> {
+        self.school_toml.get_or_try_init(|| {
+            let linked = self.require_linked_school()?;
             if !linked.root.exists() {
-                return Ok(None);
+                return Err(SchoolError::NotCloned);
             }
-            Ok(Some(school_toml::load(&linked.toml_path())?))
-        })?;
-        Ok(cached.as_ref())
+
+            Ok(school_toml::load(&linked.toml_path())?)
+        })
     }
 
     /// Lazy-load the resolved Backend binding (registry build + name lookup).
@@ -315,15 +310,14 @@ impl Ace {
         self.invalidate_resolved();
     }
 
-    /// Lazy-load the resolved School binding. `Ok(None)` when no school is
-    /// configured or school.toml is missing/unreadable. Does NOT require the
-    /// backend to resolve, so read-only inspection paths still work when the
-    /// selector points at an unknown backend.
-    pub fn school(&self) -> Result<Option<&School>, SchoolError> {
-        let cached = self.school.get_or_try_init(|| -> Result<_, SchoolError> {
-            Ok(self.school_toml()?.map(|st| School::from(st.clone())))
-        })?;
-        Ok(cached.as_ref())
+    /// Lazy-load the resolved School binding. Absence propagates as the
+    /// `SchoolError` variant `school_toml()` raised — tolerant callers check
+    /// `SchoolError::is_absent`. Does NOT require the backend to resolve, so
+    /// read-only inspection paths still work when the selector points at an
+    /// unknown backend.
+    pub fn school(&self) -> Result<&School, SchoolError> {
+        self.school
+            .get_or_try_init(|| Ok(School::from(self.school_toml()?.clone())))
     }
 
     /// Lazy-load the resolved SkillSet — discover the school's `skills/` tree

@@ -423,9 +423,10 @@ fn school_exit_code(e: &crate::school::SchoolError) -> ExitCode {
     use crate::school::SchoolError;
     match e {
         SchoolError::TreeLoad(c) => config_exit_code(c),
-        SchoolError::NoSpecifier | SchoolError::NotInitialized | SchoolError::NoSchool => {
-            ExitCode::Unavailable
-        }
+        SchoolError::NoSpecifier
+        | SchoolError::NotInitialized
+        | SchoolError::NotCloned
+        | SchoolError::NoSchool => ExitCode::Unavailable,
     }
 }
 
@@ -504,10 +505,17 @@ pub fn run(ace: &mut Ace, cli: Cli) {
         }
     };
 
-    let scope_override = match resolve_scope_override(&cli) {
-        Ok(scope) => scope,
-        Err(err) => {
-            exit_on_err(ace, Err(err));
+    let scopes = scope_override_flags(&cli);
+    let scope_override = match scopes.as_slice() {
+        [] => None,
+        [scope] => Some(*scope),
+        _ => {
+            exit_on_err(
+                ace,
+                Err(CmdError::usage(
+                    "cannot combine multiple scope flags (--user, --project, --local)",
+                )),
+            );
             return;
         }
     };
@@ -578,7 +586,7 @@ pub fn run(ace: &mut Ace, cli: Cli) {
     }
 }
 
-fn resolve_scope_override(cli: &Cli) -> Result<Option<Scope>, CmdError> {
+fn scope_override_flags(cli: &Cli) -> Vec<Scope> {
     let mut selected = Vec::new();
 
     if cli.user || cli.global_alias {
@@ -592,27 +600,42 @@ fn resolve_scope_override(cli: &Cli) -> Result<Option<Scope>, CmdError> {
     }
 
     selected.dedup();
-
-    match selected.as_slice() {
-        [] => Ok(None),
-        [scope] => Ok(Some(*scope)),
-        _ => Err(CmdError::usage(
-            "cannot combine multiple scope flags (--user, --project, --local)",
-        )),
-    }
+    selected
 }
 
 fn build_overrides(cli: &Cli) -> Result<AceToml, CmdError> {
+    let backends = backend_override_flags(cli);
+    let backend = match backends.as_slice() {
+        [] => None,
+        [b] => Some(b.clone()),
+        _ => {
+            return Err(CmdError::usage(
+                "cannot combine multiple backend override flags",
+            ));
+        }
+    };
+
+    let trusts = trust_override_flags(cli)?;
+    let trust = match trusts.as_slice() {
+        [] => Trust::default(),
+        [t] => *t,
+        _ => {
+            return Err(CmdError::usage(
+                "cannot combine multiple trust override flags (--trust, --auto, --yolo)",
+            ));
+        }
+    };
+
     Ok(AceToml {
-        backend: resolve_backend_override(cli)?,
-        trust: resolve_trust_override(cli)?.unwrap_or_default(),
+        backend,
+        trust,
         session_prompt: cli.session_prompt.clone(),
         env: parse_env_overrides(&cli.env)?,
         ..AceToml::default()
     })
 }
 
-fn resolve_backend_override(cli: &Cli) -> Result<Option<String>, CmdError> {
+fn backend_override_flags(cli: &Cli) -> Vec<String> {
     let mut selected = Vec::new();
 
     if let Some(backend) = &cli.backend {
@@ -633,17 +656,10 @@ fn resolve_backend_override(cli: &Cli) -> Result<Option<String>, CmdError> {
     }
 
     selected.dedup();
-
-    match selected.as_slice() {
-        [] => Ok(None),
-        [backend] => Ok(Some(backend.clone())),
-        _ => Err(CmdError::usage(
-            "cannot combine multiple backend override flags",
-        )),
-    }
+    selected
 }
 
-fn resolve_trust_override(cli: &Cli) -> Result<Option<Trust>, CmdError> {
+fn trust_override_flags(cli: &Cli) -> Result<Vec<Trust>, CmdError> {
     let mut selected: Vec<Trust> = Vec::new();
 
     if let Some(raw) = &cli.trust {
@@ -657,14 +673,7 @@ fn resolve_trust_override(cli: &Cli) -> Result<Option<Trust>, CmdError> {
     }
 
     selected.dedup();
-
-    match selected.as_slice() {
-        [] => Ok(None),
-        [t] => Ok(Some(*t)),
-        _ => Err(CmdError::usage(
-            "cannot combine multiple trust override flags (--trust, --auto, --yolo)",
-        )),
-    }
+    Ok(selected)
 }
 
 fn parse_env_overrides(entries: &[String]) -> Result<HashMap<String, String>, CmdError> {
@@ -722,8 +731,7 @@ mod tests {
     #[test]
     fn opencode_flag_resolves_to_opencode_backend() {
         let cli = Cli::try_parse_from(["ace", "--opencode"]).expect("parse");
-        let resolved = resolve_backend_override(&cli).expect("resolve");
-        assert_eq!(resolved.as_deref(), Some("opencode"));
+        assert_eq!(backend_override_flags(&cli), vec!["opencode".to_string()]);
     }
 
     #[test]

@@ -10,11 +10,11 @@ use crate::config::paths::ace_import_cache_dir;
 /// rather than moved.
 pub const VERSION: &str = "2026-07-26";
 
-pub fn run(ace: &mut Ace) -> Result<Option<String>, MigrateError> {
+pub fn run(ace: &mut Ace) -> Result<String, MigrateError> {
     let cache_root = ace_import_cache_dir()?;
     let flat = flat_layout_entries(&cache_root);
     if flat.is_empty() {
-        return Ok(None);
+        return Ok(String::new());
     }
 
     let mut removed = 0;
@@ -26,14 +26,14 @@ pub fn run(ace: &mut Ace) -> Result<Option<String>, MigrateError> {
     }
 
     if removed == 0 {
-        return Ok(None);
+        return Ok(String::new());
     }
 
-    Ok(Some(format!(
+    Ok(format!(
         "host-scoped import paths; removed {removed} stale clone{} from {}",
         if removed == 1 { "" } else { "s" },
         cache_root.display(),
-    )))
+    ))
 }
 
 /// Old entries are owner names, new ones are hosts — and a host always carries a dot.

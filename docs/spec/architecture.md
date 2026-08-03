@@ -93,8 +93,8 @@ recovery picker).
 | `backend()`          | `Result<&Backend, BackendError>`       | Build the registry; look up the selected name.     |
 | `require_linked_school()` | `Result<&LinkedSchool, SchoolError>` | Resolve the linked school's location from `ace.toml`. Linked school only — not authoring-aware. |
 | `require_authoring_school()` | `Result<PathBuf, SchoolError>`  | Cwd-first school for authoring commands; announced fallback to linked. |
-| `school_toml()`      | `Result<Option<&SchoolToml>, ConfigError>` | Raw school.toml content — merge input and config introspection. |
-| `school()`           | `Result<Option<&School>, SchoolError>` | Build the `School` domain object from school.toml. |
+| `school_toml()`      | `Result<&SchoolToml, SchoolError>`     | Raw school.toml content — merge input and config introspection. Absence is an error variant; tolerant callers check `SchoolError::is_absent()`. |
+| `school()`           | `Result<&School, SchoolError>`         | Build the `School` domain object from school.toml. Absence as above. |
 | `skills()`           | `Result<&Skills<Decided>, SkillError>` | Discover `<school>/skills/` and resolve.           |
 | `override_backend`   | —                                      | Push a runtime override; invalidates resolved.     |
 | `invalidate_school_caches` | —                                | Drop school-derived caches after clone-on-first-run. |

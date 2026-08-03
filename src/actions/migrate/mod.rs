@@ -51,9 +51,9 @@ impl Step {
         }
     }
 
-    /// `Ok(None)` when there was nothing on disk to change — the common case, and the
-    /// reason a healthy startup prints nothing.
-    fn run(self, ace: &mut Ace) -> Result<Option<String>, MigrateError> {
+    /// The returned detail is empty when there was nothing on disk to change —
+    /// the common case, and the reason a healthy startup prints nothing.
+    fn run(self, ace: &mut Ace) -> Result<String, MigrateError> {
         match self {
             Step::LegacyCacheLayout => legacy_cache_layout::run(ace),
             Step::HostScopedImports => host_scoped_imports::run(ace),
@@ -79,7 +79,8 @@ impl Migrate {
 
         let mut changed = false;
         for step in pending {
-            if let Some(detail) = step.run(ace)? {
+            let detail = step.run(ace)?;
+            if !detail.is_empty() {
                 ace.done(&format!("Migrated layout to {} ({detail})", step.version()));
                 changed = true;
             }

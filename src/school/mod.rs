@@ -18,6 +18,8 @@ pub enum SchoolError {
     NoSpecifier,
     #[error("school not initialized")]
     NotInitialized,
+    #[error("school not installed")]
+    NotCloned,
     #[error("no school here and none linked")]
     NoSchool,
 }
@@ -29,10 +31,21 @@ impl SchoolError {
             Self::NotInitialized => {
                 Some("run `ace school init` to bootstrap this repo as a school")
             }
+            Self::NotCloned => Some("run `ace` or `ace pull` to install it"),
             Self::NoSchool => {
                 Some("run `ace school init` to author a school here, or `ace setup` to link one")
             }
             Self::TreeLoad(_) => None,
+        }
+    }
+
+    /// True for the states where no school exists to read — never for an I/O,
+    /// parse, or tree failure. Callers that tolerate a missing school check
+    /// against this; everything else propagates.
+    pub fn is_absent(&self) -> bool {
+        match self {
+            Self::NoSpecifier | Self::NotInitialized | Self::NotCloned | Self::NoSchool => true,
+            Self::TreeLoad(_) => false,
         }
     }
 }

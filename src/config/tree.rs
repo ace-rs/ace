@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use super::ConfigError;
 use super::ace_toml::{self, AceToml};
 use super::paths::AcePaths;
@@ -17,9 +15,20 @@ pub struct Tree {
 
 impl Tree {
     pub fn load(paths: &AcePaths) -> Result<Self, ConfigError> {
-        let user = load_optional(&paths.user)?;
-        let project = load_optional(&paths.project)?;
-        let local = load_optional(&paths.local)?;
+        // A layer file is optional; a present one must parse. Probe first so
+        // the loader keeps a single strict contract.
+        let user = match paths.user.exists() {
+            true => Some(ace_toml::load(&paths.user)?),
+            false => None,
+        };
+        let project = match paths.project.exists() {
+            true => Some(ace_toml::load(&paths.project)?),
+            false => None,
+        };
+        let local = match paths.local.exists() {
+            true => Some(ace_toml::load(&paths.local)?),
+            false => None,
+        };
 
         // Any layer is a signal of intent; a user-level school is the default for
         // every project that doesn't override it. Nothing anywhere is unknowable.
@@ -44,17 +53,10 @@ impl Tree {
     }
 }
 
-fn load_optional(path: &Path) -> Result<Option<AceToml>, ConfigError> {
-    match ace_toml::load(path) {
-        Ok(config) => Ok(Some(config)),
-        Err(ConfigError::Io(ref e)) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(e),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     /// `AcePaths` rooted entirely inside a tempdir, so no test reads the host's
     /// real user config.

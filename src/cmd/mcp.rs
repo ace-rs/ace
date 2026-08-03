@@ -46,7 +46,11 @@ fn run_list(ace: &mut Ace) -> Result<(), CmdError> {
     ace.require_config()?;
 
     let backend = ace.backend()?.clone();
-    let declared = ace.school()?.map(|s| s.mcp.clone()).unwrap_or_default();
+    let declared = match ace.school() {
+        Ok(s) => s.mcp.clone(),
+        Err(e) if e.is_absent() => Vec::new(),
+        Err(e) => return Err(e.into()),
+    };
     let excluded = ace.excluded_mcp();
     let registered = backend.mcp_list(ace.project_dir());
 
@@ -234,10 +238,17 @@ fn run_register(ace: &mut Ace, name: String) -> Result<(), CmdError> {
     let project_dir = ace.project_dir().to_path_buf();
 
     // Look up the school entry by name (do not apply the exclude filter — we
-    // want this to work even when the entry is currently excluded).
-    let entry = ace
-        .school()?
-        .and_then(|s| s.mcp.iter().find(|e| e.name == name).cloned())
+    // want this to work even when the entry is currently excluded). An absent
+    // school reads the same as a name it doesn't define.
+    let school_mcp = match ace.school() {
+        Ok(s) => s.mcp.clone(),
+        Err(e) if e.is_absent() => Vec::new(),
+        Err(e) => return Err(e.into()),
+    };
+    let entry = school_mcp
+        .iter()
+        .find(|e| e.name == name)
+        .cloned()
         .ok_or_else(|| {
             CmdError::usage(format!("MCP '{name}' not defined in school"))
                 .with_hint("run `ace mcp`")
@@ -274,7 +285,11 @@ pub(super) fn load_school_mcp(
     ace: &Ace,
 ) -> Result<(crate::backend::Backend, Vec<McpDecl>, std::path::PathBuf), CmdError> {
     let backend = ace.backend()?.clone();
-    let raw = ace.school()?.map(|s| s.mcp.clone()).unwrap_or_default();
+    let raw = match ace.school() {
+        Ok(s) => s.mcp.clone(),
+        Err(e) if e.is_absent() => Vec::new(),
+        Err(e) => return Err(e.into()),
+    };
     let excluded = ace.excluded_mcp();
     let entries = filter_excluded(raw, &excluded);
     let project_dir = ace.project_dir().to_path_buf();
