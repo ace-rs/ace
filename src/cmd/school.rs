@@ -6,7 +6,7 @@ use crate::ace::Ace;
 use crate::actions::school::Validate;
 use crate::actions::school::{Init, InitError};
 use crate::actions::school::{PullImports, PullImportsResult};
-use crate::config::skill_meta;
+use crate::skills::meta;
 use crate::school::toml as school_toml;
 
 use super::CmdError;
@@ -138,7 +138,7 @@ fn run_skills(ace: &mut Ace) -> Result<(), CmdError> {
         }
         let dir_name = entry.file_name().to_string_lossy().to_string();
         let words = count_skill_words(&entry.path());
-        match skill_meta::load(&entry.path()) {
+        match meta::load(&entry.path()) {
             Some(meta) => skills.push((meta.name, meta.description, words)),
             None => skills.push((dir_name, String::new(), words)),
         }

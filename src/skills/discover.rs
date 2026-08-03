@@ -277,7 +277,7 @@ const SKIP_DIRS: &[&str] = &[
 /// Best-effort frontmatter extraction for the fields discovery cares
 /// about: `internal: true` (discovery-time filter) and `name:` (used by
 /// the imports resolver to flag cross-source divergence at colliding
-/// identities). A full frontmatter parser lives in `config::skill_meta`;
+/// identities). A full frontmatter parser lives in `skills::meta`;
 /// this is a narrow read so discovery doesn't have to materialize the
 /// full struct for every skill on disk.
 ///
