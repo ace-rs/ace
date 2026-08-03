@@ -84,7 +84,7 @@ recovery picker).
 | `require_tree()`     | `Result<&Tree, ConfigError>`           | Parse the config files; load school.toml.          |
 | `require_resolved()` | `Result<&Resolved, ConfigError>`       | Run the merge over `Tree` + overrides.             |
 | `backend()`          | `Result<&Backend, BackendError>`       | Build the registry; look up the selected name.     |
-| `require_school()`   | `Result<&SchoolPaths, SchoolError>`    | Resolve school clone path (dual-context aware).    |
+| `require_linked_school()` | `Result<&SchoolPaths, SchoolError>` | Resolve the linked school's clone path from `ace.toml`. Linked school only — not authoring-aware. |
 | `school()`           | `Result<Option<&School>, SchoolError>` | Build the `School` domain object from school.toml. |
 | `skills()`           | `Result<&Skills<Decided>, SkillError>` | Discover `<school>/skills/` and resolve.           |
 | `override_backend`   | —                                      | Push a runtime override; invalidates resolved.     |

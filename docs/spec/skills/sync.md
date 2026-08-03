@@ -212,7 +212,10 @@ required.
 
 ### Import source cache (`git::ensure_source_cache`)
 
-Both `ace import <source>` and `ace school pull` pull skills from upstream repositories.
+`ace import <source>` and `ace school pull` are authoring-side: they write the
+**authored school**, not the linked clone this file describes. Both pull skills from
+upstream repositories.
+
 Rather than re-cloning each source into a fresh `tempfile::tempdir()` on every invocation,
 ACE maintains a persistent cache at `~/.cache/ace/imports/{host}/{path…}/` and uses
 `git::ensure_source_cache(source)`:

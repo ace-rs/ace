@@ -1,9 +1,36 @@
 # School Commands
 
-The `ace school` subcommand manages school repositories. Every `ace school <subcmd>`
-invocation operates on the **current working directory as the school root** — there is no
-context detection, no fallback to the linked school. The precondition is that
-`cwd/school.toml` exists; commands fail with a clear error otherwise.
+The `ace school` subcommand manages school repositories. This file is authoring-side:
+every `<school>` below means the **authored school** (see the glossary in
+[overview.md](overview.md)) — except § `ace diff` and § Skill Modification Workflow,
+which are consumer-side and mean the **linked school**.
+
+Authoring commands (`ace school pull` / `skills` / `validate`, and `ace import`)
+resolve the school they operate on with one rule, cwd-first:
+
+1. `cwd/school.toml` exists → the authored school is the cwd. Primary mode.
+2. Otherwise → fall back to the linked school, and **announce it** with a warning
+   naming the school being touched ("no school.toml in current directory — using the
+   linked school"). The fallback is never silent.
+3. Neither a cwd `school.toml` nor a resolvable specifier → hard error with a hint
+   naming both `ace school init` and `ace setup`.
+
+`ace school init` is the exception: it *creates* the authored school, so it only
+requires cwd to be a git repo and never resolves.
+
+| Command               | Primary (cwd/school.toml)  | Fallback (specifier only) | Neither    |
+| --------------------- | -------------------------- | ------------------------- | ---------- |
+| `ace import`          | edits cwd school           | warn, edit linked school  | hard error |
+| `ace school pull`     | pulls cwd school's imports | warn, pull linked school  | hard error |
+| `ace school skills`   | lists cwd school's skills  | warn, list linked school  | hard error |
+| `ace school validate` | validates cwd school.toml  | warn, validate linked     | hard error |
+| `ace school init`     | creates in cwd (git repo required); no resolution involved |            |
+
+No other command crosses the line: consumer-side commands (bare `ace`, `setup`, `pull`,
+`link`, `diff`, `skills`, `explain`, `mcp`) touch only the linked school, and none of
+them ever falls back to the authored school. `Ace::require_linked_school()` resolves the
+linked school only; authoring commands reach it exclusively through the announced
+fallback above.
 
 This is school-authoring mode (see [overview.md](overview.md)). The complementary mode —
 consuming a school from a project — is reached through bare `ace` and `ace setup` /
@@ -29,8 +56,9 @@ Steps:
    skills. See `docs/spec/school/standard-imports.md`. Users may remove the entry for a
    fully standalone school.
 4. If `ace.toml` does not already exist in cwd, create one containing `school = "."` so
-   the school can dogfood itself (bare `ace` from this workdir resolves the embedded
-   school via the specifier). Existing `ace.toml` is preserved.
+   the school can dogfood itself — the authored and linked school become the same
+   directory, the only case where the two coincide (see the glossary in
+   [overview.md](overview.md)). Existing `ace.toml` is preserved.
 5. Create `CLAUDE.md` and `README.md` if missing.
 6. Create `.gitignore` if missing.
 7. Run `PullImports` to fetch the standard skills into `skills/`.
@@ -41,8 +69,9 @@ Prerequisites: create and clone a git repo first (e.g.
 
 ## Update and Edit Safety
 
-The school clone is a live working copy. Users may have uncommitted edits (skills modified
-through symlinks). The **Update** action must check for dirty state before pulling:
+The linked school clone is a live working copy. Users may have uncommitted edits (skills
+modified through symlinks). The **Update** action must check for dirty state before
+pulling:
 
 1. `git status --porcelain` — if dirty, warn and abort. Tell user to propose changes when
    ready.
@@ -57,10 +86,11 @@ When ACE execs into the backend (the final lifecycle step in
 [index.md](../index.md)), it injects a session prompt that:
 
 1. Tells the AI that skills are loaded from the linked school and are editable.
-2. Instructs it to propose changes back to the school repo when skills are modified.
+2. Instructs it to propose changes back to the linked school's repo when skills are
+   modified.
 
-The AI backend handles the full PR workflow: `ace diff` to review, branch in the school
-cache, commit, push, create PR via GitHub MCP. No dedicated `ace` command needed — the AI
+The AI backend handles the full PR workflow: `ace diff` to review, branch in the linked
+school clone, commit, push, create PR via GitHub MCP. No dedicated `ace` command needed — the AI
 has all the tools (git + GitHub MCP).
 
 The `ace-school` skill (provided by the `ace-rs/school` standard import, seeded by
@@ -68,8 +98,9 @@ The `ace-school` skill (provided by the `ace-rs/school` standard import, seeded 
 
 ## `ace import <source> [--skill <name>] [--all]`
 
-Import a skill from an external repository into the school. Top-level command (not under
-`ace school`) for convenience.
+Import a skill from an external repository into the **authored school**. A top-level
+command for convenience only — its resolution is authoring-side (cwd-first rule above),
+not consumer-side.
 
 - **source** — GitHub `owner/repo` shorthand or full URL (same convention as school
   specifiers).
@@ -103,9 +134,8 @@ but not special, no `?` or character classes.
 
 ### Flow
 
-1. Resolve the school root via `ace.toml` 's specifier (the standard `Ace::require_school`
-   path). For an in-school invocation, the school's own `ace.toml` carries `school = "."`
-   and resolves to cwd; for a project invocation, it resolves to the linked clone.
+1. Resolve the authored school root — cwd-first with announced fallback, per the rule at
+   the top of this file. Never via `Ace::require_linked_school` directly.
 2. Clone source repo into the import cache (`~/.cache/ace/imports/`) — a full clone, no
    `--depth`; see [no shallow clones](../../decisions/2026-03-25-no-shallow-clones.md).
 3. Discover skills via the 2-stage cascade in
@@ -116,7 +146,7 @@ but not special, no `?` or character classes.
    - `--skill` given → find by name.
    - Single skill in repo → auto-import.
    - Multiple skills → interactive `inquire::Select` prompt.
-5. Copy skill folder into `{school_root}/skills/{identity_path}/`. For top-level skills
+5. Copy skill folder into `{authored_school}/skills/{identity_path}/`. For top-level skills
    (most common) the identity is the leaf name; nested skills preserve their source path
    (e.g. `typescript/coding`).
 6. Append `[[imports]]` entry to `school.toml` (upsert — replace if skill name already
@@ -158,7 +188,8 @@ muscle-memory; `pull` is the canonical verb.
 
 ### Flow
 
-1. Read `[[imports]]` from `school.toml`.
+1. Resolve the authored school root (cwd-first rule above); read `[[imports]]` from its
+   `school.toml`.
 2. If empty, print "no imports to pull" and return.
 3. Group imports by source (avoid cloning same repo twice).
 4. For each source group: clone to temp dir, discover skills, resolve `[[imports]]` per
@@ -175,7 +206,8 @@ muscle-memory; `pull` is the canonical verb.
 
 ## `ace school skills`
 
-List the skills currently in the school's `skills/` directory. Read-only.
+List the skills currently in the authored school's `skills/` directory (cwd-first rule
+above). Read-only.
 
 For each skill: name (from `SKILL.md` frontmatter when available, else identity-path
 leaf), word count across all files in the skill folder, and description. The footer
@@ -183,22 +215,22 @@ prints the skill total, aggregate word count, and a token estimate (~1.33 tokens
 
 Porcelain output is `<identity-path><TAB>words`, one per line, no footer.
 
-Skill discovery here walks `<school>/skills/` recursively for `SKILL.md` files. Each
-found skill is keyed by its identity path (the location relative to
-`<school>/skills/`). Tier dirs (`.curated/` / `.experimental/` / `.system/`) are not
-honored at the school boundary — those are upstream-source conventions; this listing
-reflects what the school itself stores after import.
+Skill discovery here walks the authored school's `skills/` recursively for `SKILL.md`
+files. Each found skill is keyed by its identity path (the location relative to
+`skills/`). Tier dirs (`.curated/` / `.experimental/` / `.system/`) are not honored at
+the school boundary — those are upstream-source conventions; this listing reflects what
+the authored school itself stores after import.
 
 ## `ace school validate` (alias: `ace school check`)
 
 Typo-check `{{ ... }}` placeholders in `[[backends]].cmd[]` and `[[backends]].env` values
-against the closed set `{school_dir, project_dir, home, backend_dir}` (defined by
-`docs/decisions/2026-05-09-backend-cmd-templating.md`).
+against the closed set `{school_dir, project_dir, home, backend_dir}` (defined in
+[backend.md → Custom Backends](../backend.md#custom-backends)).
 
 ### Flow
 
-1. Resolve school root via `ace.toml` 's specifier (`Ace::require_school`).
-2. Load `school.toml`.
+1. Resolve the authored school root (cwd-first rule above).
+2. Load its `school.toml`.
 3. For each `[[backends]]` decl, parse every `cmd[i]` and every `env[key]` value as a
    template. Any placeholder name not in the closed set is reported as an issue.
 4. Each issue is paired with a Levenshtein-≤2 did-you-mean suggestion when one of the
@@ -219,8 +251,7 @@ Suggestion is omitted when no close match exists.
 
 - `0` — clean. A success message (`school.toml looks good`) is emitted.
 - `3` (operational) — one or more issues reported. The error line `N validation issue(s)
-  found` follows the issue list. See
-  [exit codes](../../decisions/2026-05-30-exit-codes.md).
+  found` follows the issue list. See [exit codes](../exit-codes.md).
 
 ### Scope (v1)
 
@@ -231,7 +262,8 @@ explicitly.
 
 ## `ace diff`
 
-Show uncommitted changes in the school clone, including untracked files.
+Consumer-side: `ace diff` always operates on the **linked school**, never the authored
+one. Shows uncommitted changes in the linked school clone, including untracked files.
 
 - Runs `git add -N .` (intent-to-add) before diffing so new files appear in the output.
 - Prints `# school-clone\t<path>` as the first line (metadata, tab-separated).

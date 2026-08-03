@@ -7,17 +7,20 @@ school. The other mode — authoring a school itself — is covered in
 The two modes are distinguished by the *command*, not by any marker file: bare `ace` and
 `ace setup` / `ace pull` operate in project mode (reading `ace.toml`, resolving the
 specifier, syncing into the project); `ace school <subcmd>` operates in school-authoring
-mode (the cwd's `school.toml` is the file being edited). A workdir can carry both files —
-for example a school that dogfoods itself via `school = "."` — without ambiguity, because
-resolution is always specifier-driven.
+mode (the cwd's `school.toml` — the authored school — is the file being edited). A
+workdir can carry both files — for example a school that dogfoods itself via
+`school = "."` — without ambiguity: consumer commands resolve the linked school by
+specifier; authoring commands resolve the authored school cwd-first
+(`school/school-commands.md`).
 
 `ace setup <owner/repo>` is a required first step before using ACE in a project. It must
 be run explicitly — ACE does not auto-detect or auto-initialize.
 
 `ace setup .` is a project-repo variant — `school = "."` declares the school is embedded
 in the same tree (e.g. monorepo). It does NOT create a `school.toml`; an embedded school
-must already exist somewhere addressable by the specifier. Bootstrapping a brand-new local
-school is a separate, undesigned feature.
+must already exist somewhere addressable by the specifier. Bootstrapping a brand-new
+same-repo school from `ace setup` is a separate, undesigned feature (use
+`ace school init`).
 
 ## Guards
 
@@ -28,7 +31,9 @@ Setup fails immediately if:
 
 ## Specifier Resolution
 
-Before calling the Setup action, the CLI layer resolves which school to use:
+All of setup is consumer-side: every "school" in this file is the **linked school**
+(glossary: `school/overview.md`). Before calling the Setup action, the CLI layer
+resolves which school to link:
 
 - **`ace setup <owner/repo> `** — specifier is the argument.
 - **`ace setup`** (no argument) — resolve from cache:

@@ -92,7 +92,8 @@ selection candidate — `skills_base` is the admissible-and-discovered set.
 
 ## `[[imports]]` schema
 
-`[[imports]]` in `school.toml` declares which upstream sources the school pulls skills
+`[[imports]]` in `school.toml` declares which upstream sources the authored school
+pulls skills
 from, and which skills it accepts from each source.
 
 ### Canonical shape
@@ -255,7 +256,7 @@ They share infrastructure where the shapes line up: the discovered → validated
 typestate progression, the trace-of-steps concept, the per-skill diagnostics
 bag, the glob and filter utilities. They diverge where the layers differ — the
 project resolver's scope taxonomy (user / project / local / school / override)
-does not apply at the school level, where the imports resolver tracks
+does not apply in the imports-resolver scope, where the imports resolver tracks
 `[[imports]]` declaration index and source name instead. Verdict variants are
 layer-specific: the project resolver decides included or excluded; the imports
 resolver also distinguishes "lost to a higher-precedence declaration" to power

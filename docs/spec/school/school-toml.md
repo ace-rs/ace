@@ -1,6 +1,9 @@
 # school.toml
 
-The `school.toml` file lives at the root of a school repository. It declares metadata,
+The `school.toml` file lives at the root of a school repository. Authoring commands
+read and write it as the authored school's file; consumer commands read the linked
+school's copy from the resolved root (glossary: [overview.md](overview.md)). It
+declares metadata,
 configuration, MCP servers, environment, and project catalog for the school.
 
 ## Example
@@ -189,7 +192,9 @@ ACE never proactively rewrites a `school.toml` that the user did not cause to be
 saved. Singular `skill = ...` keys persist on disk until a write happens.
 
 Writes happen during `ace import`, `ace school pull`, `ace school add-import`,
-and any other `ace school <subcmd>` that updates `school.toml`. The writer
+and any other `ace school <subcmd>` that updates `school.toml`. Writes always
+target the **authored school**; a write never lands in a linked clone except
+through the announced fallback (`school-commands.md`). The writer
 always emits the canonical plural form, so the whole file normalizes on the
 next save — incremental modernization for free as authors continue using their
 school.

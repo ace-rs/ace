@@ -7,7 +7,10 @@ each boundary. Companion to [model.md](model.md) (what a skill IS) and
 
 ## School storage layout
 
-Schools store imported skills under `<school>/skills/<identity-path>/`. The outer
+This section describes the **authored school's** on-disk shape — `<school>` below is
+the authored school root ([glossary](../school/overview.md)); the same layout is what
+consumers later read from their linked school. Schools store imported skills under
+`<school>/skills/<identity-path>/`. The outer
 `skills/` is the school's category root (sibling to `rules/`, `commands/`, `agents/` per
 [school/overview.md § Structure](../school/overview.md#structure)). The inner segments are
 the **identity path** — already prefix-stripped at the source side, so no

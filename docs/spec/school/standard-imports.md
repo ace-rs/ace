@@ -1,16 +1,18 @@
 # Standard School Imports
 
 Every school created by `ace school init` is seeded with one
-`[[imports]]` entry pointing at the **standard school** — the canonical
-source of skills that every ACE school is expected to inherit.
+`[[imports]]` entry pointing at the **standard import source** — the canonical
+source of skills that every ACE school is expected to inherit. (An import
+source is neither the linked nor the authored school; see the glossary in
+[overview.md](overview.md).)
 
-## The standard school
+## The standard import source
 
 - Source: `ace-rs/school` (GitHub `owner/repo` shorthand).
 - Imported as: `skills = ["*"]` (every skill in the source).
 - Resolved on every `ace school pull`.
 
-The standard school is what provides `ace-school` (the workflow skill that
+The standard import source is what provides `ace-school` (the workflow skill that
 documents school management, `ace diff`, PR creation, etc.) and any other
 base-level skills the ACE project considers universal.
 
@@ -32,7 +34,7 @@ Treating it as an import instead means:
 ## What `ace school init` does
 
 1. Writes `school.toml` with the seeded `[[imports]]` entry.
-2. Runs `PullImports`, which clones `ace-rs/school` into the source cache
+2. Runs `PullImports`, which clones `ace-rs/school` into the import cache
    and copies all matching skills into the new school's `skills/`.
 3. Leaves the user with a populated school ready to commit and push.
 
@@ -61,4 +63,5 @@ written; re-running with network restores correctness.
 ## Related
 
 - `docs/spec/school/school-commands.md` — `ace school init` step list.
-- `docs/decisions/2026-04-22-action-layout.md` — action role split.
+- `docs/spec/architecture.md` — action role split (`actions/project/` vs
+  `actions/school/`).

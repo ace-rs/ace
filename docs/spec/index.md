@@ -58,8 +58,8 @@ Skills always track latest main — projects never pin to a specific version.
 
 Skills model how teams actually work. When a team agrees on a new convention, that
 decision applies immediately to all ongoing work — nobody files a ticket to "upgrade" each
-project. A school change propagates to every project on next sync, no per-project ceremony
-required.
+project. A linked-school change propagates to every consuming project on next sync, no
+per-project ceremony required.
 
 Schools evolve independently of projects. Skills should work across any project at any
 point in its history — when compatibility issues arise, the LLM resolves the gap itself.
@@ -76,9 +76,10 @@ intent and preferences, not reproducible builds. Changes are still tracked — s
 git repositories with full commit history. What ACE avoids is per-project pinning to a
 specific school revision.
 
-Wildcard imports (`skill = "*"`, `skill = "frontend-*"`) follow the same principle: always
-pull latest, always overwrite. This is how the parent school pattern works (see
-`school/school-commands.md`).
+Wildcard imports (`skill = "*"`, `skill = "frontend-*"`) follow the same principle:
+always pull latest, always overwrite. This is authoring-side — how an authored school
+inherits from a parent import source (see `school/school-commands.md` § Parent school
+pattern).
 
 ## School
 
@@ -94,9 +95,9 @@ relationship to projects.
    [setup.md](setup.md))
 3. **Parse and merge** — layer configs together
 4. **Register MCP servers** — register `[[mcp]]` entries into the backend
-5. **Fetch school** — `git fetch` the school's repo (clone on first run)
-6. **Sync school folders** — pull latest and link school folders (skills, rules, commands,
-   agents) into the project
+5. **Fetch school** — `git fetch` the linked school's repo (clone on first run)
+6. **Sync school folders** — pull latest and link the linked school's folders (skills,
+   rules, commands, agents) into the project
 7. **Check tooling** — required CLI tools, language runtimes, etc.
 8. **Check project setup** — CLAUDE.md, MCP configs, project-specific requirements from
    source

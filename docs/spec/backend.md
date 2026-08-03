@@ -178,7 +178,7 @@ path.
 
 | Placeholder         | Resolves to                                                 |
 | ------------------- | ----------------------------------------------------------- |
-| `{{ school_dir }}`  | Active school root.                                         |
+| `{{ school_dir }}`  | The linked school root (the school this project consumes).  |
 | `{{ project_dir }}` | Project working directory.                                  |
 | `{{ home }}`        | `$HOME`.                                                    |
 | `{{ backend_dir }}` | `<project_dir>/<kind.backend_dir()>` for the resolved kind. |

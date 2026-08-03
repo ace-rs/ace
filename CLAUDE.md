@@ -51,28 +51,33 @@ Two distinct user contexts. Confusing them is the most common reasoning error he
 The two modes are distinguished by which *command* runs, not by any marker file:
 
 - **Project mode** — bare `ace` / `ace setup` / `ace pull`. Workdir is the user's
-  codebase consuming a school via `ace.toml`'s `school = "<specifier>"`. Actions in
-  `src/actions/project/`. See `docs/spec/setup.md`.
-- **School-authoring mode** — `ace school <subcmd>`. Workdir IS the school being
-  authored; `school.toml` is the file being edited. Actions in `src/actions/school/`.
-  See `docs/spec/school/`.
+  codebase consuming its **linked school** via `ace.toml`'s `school = "<specifier>"`.
+  Actions in `src/actions/project/`. See `docs/spec/setup.md`.
+- **School-authoring mode** — `ace school <subcmd>` and `ace import`. Workdir IS the
+  **authored school**; `school.toml` is the file being edited. Resolution is cwd-first
+  with an announced fallback to the linked school — never `require_linked_school`
+  directly. Actions in `src/actions/school/`. See `docs/spec/school/`.
+
+Glossary (canonical, `docs/spec/school/overview.md`): **linked school** = consumed via
+the specifier; **authored school** = under edit in cwd. Retired synonyms: "active
+school", "school in use", "local school".
 
 `ace setup .` is project-repo with an embedded school (monorepo). It does NOT bootstrap
-`school.toml`; "local school" is a separate, undesigned feature.
+`school.toml`; a same-repo authored school is a separate, undesigned feature.
 
-**Default school: `ace-rs/school`.** That's the base school for ACE consumers. The
-school used to author ACE itself is `prod9/school`, so this repo's `ace.toml` points
-at `prod9/school` by design — not a leftover from the ace-rs.dev migration. Do not
-"fix" it.
+**Default school: `ace-rs/school`.** That's the base linked school for ACE consumers.
+This repo's own `ace.toml` links `prod9/school` by design — not a leftover from the
+ace-rs.dev migration. Do not "fix" it.
 
-Detection: `Ace::require_school()` (`src/ace/mod.rs`) resolves the school exclusively
-via the `ace.toml` specifier; `school.toml` is read as content from the resolved root,
-never used to detect location. A school repo that dogfoods itself uses `school = "."`
-in its own `ace.toml` (written by `ace school init`). Errors split by cause:
-`SchoolError::NoSpecifier` ("run `ace setup`") when ace.toml lacks `school = ...`;
-`SchoolError::NotInitialized` ("run `ace school init`") when the resolved root exists
-but has no `school.toml`. Full case matrix in `docs/spec/school/overview.md` (Context
-Resolution).
+Detection: `Ace::require_linked_school()` (`src/ace/mod.rs`) resolves the **linked
+school** exclusively via the `ace.toml` specifier; `school.toml` is read as content
+from the resolved root, never used to detect location. Authoring commands never call it
+directly. A dogfooding school uses `school = "."` in its own `ace.toml` (written by
+`ace school init`) — the only case where authored and linked coincide. Errors split by
+cause: `SchoolError::NoSpecifier` ("run `ace setup`") when ace.toml lacks
+`school = ...`; `SchoolError::NotInitialized` ("run `ace school init`") when the
+resolved root exists but has no `school.toml`. Full case matrix in
+`docs/spec/school/overview.md` (Linked-School Resolution).
 
 ## Conventions
 

@@ -8,22 +8,43 @@ This spec covers the **school-authoring** mode — the maintainer curating a sch
 content. The other mode — a project consuming a school — is covered in
 [setup.md](../setup.md).
 
+## Glossary
+
+Two schools can be in play in one working directory. Every spec names which one it
+means; these are the canonical terms:
+
+- **Linked school** — the school a project *consumes*, resolved from `ace.toml`'s
+  `school = "<specifier>"` by `Ace::require_linked_school()`. Lives in the clone cache
+  (`~/.local/share/ace/{owner/repo}/`) or, for `school = "."`, in-tree ("embedded" is a
+  mode of the linked school, not a third concept). Touched by consumer-side commands
+  only: bare `ace`, `setup`, `pull`, `link`, `diff`, `skills`, `explain`, `mcp`.
+- **Authored school** — the school *under edit*: the cwd whose `school.toml` is being
+  written. Resolved cwd-first, never via `require_linked_school` directly. Touched by
+  authoring-side commands only: `ace school *` and `ace import` (cwd-first with an
+  announced fallback to the linked school — see
+  [school-commands.md](school-commands.md)).
+- **Import source** — an upstream repo named in a school's `[[imports]]`, fetched into
+  the *import cache* (`~/.cache/ace/imports/`). Neither linked nor authored;
+  `ace-rs/school` is the standard import source.
+- **Dogfooding school** — a school whose own `ace.toml` sets `school = "."` (written by
+  `ace school init`), making its authored and linked school the same directory. The
+  only case where the two coincide.
+
+Retired synonyms: "active school", "school in use", "local school", and bare "the
+school" / "school root" in any normative flow step — each must say linked or authored.
+
 The two modes are distinguished by **which command was invoked**, not by any marker file:
 
 - **Project mode** — bare `ace` and `ace setup` / `ace pull` / etc. Reads `ace.toml`,
-  resolves the specifier, syncs school content into the project. Actions live in
-  `src/actions/project/`.
-- **School-authoring mode** — `ace school <subcmd>`. Operates on the cwd as the school
-  root. The cwd's `school.toml` is the file being edited. Actions live in
+  resolves the specifier, syncs the linked school's content into the project. Actions
+  live in `src/actions/project/`.
+- **School-authoring mode** — `ace school <subcmd>` and `ace import`. Operates on the
+  authored school — the cwd's `school.toml` is the file being edited. Actions live in
   `src/actions/school/`.
 
 `school.toml` is school-side metadata. Its presence in a directory means "this directory
-is a school"; it does *not* mean "this is the school in use." Which school is in use is
-determined exclusively by `ace.toml` 's specifier.
-
-A school repo that wants to dogfood itself gets an `ace.toml` with `school = "."` from
-`ace school init`; bare `ace` from that workdir then resolves the embedded school via the
-specifier like any other consumer.
+is a school"; it does *not* mean "this is the linked school." Which school a project
+consumes is determined exclusively by `ace.toml` 's specifier.
 
 ## Specifier
 
@@ -50,12 +71,15 @@ Embedded schools (`.`) skip clone/fetch — they read directly from the working 
 Examples in this spec and elsewhere use `jedi/` and `sith/` as placeholder owners; pick
 the convention `<owner>/school` for real repos so the specifier reads obviously.
 
-## Context Resolution
+## Linked-School Resolution
 
-`Ace::require_school()` (`src/ace/mod.rs`) resolves the school's on-disk location
-exclusively from `ace.toml` 's specifier. The workdir's `school.toml` (if any) is *not*
-consulted as a location signal — a school repo that wants to dogfood itself uses
-`school = "."` in its own `ace.toml`. Inputs:
+`Ace::require_linked_school()` (`src/ace/mod.rs`) resolves the **linked school's**
+on-disk location exclusively from `ace.toml` 's specifier. It is consumption-side only:
+`ace school *` and `ace import` must never call it directly — they resolve the authored
+school cwd-first and reach the linked school only through the announced fallback
+([school-commands.md](school-commands.md)). The workdir's `school.toml` (if any) is
+*not* consulted as a location signal here — a school repo that wants to dogfood itself
+uses `school = "."` in its own `ace.toml`. Inputs (all rows resolve the linked school):
 
 - **A** — an `ace.toml` present in any layer: user, project, or local
 - **S** — `ace.toml` declares `school = ...`
@@ -82,12 +106,15 @@ of intent (project setup vs. school authoring). The generic "no config found" me
 stands; either `ace setup` or `ace school init` is the right next step depending on what
 the user means to do. A user-level `ace.toml` is such a signal: it carries a default
 school for every project that does not set its own, so a workdir with no project or local
-file still resolves. Precedence is unchanged — local overrides project overrides user. `ace school <subcmd>` itself is a separate path that requires a `school.toml` in
-the cwd; see [school-commands.md](school-commands.md).
+file still resolves. Precedence is unchanged — local overrides project overrides user.
+
+Authoring commands (`ace school <subcmd>`, `ace import`) do not enter this matrix as
+their primary mode: they resolve the authored school cwd-first and hit this resolution
+only on the announced fallback; see [school-commands.md](school-commands.md).
 
 ## Purpose
 
-The school is the single source of truth for how an organization's AI coding environment
+A school is the single source of truth for how an organization's AI coding environment
 behaves. It centralizes shared knowledge so that every developer on the team gets the same
 skills, conventions, and agent configurations — regardless of which project they're
 working on.

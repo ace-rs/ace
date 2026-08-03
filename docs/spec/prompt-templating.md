@@ -89,9 +89,9 @@ parsed template supports `placeholders()` (returns unique names) and `substitute
 
 | Placeholder          | Used in                                                 | Source                                        | Example                                  |
 | -------------------- | ------------------------------------------------------- | --------------------------------------------- | ---------------------------------------- |
-| `{{ school_name }}`  | `prompt_session.md`, project/school CLAUDE.md templates | School display name                           | `Acme`                                   |
+| `{{ school_name }}`  | `prompt_session.md`, project/school CLAUDE.md templates | Linked school display name                    | `Acme`                                   |
 | `{{ backend_dir }}`  | `prompt_previous_skills.md`, project CLAUDE.md template | Backend directory name                        | `.claude`                                |
-| `{{ school_clone }}` | `prompt_school_changes.md`                              | School clone path                             | `/home/user/.local/share/ace/org/school` |
+| `{{ school_clone }}` | `prompt_school_changes.md`                              | Linked school clone path                      | `/home/user/.local/share/ace/org/school` |
 | `{{ changes }}`      | `prompt_changes.md`                                     | Formatted change list (built by `session.rs`) | `- Added: \`new-skill\``                 |
 | `{{ names }}`        | `prompt_excluded_skills.md`                             | Excluded skill names, one bullet per line     | `- \`rust-coding\``                      |
 
