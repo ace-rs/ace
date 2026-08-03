@@ -81,7 +81,7 @@ impl Ace {
     /// Replace the runtime-override layer wholesale. The CLI builds an
     /// `AceToml` from global flags (--backend, --trust, --session-prompt,
     /// --env, ...) and hands it in once at startup. Higher-priority than
-    /// any on-disk layer (see `docs/decisions/2026-04-27-config-resolution-redesign.md`).
+    /// any on-disk layer (see `docs/spec/architecture.md`).
     pub fn set_overrides(&mut self, overrides: AceToml) {
         self.overrides = overrides;
         self.invalidate_resolved();
@@ -150,7 +150,7 @@ impl Ace {
     /// Build the `TemplateCtx` used to render `{{ ... }}` placeholders inside
     /// `[[backends]].cmd` and `env`. Unresolved school path → empty string,
     /// matching the unknown-placeholder rule in
-    /// `docs/decisions/2026-05-09-backend-cmd-templating.md`.
+    /// `docs/spec/backend.md § Path Templating`.
     fn template_ctx(&self) -> TemplateCtx {
         let school_dir = self
             .require_school()

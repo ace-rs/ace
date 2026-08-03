@@ -19,6 +19,8 @@ off to the underlying AI coding tool.
 - [skills/emit.md](skills/emit.md) — Where skills land: school storage, backend emit
   rule, loser-drop.
 - [skills/sync.md](skills/sync.md) — Consumer-side workflow: fetch, symlink, reconcile.
+- [skills/lifecycle.md](skills/lifecycle.md) — Typestate contract: the
+  `Discovered → Validated → Decided` lattice and the `Vetted` gate.
 - [prompt-templating.md](prompt-templating.md) — Session prompt composition and template
   rendering.
 - [mcp.md](mcp.md) — MCP server design (remote-only, OAuth delegation).
@@ -34,6 +36,8 @@ off to the underlying AI coding tool.
 - [school/standard-imports.md](school/standard-imports.md) — Standard `ace-rs/school`
   import seeded on `ace school init`.
 - [migrations.md](migrations.md) — On-disk stores, layout versions, migration policy.
+- [exit-codes.md](exit-codes.md) — Process exit-code contract and the variant→code map.
+- [connect.md](connect.md) — `ace connect` agent bridge (designed, not yet implemented).
 - [testing.md](testing.md) — Integration test strategy, TestEnv pattern.
 - [upgrade.md](upgrade.md) — Self-update: version check, background upgrade, `ace upgrade`.
 

@@ -10,7 +10,7 @@ history (`git log --diff-filter=D -- docs/notes docs/scratch`).
 Everything below dates from the 2026-05-09 dump of pre-`docs/` session research (much of
 it authored 2025-03-21). Treat every code path, file name, and version claim as
 historical: `src/state/actions/` no longer exists (actions moved to `src/actions/`
-per [action layout](../decisions/2026-04-22-action-layout.md)), and the backend matrix
+per [architecture § actions](../spec/architecture.md)), and the backend matrix
 has changed since.
 
 ---
@@ -75,7 +75,7 @@ now baked into [`spec/architecture.md`](../spec/architecture.md).
 - Cross-backend agent coordination had no standard protocol, so ACE was well-positioned
   to mediate but building it was premature. That premise was later overtaken — the
   bridge became a first-party feature; see
-  [fold ace connect into ace](../decisions/2026-05-30-fold-ace-connect-into-ace.md).
+  [ace connect spec](../spec/connect.md).
 
 **Stale**
 

@@ -228,7 +228,7 @@ enum Command {
 
 /// Error exit class. Success exits `0` via the normal `main()` return and never
 /// flows through `CmdError`, so there is no `Ok` here. See
-/// `docs/decisions/2026-05-30-exit-codes.md`.
+/// `docs/spec/exit-codes.md`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ExitCode {
     Usage,
@@ -352,7 +352,7 @@ impl CmdError {
     }
 
     /// Process exit class for this error. Wrapper variants delegate to the
-    /// inner error. See `docs/decisions/2026-05-30-exit-codes.md`.
+    /// inner error. See `docs/spec/exit-codes.md`.
     pub fn exit_code(&self) -> ExitCode {
         match self {
             Self::Adhoc { code, .. } => *code,
@@ -782,7 +782,7 @@ mod tests {
         assert!(err.hints().is_empty());
     }
 
-    // -- exit-code contract (docs/decisions/2026-05-30-exit-codes.md) --
+    // -- exit-code contract (docs/spec/exit-codes.md) --
 
     fn git_err() -> GitError {
         GitError::Exec {

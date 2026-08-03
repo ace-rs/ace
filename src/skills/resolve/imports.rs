@@ -8,9 +8,7 @@
 //!   - Imports resolver tracks `[[imports]]` declaration index + source.
 //!
 //! See `docs/spec/skills/selection.md` § `[[imports]]` schema, Cross-source
-//! merge, and Provenance. The decision doc is
-//! `docs/decisions/2026-05-26-skill-discovery-identity-storage.md`
-//! § Cross-source merge policy.
+//! merge, and Provenance.
 
 use std::collections::HashMap;
 

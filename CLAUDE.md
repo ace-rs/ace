@@ -42,7 +42,7 @@ Project-level additions live in `ace.toml`: `general-coding`, `rust-coding`,
   dispatched by `exit_on_err`). Build ad-hoc errors with `CmdError::usage`/
   `unavailable`/`failed` — the exit class is mandatory at construction; there is
   no catch-all `Other`. New leaf-error variants must be routed in the matching
-  `*_exit_code` classifier. Contract: `docs/decisions/2026-05-30-exit-codes.md`.
+  `*_exit_code` classifier. Contract: `docs/spec/exit-codes.md`.
 
 ## Project-Repo vs School-Repo Context
 
@@ -82,14 +82,15 @@ resolved root exists but has no `school.toml`. Full case matrix in
 ## Conventions
 
 - **Action pattern**: `run(&self, ace: &mut Ace)` in `src/actions/`. Split by role
-  (`project/` vs `school/`) — see `docs/decisions/2026-04-22-action-layout.md`.
+  (`project/` vs `school/`) — see `docs/spec/architecture.md` § `actions/`.
 - **Testing**: `cargo test`, `cargo test --test <name>`. Pure-logic in `#[cfg(test)]`;
   fs/git/symlinks in `tests/` with `TestEnv`. See `docs/spec/testing.md`.
 - **TUI**: `term_ui::Tui` + `Workflow` enum dispatch (no traits). `inquire` for prompts.
   See `docs/decisions/2026-03-15-no-crossterm.md`.
 - **CLI**: `ace paths` is `key\tvalue`, prints regardless of on-disk existence. Help
   text lives in clap doc comments; keep `--help` aligned with behavior.
-- **Storage**: see `docs/decisions/2026-04-22-index-toml-data-dir.md`. Git via
+- **Storage**: see `docs/spec/skills/sync.md` § Storage and `docs/spec/migrations.md`.
+  Git via
   `std::process::Command` only (no sqlite, no git crate).
 - **Flaude is test-only.** Don't mention it in user-facing help or public docs.
   Specs/code comments/CLAUDE.md are fine.

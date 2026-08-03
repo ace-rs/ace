@@ -204,9 +204,12 @@ required.
 - **Import source cache**: `~/.cache/ace/imports/{host}/{path…}/` (XDG_CACHE_HOME).
   Read-only upstream snapshots used during `ace import` and `ace school pull`; safe to
   delete.
-- **Index**: `~/.local/share/ace/index.toml` (XDG_DATA_HOME) — tracks downloaded schools.
-  See [index.toml lives in the data dir](../../decisions/2026-04-22-index-toml-data-dir.md);
-  the `~/.cache/ace/` path is legacy.
+- **Index**: `~/.local/share/ace/index.toml` (XDG_DATA_HOME) — tracks downloaded
+  schools. It lives beside the data it indexes, not in the cache dir: losing it to OS
+  cache hygiene would leave the clones in place but silently forget them. The index
+  cannot be replaced by scanning `~/.local/share/ace/*/*/.git` — disk gives no way to
+  recover which subpath of an `owner/repo:subpath` specifier was the school. The
+  `~/.cache/ace/` path is legacy (see [migrations.md](../migrations.md)).
 - **Cache key**: remote HEAD SHA. On SHA match: no-op. On SHA mismatch: pull + sync. First
   run: full clone + index entry.
 

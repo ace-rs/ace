@@ -4,7 +4,7 @@ Status: **decided** — emit name = `basename(identity)`; frontmatter `name` is 
 never an emit or identity key. Supply-chain "shadowing" is **not** defended structurally — it
 reduces to source-trust plus path-collision visibility and a fixed set of author-time
 warnings. Resolves the open sub-decision #1 of
-[emit & match](2026-05-26-skill-emit-and-match.md) toward basename-always, and supersedes the
+emit & match (folded into `docs/spec/skills/emit.md`) toward basename-always, and supersedes the
 namespaced-storage proposal of the supply-chain skill-shadowing note (deleted; see git
 history).
 
@@ -27,7 +27,7 @@ Two threads converged.
 ### 1. Name = `basename(identity)`, always
 
 Drop the `frontmatter.name ||` channel. Identity is the path (per
-[discovery & identity](2026-05-26-skill-discovery-identity-storage.md)); the path is the only
+discovery & identity (folded into `docs/spec/skills/model.md`)); the path is the only
 naming axis. The emitted directory name on every backend is `basename(identity)`. Frontmatter
 `name` is display-only — passed through verbatim, never read as an emit or match key.
 
@@ -88,26 +88,10 @@ mechanism, and it is already there.
 
 ### 4. Collision classes, and where each warns
 
-| Conflict / collision                                          | Surfaces at                 | Action                          | Domain  |
-| ------------------------------------------------------------- | --------------------------- | ------------------------------- | ------- |
-| Bad-char **identity** segment (bidi / control)                | discovery (every cmd); import | reject + warn; import hard-refuses | ACE  |
-| Spoofable **frontmatter** `name` (bad char / non-token)       | `import`, `school pull`     | warn + hint, still admitted     | ACE     |
-| Dead selector — `skills`/`exclude_skills` matches nothing     | `school validate`, `pull`   | informational                   | ACE     |
-| Selected skill was admission-rejected                         | `validate` / `pull`         | warn (asked for, refused)       | ACE     |
-| Same identity path from two sources                           | school tree at `pull` (git) | first-declared wins + warn      | ACE     |
-| **Flat collapse** — nested paths share a leaf on a flat-only backend | flat-emit sim at `validate`/`pull`; emit | warn + drop loser  | ACE     |
-| `frontmatter.name` ≠ `basename(identity)`                     | `school validate`           | warn — spec hygiene, not security | ACE   |
-| Backend keys/invokes on `frontmatter.name`                    | —                           | none — verbatim passthrough     | Backend |
-| Folder unsupported (e.g. `rules/` on Codex)                   | emit / sync                 | informational                   | ACE     |
-
-The flat-collapse row **cannot** be a git-diff fact — the colliding paths are distinct on
-disk. ACE computes it by simulating flat emit over the identity set ("do any two identities
-share a leaf?") and warns at `validate` / `pull`, shifted left from the consumer's emit so the
-author who can fix it actually sees it.
-
-**Warning principle.** ACE *warns* only on what it decides silently and automatically —
-admission rejecting a name, or a requested skill dropped by that rejection. Anything the author
-typed explicitly (including a selector that matches nothing) is at most *informational*.
+The full warning map lives in
+[selection.md § Collision and warning map](../spec/skills/selection.md); this decision
+established it, including the warning principle (warn only on what ACE decides silently;
+explicit author input is at most informational).
 
 ### 5. Rejected, and why
 
@@ -160,8 +144,8 @@ divergence warning cover them when a future import uses them.
   analysis, backend keying facts, upstream collision evidence) — removed in this commit; see
   git history.
 - Companion visual summary: `docs/scratch/2026-06-01-skill-lifecycle.html`.
-- Resolves sub-decision #1 of [emit & match](2026-05-26-skill-emit-and-match.md); builds on
-  [discovery & identity](2026-05-26-skill-discovery-identity-storage.md) and
+- Resolves sub-decision #1 of emit & match (folded into `docs/spec/skills/emit.md`); builds on
+  discovery & identity (folded into `docs/spec/skills/model.md`) and
   [name admission](2026-05-30-skill-name-admission-policy.md).
 - Specs: `emit.md` + `model.md` updated alongside this decision — the `frontmatter.name ||`
   emit rule is dropped and the path-as-name boundary recorded. The warning-set wording lands

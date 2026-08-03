@@ -18,7 +18,7 @@ protection envelope.
 ## Context
 
 Re-running a newer ACE over an already-provisioned project re-discovers and re-validates the
-school from scratch (per [the lifecycle decision](2026-06-04-skill-lifecycle-typestate.md),
+school from scratch (per [the lifecycle spec](../spec/skills/lifecycle.md),
 `validate` runs every process). A skill admissible under the old rules but rejected under the
 new ones lands in the `Rejected` partition instead of `Skills<Validated>`. The question:
 should the user be able to override that and keep the link?
@@ -87,7 +87,7 @@ is met without a hole:
 
 ## References
 
-- Depends on [the lifecycle decision](2026-06-04-skill-lifecycle-typestate.md) (the `validate`
+- Depends on [the lifecycle spec](../spec/skills/lifecycle.md) (the `validate`
   partition + `Vetted` gate that make eviction by-construction).
 - Applies [name admission policy](2026-05-30-skill-name-admission-policy.md) (self-healing
   rationale, discovery as gate of record) and

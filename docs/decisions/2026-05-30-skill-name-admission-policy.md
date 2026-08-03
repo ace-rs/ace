@@ -11,7 +11,7 @@
 > the display transform, never an admission axis. Everything else here stands.
 
 > **Partially superseded (2026-06-04)** by
-> [skill lifecycle typestate](2026-06-04-skill-lifecycle-typestate.md): the in-memory
+> [the lifecycle spec](../spec/skills/lifecycle.md): the in-memory
 > mechanism in *Abstraction Boundaries* — selection running over everything with
 > `rejected()` as a *view* on one collection — is replaced by a `validate` **partition**
 > that splits admissible from rejected before selection. The admission *predicate*, its
@@ -19,7 +19,7 @@
 > in-memory representation moves (partition vs. view).
 
 > **Supersedes** the *Sanitization (Q9)* section of
-> [`2026-05-26-skill-emit-and-match.md`](2026-05-26-skill-emit-and-match.md) and corrects
+> the emit & match decision (folded into `docs/spec/skills/emit.md`) and corrects
 > the corrupted *§ Approach* / boundary table in
 > [`../spec/skills/model.md`](../spec/skills/model.md). The whitelist intent in the
 > 2026-05-26 ruling stands; the spec's later "aspirational denylist" rewrite was an error
@@ -69,13 +69,9 @@ admission a predicate *there* means:
 
 ### Boundary model
 
-| Boundary                     | Operation                                  | Why                                                                 |
-| ---------------------------- | ------------------------------------------ | ------------------------------------------------------------------- |
-| **Discovery** (every op)     | Admit-predicate: exclude bad name + warn   | Gate of record. Version-current, universal, self-healing.           |
-| **Import** (`import`/`pull`) | *Additionally* hard-refuse: don't copy in  | Keeps ACE-authored schools clean *at rest*. Not load-bearing alone. |
-| **Terminal display**         | Transform (whitelist)                      | The only place mutation is correct — ACE rendering to its terminal. |
-| **Emit / symlink name**      | Structural only (traversal / NUL / length) | ACE's own filesystem safety. Not a content gate.                    |
-| **Backend file content**     | Nothing — symlink, verbatim                | Out of scope. Backends protect themselves.                          |
+The per-boundary table (discovery admit-predicate, import hard-refuse, terminal
+transform, emit structural checks, backend verbatim) lives in
+[model.md § Boundary policy](../spec/skills/model.md); this decision established it.
 
 ### ACE does not write backend frontmatter
 
@@ -104,18 +100,12 @@ over-engineering.
 
 ## The predicate
 
-The admission ruleset is the Unicode-class whitelist from the 2026-05-26 ruling, used as a
-**predicate** (not a transform): a name is admissible iff every character is in `L*`
-(letters), `M*` (marks), `N*` (numbers), `P*` (punctuation), `S*` (symbols), or `Zs`
-(space) — i.e. nothing in `C*` (control, incl. `Cf` format and the bidi-override block,
-`Cn` unassigned, `Co` private-use) and no `Zl` / `Zp`. It must also be structurally valid
-as a path component (no traversal, no `NUL`, within the length cap). Implementation uses a
-one-shot generated Unicode table committed to source, with no build-time or runtime
-dependency.
-
-The same whitelist, applied as a **transform**, is what `skills::name::render` uses to
-render untrusted text (rejected-skill warnings, descriptions, any non-name frontmatter ACE
-displays).
+The Unicode-class whitelist predicate itself is specced in
+[model.md § Name Admission](../spec/skills/model.md). The load-bearing choices ruled
+here: it is a **predicate**, never a transform (except at terminal display, where the
+same whitelist renders untrusted text via `skills::name::render`), and the
+implementation is a one-shot generated Unicode table committed to source — no
+build-time or runtime dependency.
 
 ## Resolved Follow-Ups
 

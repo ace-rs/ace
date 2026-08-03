@@ -13,9 +13,8 @@ disk → Tree → Resolved → Bindings (Backend / School / Skills) → Ace → 
 `Tree` is parsed only when something asks; `Resolved` is merged only after `Tree` exists;
 bindings are built only when a command reaches for them. Cache invalidation is explicit
 (`reload_tree`, `invalidate_*`) at the small set of write sites — after `ace config set`,
-`ace setup`, `ace school pull`. Rationale in
-[2026-04-27-config-resolution-redesign.md](../decisions/2026-04-27-config-resolution-redesign.md);
-package placement in
+`ace setup`, `ace school pull`. Layer contracts and provenance rules in
+[configuration.md](configuration.md); package placement in
 [2026-06-05-resolver-dissolution.md](../decisions/2026-06-05-resolver-dissolution.md).
 
 ## Dependency law
@@ -66,7 +65,7 @@ tree-load failures bubble without double-handling.
   [school/overview.md](school/overview.md)).
 - `skills/` — the typestate model `Skill<Discovered> → Skill<Validated> → Skill<Decided>`,
   the sealed `Vetted` gate, and the `Locator` identity type (concrete names in the
-  [lifecycle decision](../decisions/2026-06-04-skill-lifecycle-typestate.md)). `discover`
+  [lifecycle spec](skills/lifecycle.md)). `discover`
   walks the cascade in [model.md](skills/model.md#discovery-cascade); `skills/resolve/`
   stamps the decided set with diagnostics. `SkillError` wraps discovery I/O plus upstream
   `ConfigError` / `SchoolError`.
@@ -95,11 +94,17 @@ loading.
 
 ### `actions/` — operations on `Ace` and the filesystem
 
-Peer to bindings, not nested. Grouped by user role (see
-[action-layout](../decisions/2026-04-22-action-layout.md)): `actions/project/` (consumer
-side — setup, prepare, clone, link, MCP register/remove, list/explain skills) and
-`actions/school/` (maintainer side — init, add_import, pull_imports). Each action has its
-own scoped error type (`SetupError`, `PrepareError`, …); see `CLAUDE.md`.
+Peer to bindings, not nested. Grouped by the **role of the invoking user**, never by the
+subject a function writes to — the written-to directory is an implementation detail; the
+role defines the CLI tree and the invariants each command can assume. `actions/project/`
+(consumer side — setup, prepare, clone, link, MCP register/remove, list/explain skills)
+and `actions/school/` (maintainer side — init, add_import, pull_imports). The two
+pull-shaped operations share the verb deliberately: `project::Pull` pulls the linked
+school clone from its git origin; `school::PullImports` pulls imported skills from
+upstream sources into the authored school's `skills/` — scope names the side, verb names
+the shape. Scopes stay flat: with a handful of actions each, file names disambiguate
+(`add_import.rs`, `pull_imports.rs`); no sub-submodules. Each action has its own scoped
+error type (`SetupError`, `PrepareError`, …); see `CLAUDE.md`.
 
 ### Standalone modules
 
@@ -118,7 +123,7 @@ The skill lifecycle crosses layers: discovery and admission live in `skills/`, s
 `skills/resolve/`, emit in a project-side action. A skill flows
 `discover → validate → resolve → emit`. The behavioral spec is under [`skills/`](skills/)
 (`model.md`, `selection.md`, `emit.md`); the typestate shape and its `Vetted` gate are in
-the [lifecycle decision](../decisions/2026-06-04-skill-lifecycle-typestate.md).
+the [lifecycle spec](skills/lifecycle.md).
 
 ### Identity is constructed solely by discovery
 

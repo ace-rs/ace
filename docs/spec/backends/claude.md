@@ -38,8 +38,10 @@ session. Passing `--continue --system-prompt "..."` together does not help — `
 rejected before `--system-prompt` is considered.
 
 **ACE strategy:** ACE prints a hint before exec'ing with `--continue`, telling the user to
-run `ace new` if resume fails. No automatic retry — the user handles it.
-See `docs/decisions/2026-04-09-resume-fallback.md`.
+run `ace new` if resume fails. No automatic retry, deliberately: any retry wrapper
+(`|| claude ...`) falls back silently on *all* errors, masking auth failures and
+crashes behind a fresh session — a visible error beats a silent wrong recovery. ACE
+`exec()`s into the backend, so it cannot catch the failure itself.
 
 ## MCP Registration
 

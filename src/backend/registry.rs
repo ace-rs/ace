@@ -14,7 +14,7 @@ use crate::templates::Template;
 
 /// Render context for `{{ ... }}` placeholders inside `[[backends]].cmd` and
 /// `env` values. `{{ backend_dir }}` is derived per-decl from the resolved
-/// `Kind`, not carried here. See `docs/decisions/2026-05-09-backend-cmd-templating.md`.
+/// `Kind`, not carried here. See `docs/spec/backend.md § Path Templating`.
 #[derive(Debug, Default, Clone)]
 pub struct TemplateCtx {
     pub school_dir: String,
@@ -162,7 +162,7 @@ fn merge_decl(
 
 /// Build the placeholder map for a single decl. `backend_dir` is per-decl
 /// because it depends on the resolved `Kind`. See
-/// `docs/decisions/2026-05-09-backend-cmd-templating.md`.
+/// `docs/spec/backend.md § Path Templating`.
 fn render_vars(ctx: &TemplateCtx, kind: Kind) -> HashMap<String, String> {
     BackendVars::build(ctx, kind).into_map()
 }

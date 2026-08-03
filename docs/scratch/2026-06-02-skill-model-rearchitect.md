@@ -141,6 +141,6 @@ Minor findings from the same audit, not load-bearing but cheap to fix while in h
   the boundary this builds on.
 - [name admission policy](../decisions/2026-05-30-skill-name-admission-policy.md)
   § Abstraction Boundaries — already flags `Skill.name: String -> SkillId` as deferred.
-- [discovery & identity](../decisions/2026-05-26-skill-discovery-identity-storage.md).
+- discovery & identity (folded into `../spec/skills/model.md`).
 - `docs/spec/skills/model.md` § Type-safety invariant — the claim the code must be made to
   honor.

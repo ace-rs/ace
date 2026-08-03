@@ -23,8 +23,4 @@ silently never applied.
 - `git diff` for skill change detection works reliably with connected history.
 - Simplifies git operations to standard clone/fetch/merge — no special flags.
 
-## Changes
-
-- `git::clone_shallow` → `git::clone_repo` (drop `--depth 1 --single-branch`)
-- `Git::fetch_shallow` → `Git::fetch` (drop `--depth 1`)
-- `--no-tags` retained on both — school repos have no useful tags.
+`--no-tags` is retained on clone and fetch — school repos have no useful tags.

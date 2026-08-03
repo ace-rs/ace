@@ -27,7 +27,7 @@ First `Some` wins in this priority order (highest to lowest):
 2. Local — `ace.local.toml`
 3. Project — `ace.toml`
 4. User — `~/.config/ace/ace.toml`
-5. `school.toml` — school-level default
+5. `school.toml` — the linked school's default
 
 Fallback if no layer specifies backend: `claude`.
 
@@ -54,7 +54,7 @@ Each backend must provide:
   off to the child). When `resume = true`, some backends may fail if no prior session
   exists (Claude) while others handle it gracefully (Codex). ACE prints a hint before exec
   so the user knows to run `ace new` on failure. See
-  `docs/decisions/2026-04-09-resume-fallback.md`.
+  [backends/claude.md → Session Resume](backends/claude.md#session-resume).
 - **`exec_one_shot(req)`** — spawn the backend non-interactively and capture
   stdout/stderr. Builds its Command from `OneShotRequest` (prompt source, project dir,
   env, extra args; no resume, trust, or session prompt — the non-interactive entry point
@@ -62,7 +62,7 @@ Each backend must provide:
   `io::Result<std::process::Output>` — caller inspects `status.success()` and `stderr` for
   non-zero exits. `ace -p` is the only caller — ACE itself no longer drives the backend
   programmatically. See
-  `docs/decisions/2026-05-07-polymorphic-flags.md`.
+  § Intent Mapping below.
 - **`mcp_list()`** — list currently registered MCP server names.
 - **`mcp_add(entry)`** — register a remote MCP server.
 - **`mcp_remove(name)`** — unregister a remote MCP server by name.
@@ -76,9 +76,15 @@ See per-backend specs for implementation details.
 
 ## Intent Mapping
 
-`exec_session` and `exec_one_shot` are the two transport methods. Each backend builds its
-argv from the matching request type. The argv builder is the polymorphic core; transport
-just decides whether to exec-replace or spawn-and-capture.
+`exec_session` and `exec_one_shot` are the two transport methods — deliberately two, not
+one `exec(Intent)`: the return types differ fundamentally (never-returns vs captured
+`Output`), and a unified signature would lie about that at the type level. Each backend
+builds its argv from the matching request type. The argv builder is the polymorphic core;
+transport just decides whether to exec-replace or spawn-and-capture.
+
+Known trade-off: `ace -p` routes through `exec_one_shot`, which captures-then-prints —
+output buffers until the child exits rather than streaming. Accepted; a third
+spawn-and-tee transport isn't worth the surface area unless user feedback flags it.
 
 ### Per-Backend Argv
 
@@ -170,6 +176,12 @@ user → project → local. Later layers may add new entries or partially overri
 ones. The selected backend name (resolved per the [Resolution Order](#resolution-order)
 above) is then looked up in the final registry; an unknown name is `BackendError::Unknown`.
 
+Session-start sites recover from `Unknown` interactively: on a TTY, a picker over the
+registry names, then re-resolve with the pick as a runtime override and print
+`to make permanent: ace config set backend <pick>`; without a TTY, hard fail with the
+same hint inlined. Never a silent fallback — a wrong-backend run could route prompts to
+the wrong vendor, which is worse than failing.
+
 ### Path Templating
 
 `cmd[]` entries and `env` values may use `{{ ... }}` placeholders, rendered at bind time.
@@ -183,8 +195,15 @@ path.
 | `{{ home }}`        | `$HOME`.                                                    |
 | `{{ backend_dir }}` | `<project_dir>/<kind.backend_dir()>` for the resolved kind. |
 
-Unknown names render to empty (a future `ace school validate` will surface typos). See
-[../decisions/2026-05-09-backend-cmd-templating.md](../decisions/2026-05-09-backend-cmd-templating.md).
+The placeholder set is closed by design: shell-style expansion is open-ended (every env
+var in scope is reachable) and context-sensitive at spawn time, while named placeholders
+are auditable and stable across machines. An env var is routed through `env = {...}`
+plus a `{{ ... }}` reference, or written as a literal path. Rendering happens in
+`registry::bind` after `kind` is resolved (so `{{ backend_dir }}` knows its kind);
+`Backend.cmd` and `Backend.env` carry fully rendered strings — `exec_session` /
+`exec_one_shot` never see template syntax. Unknown names render to empty;
+`ace school validate` surfaces typos
+([school-commands.md](school/school-commands.md)).
 
 ### Use Cases
 

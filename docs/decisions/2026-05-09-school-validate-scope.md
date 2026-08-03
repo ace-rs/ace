@@ -5,7 +5,7 @@ no auto-hooks into `pull` / `setup`.
 
 ## Problem
 
-`docs/decisions/2026-05-09-backend-cmd-templating.md` shipped templated
+`docs/spec/backend.md § Path Templating` shipped templated
 `{{ ... }}` placeholders in `[[backends]].cmd[]` and `env` values, with
 unknown placeholders rendering to empty strings. Typos surface as missing
 path segments at exec time — the failure is silent at config-write time
@@ -49,7 +49,7 @@ renderer cannot drift.
 - **Imported-school `[[backends]]` merge concerns.** Tracked as a
   separate spec/decision; today only the active `school.toml`'s
   `[[backends]]` are merged (`resolver::merge::backend_decls`). Validate
-  v1 walks only the active school's decls — same scope as the renderer.
+  v1 walks only the linked school's decls — same scope as the renderer.
 
 ## Why a closed-set check (not "render and compare")
 
@@ -64,7 +64,7 @@ typo regardless of context.
 - `src/templates/mod.rs` — `check`, `UnknownPlaceholder`.
 - `src/backend/registry.rs` — `BackendVars` (typed catalogue + values).
 - `src/actions/school/validate.rs` — walk + print.
-- `docs/decisions/2026-05-09-backend-cmd-templating.md` — original
+- `docs/spec/backend.md § Path Templating` — original
   placeholder set + "validation deferred" non-goal.
 - `docs/spec/school/school-commands.md` — `ace school validate` user
   docs.

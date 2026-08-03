@@ -273,6 +273,32 @@ Project-resolved and import-resolved skills are distinct kinds. A
 project-resolved skill cannot be substituted where an import-resolved skill is
 expected, and vice versa — the wrong-layer mix-up is unrepresentable.
 
+## Collision and warning map
+
+Every collision or conflict class, where it surfaces, and what ACE does:
+
+| Conflict / collision                                          | Surfaces at                 | Action                          | Domain  |
+| ------------------------------------------------------------- | --------------------------- | ------------------------------- | ------- |
+| Bad-char **identity** segment (bidi / control)                | discovery (every cmd); import | reject + warn; import hard-refuses | ACE  |
+| Spoofable **frontmatter** `name` (bad char / non-token)       | `import`, `school pull`     | warn + hint, still admitted     | ACE     |
+| Dead selector — `skills`/`exclude_skills` matches nothing     | `school validate`, `pull`   | informational                   | ACE     |
+| Selected skill was admission-rejected                         | `validate` / `pull`         | warn (asked for, refused)       | ACE     |
+| Same identity path from two sources                           | school tree at `pull` (git) | first-declared wins + warn      | ACE     |
+| **Flat collapse** — nested paths share a leaf on a flat-only backend | flat-emit sim at `validate`/`pull`; emit | warn + drop loser  | ACE     |
+| `frontmatter.name` ≠ `basename(identity)`                     | `school validate`           | warn — spec hygiene, not security | ACE   |
+| Backend keys/invokes on `frontmatter.name`                    | —                           | none — verbatim passthrough     | Backend |
+| Folder unsupported (e.g. `rules/` on Codex)                   | emit / sync                 | informational                   | ACE     |
+
+The flat-collapse row **cannot** be a git-diff fact — the colliding paths are distinct
+on disk. ACE computes it by simulating flat emit over the identity set ("do any two
+identities share a leaf?") and warns at `validate` / `pull`, shifted left from the
+consumer's emit so the author who can fix it actually sees it.
+
+**Warning principle.** ACE *warns* only on what it decides silently and automatically —
+admission rejecting a name, or a requested skill dropped by that rejection. Anything the
+author typed explicitly (including a selector that matches nothing) is at most
+*informational*.
+
 ## Out of scope
 
 - **Lockfile / pinning** — see

@@ -1,16 +1,8 @@
-# Differentiated Process Exit Codes
-
-- **Date:** 2026-05-30
-- **PR:** manual
-- **Status:** accepted
-
-Baseline: ACE v0.7.1.
-
-## Decision
+# Process Exit Codes
 
 ACE classifies every error exit into one of four codes via an `ExitCode` enum on
-`CmdError`. `exit_on_err` dispatches on `err.exit_code().code()` instead of the
-former unconditional `exit(1)`.
+`CmdError`. `exit_on_err` dispatches on `err.exit_code().code()`. This file is the
+contract; scripts and CI may branch on these values.
 
 | Code  | Class         | Meaning                                                   |
 | ----- | ------------- | --------------------------------------------------------- |
@@ -25,9 +17,9 @@ exits via the normal `main()` return and never flows through `CmdError`, so the
 enum models only the four *error* classes (an error that is "Ok" is
 unrepresentable).
 
-The one-shot child exit code (`ace -p`) bypasses the enum — it already has its own
-tested `exit(child_code)` passthrough (`one_shot_exit_code_propagates`). SIGINT
-keeps its direct `exit(130)` in the Ctrl+C handler.
+Two bypasses: the one-shot child exit code (`ace -p`) passes the backend child's
+code through directly (`one_shot_exit_code_propagates`), and SIGINT keeps its
+direct `exit(130)` in the Ctrl+C handler.
 
 ## The classification rule
 
@@ -65,30 +57,10 @@ maps to `Unavailable` because the dominant source is stale config (the interacti
 `recover_backend` picker exists precisely for that case), and "the backend you asked
 for isn't available" reads true for both.
 
-## Why a contract, not the status quo
+## No un-classified errors
 
-Before this, every error path returned `1`. A shell script, Makefile, or CI step
-driving `ace` could not tell "you invoked me wrong" from "the clone failed" from
-"you hit Ctrl+C" — the single most-requested distinction for any user-facing CLI.
-The four-code scheme is deliberately small: enough to branch on, not a per-error
-catalogue that ossifies into a compatibility burden.
-
-## Killing `CmdError::Other`
-
-The blocking obstacle was `CmdError::Other(String)` (plus its hinted twin
-`OtherHinted`): ~30 call sites used it for *both* usage errors and operational
-failures, so no variant→code rule could be correct. A bare `Other` is a lazy
-escape hatch — it lets an author dodge the one decision that matters here.
-
-`Other`/`OtherHinted` are collapsed into a single ad-hoc variant whose exit class is
-**mandatory at construction**:
-
-```rust
-CmdError::Adhoc { message: String, hints: Vec<String>, code: ExitCode }
-```
-
-reachable only through classifying constructors — there is no un-classified
-fallback to grab:
+There is no catch-all variant. Ad-hoc errors carry their exit class **mandatorily
+at construction** through classifying constructors:
 
 ```rust
 CmdError::usage("cannot combine --user and --project")     // 1
@@ -97,10 +69,9 @@ CmdError::failed(format!("download failed: {e}"))          // 3
 CmdError::unavailable("...").with_hint("try: ace setup")   // hints, any class
 ```
 
-Renaming `Other` to `Unexpected` (the obvious alternative) was rejected: it keeps
-the catch-all, just relabeled. The forcing function is the *mandatory code*, not the
-name. A side benefit: recovery hints, previously only on `OtherHinted`, now attach
-to any ad-hoc error.
+A new leaf-error variant must be routed in the matching `*_exit_code` classifier;
+an un-classified fallback must not be (re)introduced — the mandatory code is the
+forcing function that keeps the map below correct.
 
 ## Variant → code map
 
@@ -121,7 +92,6 @@ e.g. `PrepareError::Config(ConfigError::Parse)` is `Usage`, `PrepareError::Clone
 | `SetupError::AlreadySetUp` / `InitError::AlreadyExists` | `Usage`                    |
 | `GitError::*`                       | `Operational`                                 |
 | `PrepareError::Clone/Write`         | `Operational`                                 |
-| `Learn::BackendSpawn/BackendNonZero/TomlWrite` | `Operational`                      |
 | `AddImport::NoSkills/SkillNotFound` | `Usage`                                       |
 | `AddImport::Clone` / `PullImports::Git` | `Operational`                             |
 | `PullImports::InvalidDecl`          | `Usage`                                       |
@@ -132,18 +102,6 @@ e.g. `PrepareError::Config(ConfigError::Parse)` is `Usage`, `PrepareError::Clone
 \* Traversal is a fail-closed rejection of untrusted config content — the user
 authored a bad path, so `Usage`.
 
-## Backcompat
-
-None owed. ACE is a user-facing CLI pre-1.0; exit codes were never a published
-contract and no consumer depends on "everything is 1". Scripts testing `!= 0` are
-unaffected; only the moves `1 → {2, 3, 130}` are observable, and they are
-strict refinements. This document *is* the contract from here on.
-
-## Supersedes
-
-`docs/scratch/2026-05-30-exit-code-audit.md` (deleted) — the original scan that
-proposed the scheme. It under-counted the `Other` overload, missed the
-`ace school validate` exit and the wrapper-delegation requirement, and floated an
-optional fifth `McpUnhealthy` code (dropped: `mcp check` stays informational at
-exit 0 — adding a strict mode is a separate CLI surface change, not part of this
-contract).
+The scheme is deliberately small: enough for a script to branch on, not a
+per-error catalogue that ossifies into a compatibility burden. `mcp check` stays
+informational at exit `0`; a strict mode would be a separate CLI surface change.

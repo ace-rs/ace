@@ -6,8 +6,6 @@ get picked ([selection.md](selection.md)) and where they land ([emit.md](emit.md
 
 Grounded in two decisions:
 
-- [2026-05-26 — Skill discovery, identity, storage](../../decisions/2026-05-26-skill-discovery-identity-storage.md)
-- [2026-05-26 — Skill emit, sanitization, frontmatter](../../decisions/2026-05-26-skill-emit-and-match.md)
 
 ACE is compatible with [agentskills.io](https://agentskills.io) and skills.sh. skills.sh
 is the looser superset, so "compatible with both" effectively means "compatible with
@@ -136,7 +134,7 @@ operation cannot be written.
   nothing.
 
 Concrete marker, trait, and identity-type names live in the
-[lifecycle decision](../../decisions/2026-06-04-skill-lifecycle-typestate.md).
+[lifecycle spec](lifecycle.md).
 
 ## Frontmatter
 
