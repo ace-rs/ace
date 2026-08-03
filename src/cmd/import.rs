@@ -40,7 +40,7 @@ fn run_inner(
     }
 
     let normalized = git::normalize_source(source);
-    let school_root = ace.require_school()?.root.clone();
+    let school_root = ace.require_authoring_school()?;
 
     // --all is shorthand for --skill "*"
     let effective_skill = if all { Some("*") } else { skill };

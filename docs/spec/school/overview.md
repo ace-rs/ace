@@ -110,7 +110,11 @@ file still resolves. Precedence is unchanged — local overrides project overrid
 
 Authoring commands (`ace school <subcmd>`, `ace import`) do not enter this matrix as
 their primary mode: they resolve the authored school cwd-first and hit this resolution
-only on the announced fallback; see [school-commands.md](school-commands.md).
+only on the announced fallback; see [school-commands.md](school-commands.md). On that
+fallback, cases 1 and 2 collapse into `Err(NoSchool)` — an authoring command *has*
+declared intent, so the generic "no config" answer gives way to a hint naming both
+routes: "run `ace school init` to author a school here, or `ace setup` to link one".
+Cases 4–7 pass through unchanged.
 
 ## Purpose
 

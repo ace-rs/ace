@@ -14,6 +14,8 @@ pub enum SchoolError {
     NoSpecifier,
     #[error("school not initialized")]
     NotInitialized,
+    #[error("no school here and none linked")]
+    NoSchool,
 }
 
 impl SchoolError {
@@ -22,6 +24,9 @@ impl SchoolError {
             Self::NoSpecifier => Some("run `ace setup` to choose a school"),
             Self::NotInitialized => {
                 Some("run `ace school init` to bootstrap this repo as a school")
+            }
+            Self::NoSchool => {
+                Some("run `ace school init` to author a school here, or `ace setup` to link one")
             }
             Self::TreeLoad(_) => None,
         }

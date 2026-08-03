@@ -54,7 +54,7 @@ pub fn run(ace: &mut Ace, command: Command) {
 }
 
 fn run_validate(ace: &mut Ace) -> Result<(), CmdError> {
-    let school_root = ace.require_school()?.root.clone();
+    let school_root = ace.require_authoring_school()?;
     let count = Validate {
         school_root: &school_root,
     }
@@ -120,7 +120,7 @@ fn resolve_init_instructions_file(ace: &Ace) -> &'static str {
 }
 
 fn run_skills(ace: &mut Ace) -> Result<(), CmdError> {
-    let school_root = ace.require_school()?.root.clone();
+    let school_root = ace.require_authoring_school()?;
     let skills_dir = school_root.join("skills");
 
     if !skills_dir.is_dir() {
@@ -194,7 +194,7 @@ fn count_skill_words(skill_dir: &std::path::Path) -> usize {
 }
 
 fn run_pull(ace: &mut Ace) -> Result<(), CmdError> {
-    let school_root = ace.require_school()?.root.clone();
+    let school_root = ace.require_authoring_school()?;
 
     let result = PullImports {
         school_root: &school_root,

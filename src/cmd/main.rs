@@ -42,7 +42,7 @@ fn run_inner(
     let prepare_result = prepare_school(ace, &specifier)?;
 
     let project_dir = ace.project_dir().to_path_buf();
-    let school_clone = ace.require_school()?.clone_path.clone();
+    let school_clone = ace.require_linked_school()?.clone_path.clone();
 
     let (school_name, school_session_prompt) = {
         let school = ace

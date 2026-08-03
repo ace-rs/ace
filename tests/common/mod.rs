@@ -118,7 +118,7 @@ impl TestEnv {
 
     /// Set up the workdir as a school-repo that dogfoods itself: `school.toml`
     /// with the given contents, plus an `ace.toml` with `school = "."` so
-    /// `Ace::require_school` resolves to the workdir via the specifier.
+    /// `Ace::require_linked_school` resolves to the workdir via the specifier.
     pub fn write_dogfood_school(&self, school_toml: &str) {
         self.write_file("school.toml", school_toml);
         if !self.path("ace.toml").exists() {

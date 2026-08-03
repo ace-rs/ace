@@ -423,7 +423,9 @@ fn school_exit_code(e: &crate::school::SchoolError) -> ExitCode {
     use crate::school::SchoolError;
     match e {
         SchoolError::TreeLoad(c) => config_exit_code(c),
-        SchoolError::NoSpecifier | SchoolError::NotInitialized => ExitCode::Unavailable,
+        SchoolError::NoSpecifier | SchoolError::NotInitialized | SchoolError::NoSchool => {
+            ExitCode::Unavailable
+        }
     }
 }
 

@@ -7,12 +7,13 @@ fn import_no_school_context() {
     let env = TestEnv::new();
     env.git_init();
 
-    // No school.toml, no ace.toml — should fail with "no config" error.
+    // No school.toml, no ace.toml — hard error naming both bootstrap routes.
     env.ace()
         .args(["import", "owner/repo", "--skill", "my-skill"])
         .assert()
         .failure()
-        .stderr(predicates::str::contains("no config found"));
+        .stderr(predicates::str::contains("ace school init"))
+        .stderr(predicates::str::contains("ace setup"));
 }
 
 #[test]

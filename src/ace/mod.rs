@@ -153,7 +153,7 @@ impl Ace {
     /// `docs/spec/backend.md § Path Templating`.
     fn template_ctx(&self) -> TemplateCtx {
         let school_dir = self
-            .require_school()
+            .require_linked_school()
             .ok()
             .map(|p| p.root.display().to_string())
             .unwrap_or_default();
@@ -213,7 +213,7 @@ impl Ace {
     /// - Resolved root exists as a dir but lacks `school.toml` → `NotInitialized`
     ///   (covers cases 5 and 7: local pre-init / clone uninitialized upstream).
     /// - Resolved root absent → Ok; cmd/pull.rs self-heals via clone (case 8).
-    pub fn require_school(&self) -> Result<&SchoolPaths, SchoolError> {
+    pub fn require_linked_school(&self) -> Result<&SchoolPaths, SchoolError> {
         self.school_paths.get_or_try_init(|| {
             let tree = self.require_tree()?;
             let Some(spec) = tree.specifier() else {
@@ -225,6 +225,42 @@ impl Ace {
             }
             Ok(paths)
         })
+    }
+
+    /// Root of the authored school: `Some(project_dir)` iff the workdir holds
+    /// a `school.toml`. Location probe only — the file's content is never read
+    /// here. See the glossary in docs/spec/school/overview.md.
+    pub fn authored_school_root(&self) -> Option<PathBuf> {
+        let marker = self.project_dir.join("school.toml");
+        marker.exists().then(|| self.project_dir.clone())
+    }
+
+    /// Resolve the school an authoring command (`ace school pull` / `skills` /
+    /// `validate`, `ace import`) operates on. Cwd-first per
+    /// docs/spec/school/school-commands.md:
+    ///
+    /// 1. `cwd/school.toml` exists → the authored school is the cwd.
+    /// 2. Otherwise → the linked school, announced with a warning — the
+    ///    fallback is never silent.
+    /// 3. Neither → `NoSchool`, whose hint names both bootstrap routes.
+    pub fn require_authoring_school(&mut self) -> Result<PathBuf, SchoolError> {
+        if let Some(root) = self.authored_school_root() {
+            return Ok(root);
+        }
+
+        let linked = match self.require_linked_school() {
+            Ok(paths) => paths.root.clone(),
+            Err(SchoolError::NoSpecifier | SchoolError::TreeLoad(ConfigError::NoConfig)) => {
+                return Err(SchoolError::NoSchool);
+            }
+            Err(e) => return Err(e),
+        };
+
+        self.warn(&format!(
+            "no school.toml in current directory — using the linked school at {}",
+            linked.display()
+        ));
+        Ok(linked)
     }
 
     /// Re-read school.toml from disk and invalidate downstream caches so the
@@ -258,7 +294,7 @@ impl Ace {
     /// configured (skills require a school root) or discovery I/O fails.
     pub fn skills(&self) -> Result<&Skills<Decided>, SkillError> {
         self.skills.get_or_try_init(|| {
-            let school_root = &self.require_school()?.root;
+            let school_root = &self.require_linked_school()?.root;
             let tree = self.require_tree()?;
             // Discovery prunes (malformed identities) are surfaced at the
             // write/import boundaries (link/setup, pull, import). This getter is
@@ -354,7 +390,7 @@ mod tests {
     /// docs/spec/school/overview.md case 5: ace.toml with local specifier `.`,
     /// no school.toml at resolved root → MissingSchool, not Ok with stale paths.
     #[test]
-    fn require_school_local_specifier_uninitialized_returns_not_initialized() {
+    fn require_linked_school_local_specifier_uninitialized_returns_not_initialized() {
         let tmp = tempfile::TempDir::new().unwrap();
         std::fs::write(
             tmp.path().join("ace.toml"),
@@ -362,7 +398,9 @@ mod tests {
         )
         .unwrap();
         let ace = ace_at(tmp.path());
-        let err = ace.require_school().expect_err("expected NotInitialized");
+        let err = ace
+            .require_linked_school()
+            .expect_err("expected NotInitialized");
         assert!(matches!(err, SchoolError::NotInitialized), "got: {err:?}");
         assert_eq!(
             err.hint(),
@@ -375,7 +413,7 @@ mod tests {
     /// Removing the ace.toml would (correctly) yield NoSpecifier even though
     /// school.toml is present.
     #[test]
-    fn require_school_embedded_specifier_resolves_to_workdir() {
+    fn require_linked_school_embedded_specifier_resolves_to_workdir() {
         let tmp = tempfile::TempDir::new().unwrap();
         std::fs::write(
             tmp.path().join("ace.toml"),
@@ -384,7 +422,7 @@ mod tests {
         .unwrap();
         std::fs::write(tmp.path().join("school.toml"), "name = \"x\"\n").unwrap();
         let ace = ace_at(tmp.path());
-        let paths = ace.require_school().expect("Ok");
+        let paths = ace.require_linked_school().expect("Ok");
         assert_eq!(paths.root, tmp.path());
     }
 
@@ -393,21 +431,23 @@ mod tests {
     /// With no ace.toml present at all, tree load fails first (case 2 in the
     /// matrix: intent unknowable).
     #[test]
-    fn require_school_workdir_school_toml_without_ace_toml_errors() {
+    fn require_linked_school_workdir_school_toml_without_ace_toml_errors() {
         let tmp = tempfile::TempDir::new().unwrap();
         std::fs::write(tmp.path().join("school.toml"), "name = \"x\"\n").unwrap();
         let ace = ace_at(tmp.path());
-        let err = ace.require_school().expect_err("expected error");
+        let err = ace.require_linked_school().expect_err("expected error");
         assert!(matches!(err, SchoolError::TreeLoad(_)), "got: {err:?}");
     }
 
     /// docs/spec/school/overview.md case 3: ace.toml without specifier → Missing.
     #[test]
-    fn require_school_no_specifier_returns_no_specifier() {
+    fn require_linked_school_no_specifier_returns_no_specifier() {
         let tmp = tempfile::TempDir::new().unwrap();
         std::fs::write(tmp.path().join("ace.toml"), "backend = \"flaude\"\n").unwrap();
         let ace = ace_at(tmp.path());
-        let err = ace.require_school().expect_err("expected NoSpecifier");
+        let err = ace
+            .require_linked_school()
+            .expect_err("expected NoSpecifier");
         assert!(matches!(err, SchoolError::NoSpecifier), "got: {err:?}");
         assert_eq!(err.hint(), Some("run `ace setup` to choose a school"));
     }
