@@ -17,7 +17,7 @@ pub enum Command {
     Reset,
     /// Register a single MCP server by name (clears it from `exclude_mcp` if present)
     Register {
-        /// Server name (must be defined in the active school)
+        /// Server name (must be defined in the linked school)
         name: String,
     },
     /// Remove a single registered MCP server by name
@@ -72,7 +72,7 @@ impl McpState {
             Self::Registered => "registered",
             Self::Missing => "not registered",
             Self::Excluded => "excluded",
-            Self::Foreign => "not in school",
+            Self::Foreign => "not in linked school",
         }
     }
 }
@@ -172,7 +172,7 @@ fn run_check(ace: &mut Ace) -> Result<(), CmdError> {
 
     for name in &registered {
         if !school_names.contains(name.as_str()) {
-            ace.info(&format!("{name} (not in school, ignored)"));
+            ace.info(&format!("{name} (not in linked school, ignored)"));
         }
     }
 

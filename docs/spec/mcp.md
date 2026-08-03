@@ -112,8 +112,9 @@ This is informational only — ACE does not block on auth completion.
 
 Bare `ace mcp` reports where every server stands without probing anything: one
 `name<TAB>state` line per row, school order first, then backend servers the school never
-declared. States are `registered`, `not registered`, `excluded`, and `not in school`; an
-exclusion outranks registration, since it is the user's standing decision.
+declared. States are `registered`, `not registered`, `excluded`, and
+`not in linked school`; an exclusion outranks registration, since it is the user's
+standing decision.
 
 Listing is what the bare noun does, matching `ace skills` and `ace config`. It is
 read-only and must stay cheap — it exists precisely so inspection does not pay for a
