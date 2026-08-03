@@ -154,7 +154,15 @@ impl Ace {
                 }
             };
 
-            school_toml::load_optional(&linked.toml_path())
+            // An absent root is the resolved-but-not-yet-cloned state
+            // (overview.md case 8) — no school on disk is a legitimate None.
+            // Once the school is on disk, loading is strict: require_linked_school
+            // already guaranteed school.toml exists, so any failure here —
+            // malformed content included — errors loudly.
+            if !linked.root.exists() {
+                return Ok(None);
+            }
+            Ok(Some(school_toml::load(&linked.toml_path())?))
         })?;
         Ok(cached.as_ref())
     }

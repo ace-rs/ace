@@ -121,16 +121,6 @@ pub fn load(path: &Path) -> Result<SchoolToml, ConfigError> {
     Ok(config)
 }
 
-/// Load a `school.toml` that may legitimately not exist. Missing file →
-/// `Ok(None)`; a present-but-malformed file still errors loudly.
-pub fn load_optional(path: &Path) -> Result<Option<SchoolToml>, ConfigError> {
-    match load(path) {
-        Ok(toml) => Ok(Some(toml)),
-        Err(ConfigError::Io(ref e)) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(e),
-    }
-}
-
 pub fn save(path: &Path, toml: &SchoolToml) -> Result<(), ConfigError> {
     let content = toml::to_string_pretty(toml)?;
     std::fs::write(path, content)?;
