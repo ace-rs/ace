@@ -7,11 +7,11 @@ use crate::school::toml as school_toml;
 
 /// Install or reinstall school: git clone + index update. Also used as the
 /// self-heal path when a prior clone is missing or partial.
-pub struct Clone<'a> {
+pub struct CloneSchool<'a> {
     pub school: &'a LinkedSchool,
 }
 
-impl Clone<'_> {
+impl CloneSchool<'_> {
     pub fn run(&self, ace: &mut Ace) -> Result<(), PrepareError> {
         let Some(clone_path) = &self.school.clone_path else {
             return Ok(()); // embedded school

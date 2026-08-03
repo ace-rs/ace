@@ -7,7 +7,7 @@ use crate::config::paths::ace_data_dir;
 use crate::school::linked::LinkedSchool;
 
 use super::link_skills;
-use super::{Link, Pull, PullOutcome, SkillChange, UpdateGitignore, clone};
+use super::{Link, Pull, PullOutcome, SkillChange, UpdateGitignore, clone_school::CloneSchool};
 
 #[derive(Debug, thiserror::Error)]
 pub enum PrepareError {
@@ -56,7 +56,7 @@ impl Prepare<'_> {
         // A stale index entry (clone dir deleted, pre-XDG upgrade, etc.) would
         // otherwise route us into Pull and hit "school not installed".
         let (changes, school_is_dirty, school_updated) = if self.school.needs_clone() {
-            clone::Clone {
+            CloneSchool {
                 school: self.school,
             }
             .run(ace)?;

@@ -1,4 +1,4 @@
-pub mod clone;
+pub mod clone_school;
 pub mod edit_mcp_config;
 pub mod edit_skills_config;
 pub mod explain_skill;

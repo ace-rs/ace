@@ -1,5 +1,5 @@
 use crate::ace::Ace;
-use crate::actions::project::{Pull, clone};
+use crate::actions::project::{Pull, clone_school::CloneSchool};
 use crate::school::linked::LinkedSchool;
 
 use super::CmdError;
@@ -24,7 +24,7 @@ fn run_inner(ace: &mut Ace) -> Result<(), CmdError> {
     // Self-heal: if the clone dir is gone (stale index, deleted cache, etc.),
     // clone instead of pulling — Pull would otherwise error "school not installed".
     if school.needs_clone() {
-        clone::Clone { school: &school }.run(ace)?;
+        CloneSchool { school: &school }.run(ace)?;
     } else {
         let outcome = (Pull {
             school: &school,
