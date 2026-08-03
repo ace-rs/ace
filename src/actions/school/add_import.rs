@@ -2,7 +2,7 @@ use std::path::Path;
 
 use crate::ace::Ace;
 use crate::config;
-use crate::school::toml::ImportDecl;
+use crate::school::toml::{self as school_toml, ImportDecl};
 
 use crate::skills::discover::discover_skills;
 use crate::skills::{Discovered, FRONTMATTER_WARNING_HINT, Skill, name};
@@ -111,10 +111,10 @@ impl AddImport<'_> {
         crate::fsutil::replace_dir_recursive(&skill.path, &dest)?;
 
         let toml_path = self.school_root.join("school.toml");
-        let mut school = crate::school::toml::load(&toml_path)?;
+        let mut school = school_toml::load(&toml_path)?;
         merge_import(&mut school.imports, self.source, skill.locator.as_str());
 
-        crate::school::toml::save(&toml_path, &school)?;
+        school_toml::save(&toml_path, &school)?;
         Ok(())
     }
 }

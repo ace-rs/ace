@@ -1,14 +1,12 @@
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap};
 
 use clap::Subcommand;
 
 use crate::ace::Ace;
-use crate::backend::Kind;
 use crate::config::ace_toml::{self, AceToml, Trust};
 use crate::config::resolve::Source;
 use crate::config::tree::Tree;
 use crate::config::{ConfigKey, Scope};
-use crate::school::toml::SchoolToml;
 
 use super::CmdError;
 
@@ -143,13 +141,11 @@ fn set(ace: &mut Ace, key: &str, value: &str) -> Result<(), CmdError> {
     match config_key {
         ConfigKey::School => config.school = value.to_string(),
         ConfigKey::Backend => {
-            let known = known_backend_names(ace.require_tree()?, ace.school_toml()?);
-            if !known.contains(value) {
-                let mut listed: Vec<&str> = known.iter().map(String::as_str).collect();
-                listed.sort();
+            let known = ace.known_backend_names()?;
+            if !known.iter().any(|n| n == value) {
                 return Err(CmdError::usage(format!(
                     "unknown backend: {value} (known: {})",
-                    listed.join(", "),
+                    known.join(", "),
                 )));
             }
             config.backend = Some(value.to_string());
@@ -406,27 +402,6 @@ fn effective_trust(c: &AceToml) -> Trust {
     } else {
         c.trust
     }
-}
-
-/// Names that resolve as a backend selector: built-ins + any `[[backends]]`
-/// declarations across school/user/project/local layers. Used by `ace config
-/// set backend` for early validation; resolve-time errors still apply.
-fn known_backend_names(tree: &Tree, school: Option<&SchoolToml>) -> HashSet<String> {
-    let mut names: HashSet<String> = Kind::ALL.iter().map(|k| k.name().to_string()).collect();
-    if let Some(st) = school {
-        for d in &st.backends {
-            names.insert(d.name.clone());
-        }
-    }
-    for layer in [&tree.user, &tree.project, &tree.local]
-        .iter()
-        .filter_map(|o| o.as_ref())
-    {
-        for d in &layer.backends {
-            names.insert(d.name.clone());
-        }
-    }
-    names
 }
 
 fn parse_trust(value: &str) -> Result<Trust, CmdError> {

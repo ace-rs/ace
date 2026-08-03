@@ -3,6 +3,7 @@ use std::path::Path;
 use crate::ace::Ace;
 use crate::actions::school::gitlink::{gitlinked_names, warn_broken_submodule};
 use crate::config;
+use crate::school::toml::{self as school_toml, ImportDecl};
 use crate::skills::discover::discover_skills;
 use crate::skills::resolve::{Discovery, ImportVerdict, ImportsResolution, resolve_imports};
 use crate::skills::{Discovered, FRONTMATTER_WARNING_HINT, Skill, Skills, name};
@@ -35,7 +36,7 @@ pub enum PullImportsResult {
 impl PullImports<'_> {
     pub fn run(&self, ace: &mut Ace) -> Result<PullImportsResult, PullImportsError> {
         let toml_path = self.school_root.join("school.toml");
-        let school = crate::school::toml::load(&toml_path)?;
+        let school = school_toml::load(&toml_path)?;
 
         if school.imports.is_empty() {
             return Ok(PullImportsResult::NoImports);
@@ -153,11 +154,7 @@ impl PullImports<'_> {
 /// Emit per-resolver warnings into the user-visible surface. Collision
 /// messages attribute the problem to the school per
 /// `docs/spec/skills/selection.md` § Warning boundaries.
-fn surface_import_diagnostics(
-    ace: &mut Ace,
-    resolution: &ImportsResolution,
-    decls: &[crate::school::toml::ImportDecl],
-) {
+fn surface_import_diagnostics(ace: &mut Ace, resolution: &ImportsResolution, decls: &[ImportDecl]) {
     // Patterns and source labels are raw third-party `String`s (not `Locator`s,
     // whose Display self-sanitizes), so they go through `name::render` here.
     for unknown in &resolution.unknown_patterns {

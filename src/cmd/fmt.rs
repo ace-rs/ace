@@ -2,6 +2,7 @@ use std::path::Path;
 
 use crate::ace::Ace;
 use crate::config;
+use crate::school::toml as school_toml;
 
 use super::CmdError;
 
@@ -41,8 +42,8 @@ fn format_ace_toml(ace: &mut Ace, path: &Path) -> Result<(), CmdError> {
 }
 
 fn format_school_toml(ace: &mut Ace, path: &Path) -> Result<(), CmdError> {
-    let toml = crate::school::toml::load(path)?;
-    crate::school::toml::save(path, &toml)?;
+    let toml = school_toml::load(path)?;
+    school_toml::save(path, &toml)?;
     ace.done(&format!("Formatted {}", path.display()));
     Ok(())
 }

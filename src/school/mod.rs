@@ -3,6 +3,7 @@ pub mod toml;
 
 use serde::Serialize;
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 use self::toml::{ImportDecl, McpDecl, Project, SchoolToml};
 use crate::config::ConfigError;
@@ -34,6 +35,13 @@ impl SchoolError {
             Self::TreeLoad(_) => None,
         }
     }
+}
+
+/// Root of the authored school: `Some(dir)` iff the directory holds a
+/// `school.toml`. Location probe only — the file's content is never read.
+/// See the glossary in docs/spec/school/overview.md.
+pub fn authored_root(dir: &Path) -> Option<PathBuf> {
+    dir.join("school.toml").exists().then(|| dir.to_path_buf())
 }
 
 #[derive(Debug, Default, Serialize)]

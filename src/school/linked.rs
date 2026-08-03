@@ -8,6 +8,9 @@ use crate::config::paths::ace_data_dir;
 /// callers that need it.
 #[derive(Clone, Debug)]
 pub struct LinkedSchool {
+    /// The raw `ace.toml` specifier, verbatim ("owner/repo:path").
+    pub specifier: String,
+    /// The parsed source component: "owner/repo", or "." for embedded.
     pub source: String,
     pub clone_path: Option<PathBuf>,
     pub root: PathBuf,
@@ -26,10 +29,24 @@ impl LinkedSchool {
         let root = path.map(|p| base.join(p)).unwrap_or(base.clone());
 
         Ok(Self {
-            source: specifier.to_string(),
+            specifier: specifier.to_string(),
+            source,
             clone_path,
             root,
         })
+    }
+
+    /// Path of the school's `school.toml` marker/content file.
+    pub fn toml_path(&self) -> PathBuf {
+        self.root.join("school.toml")
+    }
+
+    /// True when the school should be (re)cloned: a clone path exists but no
+    /// git repo is at it — never installed, deleted cache, or a partial clone.
+    pub fn needs_clone(&self) -> bool {
+        self.clone_path
+            .as_ref()
+            .is_some_and(|p| !p.join(".git").exists())
     }
 }
 
@@ -147,6 +164,13 @@ mod tests {
         for (spec, clone_suffix, root_suffix) in cases {
             let p = LinkedSchool::resolve(&project, spec)
                 .expect("resolve should succeed for remote spec");
+
+            assert_eq!(&p.specifier, spec, "specifier should be stored verbatim");
+            let expected_source = spec.split_once(':').map_or(*spec, |(s, _)| s);
+            assert_eq!(
+                p.source, expected_source,
+                "source should be the parsed component for {spec:?}"
+            );
 
             let clone = p
                 .clone_path

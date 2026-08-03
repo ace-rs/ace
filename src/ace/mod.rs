@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use once_cell::unsync::OnceCell;
 
 use crate::backend::registry::TemplateCtx;
-use crate::backend::{Backend, BackendError, registry};
+use crate::backend::{Backend, BackendError, Kind, registry};
 use crate::config::ace_toml::AceToml;
 use crate::config::paths::AcePaths;
 use crate::config::resolve;
@@ -139,24 +139,22 @@ impl Ace {
 
     /// Lazy-load the linked school's `school.toml` content, raw. `Ok(None)`
     /// when no school is configured, the school is uninitialized, or the file
-    /// is missing/unreadable. Prefer `school()` for the bound domain view;
-    /// this is for merge input and config introspection, which need fields
-    /// (backend, backends) the domain view deliberately drops.
+    /// is missing; a present-but-malformed file errors loudly. Prefer
+    /// `school()` for the bound domain view; this is for merge input and
+    /// config introspection, which need fields (backend, backends) the domain
+    /// view deliberately drops.
     pub fn school_toml(&self) -> Result<Option<&SchoolToml>, ConfigError> {
         let cached = self.school_toml.get_or_try_init(|| {
             let linked = match self.require_linked_school() {
                 Ok(linked) => linked,
                 Err(SchoolError::TreeLoad(e)) => return Err(e),
-                Err(
-                    SchoolError::NoSpecifier | SchoolError::NotInitialized | SchoolError::NoSchool,
-                ) => return Ok(None),
+                Err(SchoolError::NoSpecifier | SchoolError::NotInitialized) => return Ok(None),
+                Err(SchoolError::NoSchool) => {
+                    unreachable!("only require_authoring_school mints NoSchool")
+                }
             };
 
-            let path = linked.root.join("school.toml");
-            if !path.exists() {
-                return Ok(None);
-            }
-            Ok(school_toml::load(&path).ok())
+            school_toml::load_optional(&linked.toml_path())
         })?;
         Ok(cached.as_ref())
     }
@@ -169,6 +167,20 @@ impl Ace {
             let resolved = self.require_config()?;
             registry::bind(resolved, &self.template_ctx())
         })
+    }
+
+    /// Names that resolve as a backend selector: built-ins plus every
+    /// `[[backends]]` declaration across school/user/project/local layers.
+    /// Sorted, deduped. Used for selector validation and recovery prompts.
+    pub fn known_backend_names(&self) -> Result<Vec<String>, ConfigError> {
+        let resolved = self.require_config()?;
+
+        let mut names: Vec<String> = Kind::ALL.iter().map(|k| k.name().to_string()).collect();
+        names.extend(resolved.backend_decls.iter().map(|d| d.value.name.clone()));
+
+        names.sort();
+        names.dedup();
+        Ok(names)
     }
 
     /// Build the `TemplateCtx` used to render `{{ ... }}` placeholders inside
@@ -244,7 +256,7 @@ impl Ace {
                 return Err(SchoolError::NoSpecifier);
             };
             let linked = LinkedSchool::resolve(&self.project_dir, &spec)?;
-            if linked.root.is_dir() && !linked.root.join("school.toml").exists() {
+            if linked.root.is_dir() && !linked.toml_path().exists() {
                 return Err(SchoolError::NotInitialized);
             }
             Ok(linked)
@@ -252,11 +264,9 @@ impl Ace {
     }
 
     /// Root of the authored school: `Some(project_dir)` iff the workdir holds
-    /// a `school.toml`. Location probe only — the file's content is never read
-    /// here. See the glossary in docs/spec/school/overview.md.
+    /// a `school.toml`. See `school::authored_root`.
     pub fn authored_school_root(&self) -> Option<PathBuf> {
-        let marker = self.project_dir.join("school.toml");
-        marker.exists().then(|| self.project_dir.clone())
+        crate::school::authored_root(&self.project_dir)
     }
 
     /// Resolve the school an authoring command (`ace school pull` / `skills` /
@@ -456,6 +466,22 @@ mod tests {
         let ace = ace_at(tmp.path());
         let err = ace.require_linked_school().expect_err("expected error");
         assert!(matches!(err, SchoolError::TreeLoad(_)), "got: {err:?}");
+    }
+
+    /// A present-but-malformed school.toml errors loudly instead of silently
+    /// resolving as "no school" — otherwise a typo makes the school's
+    /// backend/backends/mcp vanish from the merge with zero diagnostic.
+    #[test]
+    fn school_toml_malformed_file_errors() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::write(
+            tmp.path().join("ace.toml"),
+            "school = \".\"\nbackend = \"flaude\"\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.path().join("school.toml"), "name = [not toml\n").unwrap();
+        let ace = ace_at(tmp.path());
+        ace.school_toml().expect_err("expected parse error");
     }
 
     /// docs/spec/school/overview.md case 3: ace.toml without specifier → Missing.

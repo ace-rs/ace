@@ -1,6 +1,6 @@
 use crate::ace::Ace;
 use crate::actions::project::{Prepare, PrepareResult, register_missing_mcp};
-use crate::backend::{Kind, OneShotRequest, PromptInput, SessionRequest};
+use crate::backend::{OneShotRequest, PromptInput, SessionRequest};
 use crate::config::ace_toml::Trust;
 use crate::config::resolve::Source;
 use crate::school::SchoolError;
@@ -33,7 +33,7 @@ fn run_inner(
             .school_specifier
             .value
             .clone()
-            .ok_or(crate::school::SchoolError::NoSpecifier)?;
+            .ok_or(SchoolError::NoSpecifier)?;
         (specifier, r.school_specifier.from)
     };
 
@@ -47,9 +47,7 @@ fn run_inner(
     let school_clone = ace.require_linked_school()?.clone_path.clone();
 
     let (school_name, school_session_prompt) = {
-        let school = ace
-            .school()?
-            .ok_or(crate::school::SchoolError::NoSpecifier)?;
+        let school = ace.school()?.ok_or(SchoolError::NoSpecifier)?;
         (school.name.clone(), school.session_prompt.clone())
     };
 
@@ -148,7 +146,7 @@ pub(super) fn prepare_school(ace: &mut Ace, specifier: &str) -> Result<PrepareRe
     // Paths-only resolution — first run has no school.toml yet, so the
     // content-checked `require_linked_school` would refuse the very state
     // Prepare exists to heal.
-    let school = LinkedSchool::resolve(&project_dir, specifier).map_err(SchoolError::TreeLoad)?;
+    let school = LinkedSchool::resolve(&project_dir, specifier)?;
     let prepare_result = (Prepare {
         school: &school,
         project_dir: &project_dir,
@@ -156,8 +154,11 @@ pub(super) fn prepare_school(ace: &mut Ace, specifier: &str) -> Result<PrepareRe
     })
     .run(ace)?;
 
-    // Reload with fresh school.toml after Prepare.
-    ace.invalidate_school_caches();
+    // Reload with fresh school.toml when Prepare cloned or pulled changes;
+    // a no-op prepare leaves the already-loaded caches valid.
+    if prepare_result.school_updated {
+        ace.invalidate_school_caches();
+    }
 
     // Register MCP servers from school.toml.
     let (backend, entries, _) = super::mcp::load_school_mcp(ace)?;
@@ -194,7 +195,7 @@ fn recover_backend(ace: &mut Ace, attempted: &str) -> Result<(), CmdError> {
         return Err(crate::backend::BackendError::Unknown(attempted.to_string()).into());
     }
 
-    let names = list_known_backend_names(ace)?;
+    let names = ace.known_backend_names()?;
     ace.warn(&format!("backend `{attempted}` is not in the registry"));
     let pick = ace.prompt_select("Pick a backend for this session:", names)?;
     ace.override_backend(pick.clone());
@@ -212,23 +213,6 @@ fn school_source_notice(from: Source, specifier: &str) -> Option<String> {
         Source::Local => Some(format!("school {specifier} — local config")),
         Source::Project | Source::Override | Source::School | Source::Default => None,
     }
-}
-
-fn list_known_backend_names(ace: &Ace) -> Result<Vec<String>, CmdError> {
-    let tree = ace.require_tree()?;
-    let mut names: Vec<String> = Kind::ALL.iter().map(|k| k.name().to_string()).collect();
-    if let Some(st) = ace.school_toml()? {
-        names.extend(st.backends.iter().map(|d| d.name.clone()));
-    }
-    for layer in [&tree.user, &tree.project, &tree.local]
-        .iter()
-        .filter_map(|o| o.as_ref())
-    {
-        names.extend(layer.backends.iter().map(|d| d.name.clone()));
-    }
-    names.sort();
-    names.dedup();
-    Ok(names)
 }
 
 #[cfg(test)]

@@ -23,12 +23,7 @@ fn run_inner(ace: &mut Ace) -> Result<(), CmdError> {
 
     // Self-heal: if the clone dir is gone (stale index, deleted cache, etc.),
     // clone instead of pulling — Pull would otherwise error "school not installed".
-    let needs_clone = school
-        .clone_path
-        .as_ref()
-        .is_some_and(|p| !p.join(".git").exists());
-
-    if needs_clone {
+    if school.needs_clone() {
         clone::Clone { school: &school }.run(ace)?;
     } else {
         let outcome = (Pull {

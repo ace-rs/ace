@@ -155,7 +155,7 @@ pub enum ConfigError {
     #[error("no config found, ace setup?")]
     NoConfig,
 
-    // school_paths
+    // school specifier (parsed by school/linked.rs)
     #[error("traversal in source: {0}")]
     TraversalInSource(String),
     #[error("traversal in path: {0}")]

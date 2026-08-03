@@ -42,6 +42,10 @@ pub struct Prepare<'a> {
 pub struct PrepareResult {
     pub changes: Vec<SkillChange>,
     pub school_is_dirty: bool,
+    /// True when the school's on-disk content may have changed (fresh clone
+    /// or a pull that fast-forwarded) — callers holding school caches must
+    /// invalidate them.
+    pub school_updated: bool,
 }
 
 // Backend support matrix lives on `Kind::is_folder_supported()`.
@@ -51,18 +55,12 @@ impl Prepare<'_> {
         // Decide install-vs-update by on-disk state, not the index.
         // A stale index entry (clone dir deleted, pre-XDG upgrade, etc.) would
         // otherwise route us into Pull and hit "school not installed".
-        let needs_clone = self
-            .school
-            .clone_path
-            .as_ref()
-            .is_some_and(|p| !p.join(".git").exists());
-
-        let (changes, school_is_dirty) = if needs_clone {
+        let (changes, school_is_dirty, school_updated) = if self.school.needs_clone() {
             clone::Clone {
                 school: self.school,
             }
             .run(ace)?;
-            (Vec::new(), false)
+            (Vec::new(), false, true)
         } else {
             let outcome = (Pull {
                 school: self.school,
@@ -71,9 +69,9 @@ impl Prepare<'_> {
             .run(ace)?;
             outcome.emit(ace);
             match outcome {
-                PullOutcome::Dirty { .. } => (Vec::new(), true),
-                PullOutcome::Updated { changes } => (changes, false),
-                _ => (Vec::new(), false),
+                PullOutcome::Dirty { .. } => (Vec::new(), true, false),
+                PullOutcome::Updated { changes } => (changes, false, true),
+                _ => (Vec::new(), false, false),
             }
         };
 
@@ -121,6 +119,7 @@ impl Prepare<'_> {
         Ok(PrepareResult {
             changes,
             school_is_dirty,
+            school_updated,
         })
     }
 }

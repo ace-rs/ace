@@ -29,11 +29,7 @@ impl Clone<'_> {
                 .map_err(|e| PrepareError::Clone(format!("remove stale clone dir: {e}")))?;
         }
 
-        let specifier = self.school.source.as_str();
-        let raw_repo = specifier
-            .split_once(':')
-            .map_or(specifier, |(owner_repo, _)| owner_repo);
-        let repo = git::normalize_source(raw_repo);
+        let repo = git::normalize_source(&self.school.source);
         let url = format!("https://github.com/{repo}.git");
 
         ace.progress(&format!("Cloning {repo}"));
@@ -44,9 +40,9 @@ impl Clone<'_> {
         }
         ace.done(&format!("Cloned {repo}"));
 
-        update_index(&self.school.source)?;
+        update_index(&self.school.specifier)?;
 
-        let school_toml = school_toml::load(&self.school.root.join("school.toml"))?;
+        let school_toml = school_toml::load(&self.school.toml_path())?;
         ace.done(&format!("School: {}", school_toml.name));
 
         Ok(())
