@@ -2,11 +2,22 @@
 
 Binary: `codex` | Dir: `.agents` | Instructions: `AGENTS.md`
 
+Verified against codex 0.145.0 and the vendored
+[Codex manual](../../vendor/codex-manual.md) (2026-08-03).
+
 ## Readiness
 
 `~/.codex/auth.json` exists, **or** `OPENAI_API_KEY`/`CODEX_API_KEY` env var is set.
 
 `CODEX_HOME` overrides `~/.codex`.
+
+Accepted heuristic gaps:
+
+- `cli_auth_credentials_store = "keyring"` (or `"auto"` resolving to the OS keychain)
+  stores credentials outside `auth.json` — a logged-in user reads as not-ready.
+- `CODEX_API_KEY` is honored by `codex exec` only, so it over-reports readiness for
+  interactive sessions; `OPENAI_API_KEY` authenticates via `codex login --with-api-key`,
+  not ambiently.
 
 ## Session Prompt
 
@@ -20,8 +31,16 @@ override surface as `-c developer_instructions=...`. Codex does not support a
 
 ## Trust Modes
 
-- `trust = "auto"` → `--full-auto`
-- `trust = "yolo"` → `--dangerously-bypass-approvals-and-sandbox`
+- `trust = "auto"` → `--ask-for-approval on-request --sandbox danger-full-access`.
+  Mirrors codex's Auto preset (`--sandbox workspace-write -a on-request`) with the
+  sandbox raised to `danger-full-access`: ACE typically runs inside an
+  externally-sandboxed environment, so codex's internal sandbox fights the outer one
+  instead of adding protection.
+- `trust = "yolo"` → `--dangerously-bypass-approvals-and-sandbox` (upstream alias
+  `--yolo`).
+
+Upstream deprecated `--full-auto` (still accepted, prints a warning); ACE never
+passes it.
 
 ## Session Resume
 
@@ -57,27 +76,32 @@ user config.
 
 ## MCP Auth And Management
 
-After registration, MCP auth and ongoing management happen inside Codex via `/mcp`.
+After registration, MCP auth and ongoing management happen inside Codex — via `/mcp` in a
+session, or `codex mcp login <name>` / `codex mcp logout <name>` from the CLI (OAuth,
+streamable-HTTP servers only).
 
-ACE should not run a separate external OAuth flow for Codex. Once inside the backend session,
-the user manages MCP connectivity there.
+ACE should not run a separate external OAuth flow for Codex. It registers the server and
+leaves authentication to those native surfaces.
 
-## Implementation Priorities
+## MCP Operations
 
-Codex support should be completed in this order:
+All four operations are implemented:
 
-1. `mcp_add()` — required to register school MCP servers through the native Codex CLI.
-2. `mcp_list()` — required so ACE can avoid repeatedly offering or re-adding already
-   registered servers.
-3. `mcp_check()` — required in the same Codex pass because "registered" does not imply
-   "working". MCP can be configured but unusable due to expired auth, invalid tokens, or
-   backend-side state drift.
-4. `mcp_remove()` — required because `ace mcp reset` is already part of ACE's user-facing
-   command surface.
+- `mcp_add()` — `codex mcp add <name> --url <url>` when the declaration has no static
+  headers. The CLI has no static-header flag (only `--bearer-token-env-var`), so header
+  declarations fall back to a merge into `config.toml`'s `[mcp_servers.<name>]` with
+  `http_headers`.
+- `mcp_list()` — `codex mcp list --json` (top-level array of `{name, ...}` entries),
+  falling back to parsing `mcp_servers` from `config.toml`.
+- `mcp_check()` — `codex exec --output-schema <schema> -o <file> <prompt>` asking the
+  model to probe each server; "registered" does not imply "working". Runs with
+  `--skip-git-repo-check`: the probe does no repo work, and codex refuses to `exec`
+  outside a git repository otherwise.
+- `mcp_remove()` — `codex mcp remove <name>`, config-merge fallback.
 
 Automatic post-registration health checks in ACE's shared main flow are a separate
-cross-backend product decision. Codex should implement `mcp_check()` now, but ACE should not
-quietly introduce Codex-only auto-check behavior through the shared registration path.
+cross-backend product decision. ACE does not introduce Codex-only auto-check behavior
+through the shared registration path.
 
 ## Linked Folders
 
@@ -88,6 +112,14 @@ quietly introduce Codex-only auto-check behavior through the shared registration
 | `commands/` | ✗         |
 | `agents/`   | ✗         |
 
-Codex uses ACE school skills through the current `AGENTS.md` plus linked-folder workflow.
-Unsupported entries here mean ACE should not assume richer native folder primitives for those
-other school directories.
+Codex natively discovers skills: it scans `.agents/skills` in every directory from cwd up
+to the repo root, plus `$HOME/.agents/skills` and `/etc/codex/skills`, follows symlinked
+skill folders, and progressively discloses them (name + description list capped at ~2% of
+context, full `SKILL.md` loaded on selection). ACE's nested symlink emit into
+`<project>/.agents/skills/` lands directly on this surface — no `AGENTS.md` skill listing
+is needed.
+
+The unsupported rows have codex-side analogs with different semantics — execpolicy rules
+under `~/.codex/rules`, custom prompts under `~/.codex/prompts`, config-defined agents in
+`config.toml` — so a school-folder mapping for them is new design work, not a linking
+gap.

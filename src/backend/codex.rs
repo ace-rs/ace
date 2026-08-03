@@ -186,14 +186,7 @@ pub(super) fn mcp_check(
         tempfile::NamedTempFile::new().map_err(|e| format!("output temp file: {e}"))?;
 
     let output = Command::new("codex")
-        .args([
-            "exec",
-            "-o",
-            output_file.path().to_string_lossy().as_ref(),
-            "--output-schema",
-            schema.path().to_string_lossy().as_ref(),
-            &prompt,
-        ])
+        .args(build_check_args(schema.path(), output_file.path(), &prompt))
         .output()
         .map_err(|e| format!("codex: {e}"))?;
 
@@ -287,6 +280,21 @@ fn build_mcp_add_args(entry: &McpDecl) -> Option<Vec<String>> {
 
 fn build_mcp_remove_args(name: &str) -> Vec<String> {
     vec!["mcp".to_string(), "remove".to_string(), name.to_string()]
+}
+
+/// `codex exec` argv for the MCP health probe. `--skip-git-repo-check` because
+/// the probe does no repo work and codex otherwise refuses to run outside a
+/// git repository.
+fn build_check_args(schema: &Path, output: &Path, prompt: &str) -> Vec<String> {
+    vec![
+        "exec".to_string(),
+        "--skip-git-repo-check".to_string(),
+        "-o".to_string(),
+        output.to_string_lossy().into_owned(),
+        "--output-schema".to_string(),
+        schema.to_string_lossy().into_owned(),
+        prompt.to_string(),
+    ]
 }
 
 fn build_check_prompt(names: &[String]) -> String {
@@ -739,6 +747,14 @@ url = "https://api.githubcopilot.com/mcp/"
     fn parse_check_output_invalid_returns_empty() {
         assert!(parse_check_output("not json").is_empty());
         assert!(parse_check_output("{}").is_empty());
+    }
+
+    #[test]
+    fn build_check_args_skips_git_repo_check_with_prompt_last() {
+        let args = build_check_args(Path::new("/t/schema"), Path::new("/t/out"), "probe");
+        assert!(args.iter().any(|a| a == "--skip-git-repo-check"));
+        assert_eq!(args.first().map(String::as_str), Some("exec"));
+        assert_eq!(args.last().map(String::as_str), Some("probe"));
     }
 
     #[test]
