@@ -6,8 +6,8 @@ use crate::ace::Ace;
 use crate::actions::school::Validate;
 use crate::actions::school::{Init, InitError};
 use crate::actions::school::{PullImports, PullImportsResult};
-use crate::skills::meta;
 use crate::school::toml as school_toml;
+use crate::skills::meta;
 
 use super::CmdError;
 

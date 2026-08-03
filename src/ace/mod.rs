@@ -372,6 +372,10 @@ impl Ace {
         self.io.hint(msg);
     }
 
+    pub fn page(&mut self, content: &str) {
+        self.io.page(content)
+    }
+
     pub fn data(&mut self, msg: &str) {
         self.io.data(msg);
     }
@@ -399,4 +403,3 @@ impl Ace {
         self.io.prompt_multiselect(prompt, options, default_all)
     }
 }
-

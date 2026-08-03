@@ -138,6 +138,7 @@ by separate inputs. Nothing derives one from the other.
 |--------------------|--------------------------------------------------|
 | Should it colorize? | a terminal is attached, and `--porcelain` is off |
 | Should it emit?     | the run has someone to report to |
+| Should it page?     | stdout is a terminal, and `--porcelain` is off — long data (`ace diff`) goes through `$PAGER` (default `less -FRX`) for a human, and stays a plain stream for a pipe or a machine |
 | May it ask?         | a terminal is attached, output is not machine-readable, and neither `--yes` nor a set `CI` variable waived the question |
 
 Independence is a property of the *inputs*, not of the predicates. Each

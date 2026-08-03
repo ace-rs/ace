@@ -20,7 +20,7 @@ fn run_inner(ace: &mut Ace) -> Result<(), CmdError> {
     git.intent_to_add_all()?;
     let out = git.diff()?;
     if !out.is_empty() {
-        ace.data(&out);
+        ace.page(&out);
     }
 
     Ok(())

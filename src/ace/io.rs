@@ -137,6 +137,7 @@ pub struct Io {
     yes: bool,
     ci: bool,
     is_terminal: bool,
+    stdout_is_terminal: bool,
     spinner: Option<ProgressBar>,
     /// Held for its `Drop`, which restores the cursor; read only by
     /// `enter_alt_screen`, which is idle until full-screen UI lands.
@@ -166,6 +167,7 @@ impl Io {
             yes,
             ci: in_ci(),
             is_terminal,
+            stdout_is_terminal: std::io::stdout().is_terminal(),
             spinner: None,
             guard,
         }
@@ -187,6 +189,13 @@ impl Io {
 
     pub fn should_emit(&self) -> bool {
         !self.quiet
+    }
+
+    /// Long data output goes through a pager only when a human is reading it
+    /// on a terminal — machine-readable and piped output must stay a plain
+    /// stream. Keyed on stdout, where data lands, not stderr.
+    pub fn should_page(&self) -> bool {
+        !self.porcelain && self.stdout_is_terminal
     }
 
     /// Whether a question can reach a human who will answer it: someone has to
@@ -278,6 +287,47 @@ impl Io {
             return;
         }
         println!("{msg}");
+    }
+
+    /// Emit potentially-long data through `$PAGER` (default `less -FRX`, which
+    /// passes short output straight through). Falls back to a plain `data`
+    /// print when paging is off or the pager cannot run.
+    pub fn page(&mut self, content: &str) {
+        self.clear_spinner();
+        if !self.should_emit() {
+            return;
+        }
+        if !self.should_page() {
+            println!("{content}");
+            return;
+        }
+
+        match self.pipe_to_pager(content) {
+            Ok(()) => {}
+            Err(e) => {
+                self.warn(&format!("pager failed, printing directly: {e}"));
+                println!("{content}");
+            }
+        }
+    }
+
+    fn pipe_to_pager(&self, content: &str) -> std::io::Result<()> {
+        let pager = std::env::var("PAGER").unwrap_or_else(|_| "less -FRX".to_string());
+        let mut parts = pager.split_whitespace();
+        let bin = parts.next().unwrap_or("less");
+
+        let mut child = std::process::Command::new(bin)
+            .args(parts)
+            .stdin(std::process::Stdio::piped())
+            .spawn()?;
+        child
+            .stdin
+            .take()
+            .expect("stdin was piped")
+            .write_all(content.as_bytes())?;
+        child.wait()?;
+
+        Ok(())
     }
 
     pub fn separator(&mut self) {
@@ -402,6 +452,7 @@ mod tests {
             yes,
             ci,
             is_terminal,
+            stdout_is_terminal: is_terminal,
             spinner: None,
             guard: None,
         }
@@ -430,6 +481,26 @@ mod tests {
     #[test]
     fn waiving_prompts_does_not_suppress_color() {
         assert!(io_with(false, true, false, true).should_colorize());
+    }
+
+    // -- should_page --
+
+    #[test]
+    fn pages_only_for_a_human_terminal() {
+        assert!(attended().should_page());
+    }
+
+    // A pipe reads a stream; a pager in the middle would hang or garble it.
+    #[test]
+    fn never_pages_into_a_pipe() {
+        assert!(!piped().should_page());
+    }
+
+    // Porcelain means a machine is parsing stdout even if a terminal is
+    // attached — same reasoning as can_ask.
+    #[test]
+    fn never_pages_machine_readable_output() {
+        assert!(!io_with(true, false, false, true).should_page());
     }
 
     // -- can_ask --
