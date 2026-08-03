@@ -3,7 +3,7 @@ use std::path::Path;
 use crate::ace::Ace;
 use crate::backend::registry::BackendVars;
 use crate::config::ConfigError;
-use crate::config::school_toml;
+use crate::school::toml as school_toml;
 use crate::templates::{self, UnknownPlaceholder};
 
 pub struct Validate<'a> {

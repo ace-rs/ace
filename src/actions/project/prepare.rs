@@ -4,7 +4,7 @@ use crate::ace::Ace;
 use crate::backend::Backend;
 use crate::config::ConfigError;
 use crate::config::paths::ace_data_dir;
-use crate::config::school_paths;
+use crate::school::linked::LinkedSchool;
 
 use super::link_skills;
 use super::{Link, Pull, PullOutcome, SkillChange, UpdateGitignore, clone};
@@ -33,7 +33,7 @@ impl PrepareError {
 
 /// Ensure school is ready: install if not cached, update if cached, link into project.
 pub struct Prepare<'a> {
-    pub specifier: &'a str,
+    pub school: &'a LinkedSchool,
     pub project_dir: &'a Path,
     pub backend: &'a Backend,
 }
@@ -51,23 +51,21 @@ impl Prepare<'_> {
         // Decide install-vs-update by on-disk state, not the index.
         // A stale index entry (clone dir deleted, pre-XDG upgrade, etc.) would
         // otherwise route us into Pull and hit "school not installed".
-        let school_paths = school_paths::resolve(self.project_dir, self.specifier)?;
-        let needs_clone = school_paths
+        let needs_clone = self
+            .school
             .clone_path
             .as_ref()
             .is_some_and(|p| !p.join(".git").exists());
 
         let (changes, school_is_dirty) = if needs_clone {
             clone::Clone {
-                specifier: self.specifier,
-                project_dir: self.project_dir,
+                school: self.school,
             }
             .run(ace)?;
             (Vec::new(), false)
         } else {
             let outcome = (Pull {
-                specifier: self.specifier,
-                project_dir: self.project_dir,
+                school: self.school,
                 force: false,
             })
             .run(ace)?;
@@ -81,12 +79,12 @@ impl Prepare<'_> {
 
         // Resolve which skills to link before constructing Link.
         let tree = ace.require_tree()?.clone();
-        let prepared = link_skills::prepare(&school_paths.root, &tree, self.backend.features())
+        let prepared = link_skills::prepare(&self.school.root, &tree, self.backend.features())
             .map_err(PrepareError::Write)?;
         let ace_data_root = ace_data_dir()?;
 
         let result = Link {
-            school_root: &school_paths.root,
+            school_root: &self.school.root,
             project_dir: self.project_dir,
             backend_dir: self.backend.backend_dir(),
             skills: &prepared.desired,

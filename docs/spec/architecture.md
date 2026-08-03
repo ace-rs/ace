@@ -12,8 +12,8 @@ disk → Tree → Resolved → Bindings (Backend / School / Skills) → Ace → 
 
 `Tree` is parsed only when something asks; `Resolved` is merged only after `Tree` exists;
 bindings are built only when a command reaches for them. Cache invalidation is explicit
-(`reload_tree`, `invalidate_*`) at the small set of write sites — after `ace config set`,
-`ace setup`, `ace school pull`. Layer contracts and provenance rules in
+(`invalidate_school_caches`, `invalidate_*`) at the small set of write sites — after
+`ace config set`, `ace setup`, `ace school pull`. Layer contracts and provenance rules in
 [configuration.md](configuration.md); package placement in
 [2026-06-05-resolver-dissolution.md](../decisions/2026-06-05-resolver-dissolution.md).
 
@@ -23,8 +23,11 @@ bindings are built only when a command reaches for them. Cache invalidation is e
 config ← { backend, school, skills } ← ace ← actions, cmd
 ```
 
-- `config` imports nothing from the project. It owns parse **and** merge: `config/resolve/`
-  folds the layers into `Resolved` and is the home of `Source` / `Sourced`.
+- `config` imports nothing from the project, with one type-only exception: the merge
+  takes the school's parsed shape (`school::toml::SchoolToml`) as an input parameter —
+  data crossing leftward, no I/O and no behavior imported. It owns parse **and** merge:
+  `config/resolve/` folds the layers into `Resolved` and is the home of `Source` /
+  `Sourced`.
 - Bindings (`backend`, `school`, `skills`) import `config` only. They do not import `ace`.
 - `skills/resolve/` imports `Source` from `config/resolve/` — a leftward import
   (binding → config), the correct direction.
@@ -40,15 +43,16 @@ config ← { backend, school, skills } ← ace ← actions, cmd
 
 Dumb I/O plus the pure merge; no filesystem beyond reading the config files.
 
-- `AceToml` / `SchoolToml` / `IndexToml` — shapes of `ace.toml` (+ `.local`, user scope),
-  `school.toml`, and `~/.local/share/ace/index.toml`.
-- `AcePaths` / `SchoolPaths` — resolve config and clone locations from a project dir.
-- `Tree` — `Option<AceToml>` per user/project/local plus `Option<SchoolToml>`. `None` means
-  "no file on disk," distinct from "present but empty."
-- `config/resolve/` — `merge(tree, overrides) -> Resolved`, infallible past parse, with
-  per-field `Sourced<T>` provenance (rules in [configuration.md](configuration.md)). Owns
-  `Source { User, Project, Local, School, Override, Default }`. Never reads a discovered
-  school, so `ace config show` survives without a clone.
+- `AceToml` / `IndexToml` — shapes of `ace.toml` (+ `.local`, user scope) and
+  `~/.local/share/ace/index.toml`.
+- `AcePaths` — resolve config file locations from a project dir.
+- `Tree` — `Option<AceToml>` per user/project/local. `None` means "no file on disk,"
+  distinct from "present but empty." School content is not a layer here; `school/` owns
+  it, and the merge receives it as a separate input.
+- `config/resolve/` — `merge(tree, school, overrides) -> Resolved`, infallible past parse,
+  with per-field `Sourced<T>` provenance (rules in [configuration.md](configuration.md)).
+  Owns `Source { User, Project, Local, School, Override, Default }`. Never reads a
+  discovered school itself, so `ace config show` survives without a clone.
 - `ConfigError` — parse / I/O only.
 
 ### Bindings — `backend/`, `school/`, `skills/`
@@ -60,8 +64,12 @@ tree-load failures bubble without double-handling.
 - `backend/` — `Kind`, `Backend`, `Registry`, `BackendError` (`Unknown` / `Unresolvable` /
   `KindMismatch`). Each `Kind` advertises a capability bitmask (see
   [Cross-cuts](#cross-cuts)).
-- `school/` — `School` built by `From<SchoolToml>`. `SchoolError::NoSpecifier` when ace.toml
-  lacks `school = …`; `NotInitialized` when the resolved root has no `school.toml` (see
+- `school/` — owns both school roles. `school/toml.rs` parses `school.toml`
+  (`SchoolToml`); `school/linked.rs` resolves the linked school's location
+  (`LinkedSchool::resolve`, specifier parse, traversal checks); `School` is the domain
+  view built by `From<SchoolToml>`. `SchoolError::NoSpecifier` when ace.toml lacks
+  `school = …`; `NotInitialized` when the resolved root has no `school.toml`; `NoSchool`
+  when an authoring command finds neither role (see
   [school/overview.md](school/overview.md)).
 - `skills/` — the typestate model `Skill<Discovered> → Skill<Validated> → Skill<Decided>`,
   the sealed `Vetted` gate, and the `Locator` identity type (concrete names in the
@@ -80,14 +88,16 @@ recovery picker).
 
 | Method               | Returns                                | What it does                                       |
 | -------------------- | -------------------------------------- | -------------------------------------------------- |
-| `require_tree()`     | `Result<&Tree, ConfigError>`           | Parse the config files; load school.toml.          |
-| `require_resolved()` | `Result<&Resolved, ConfigError>`       | Run the merge over `Tree` + overrides.             |
+| `require_tree()`     | `Result<&Tree, ConfigError>`           | Parse the `ace.toml` layers.                       |
+| `require_config()`   | `Result<&Resolved, ConfigError>`       | Merge `Tree` + school.toml + overrides into the effective config. |
 | `backend()`          | `Result<&Backend, BackendError>`       | Build the registry; look up the selected name.     |
-| `require_linked_school()` | `Result<&SchoolPaths, SchoolError>` | Resolve the linked school's clone path from `ace.toml`. Linked school only — not authoring-aware. |
+| `require_linked_school()` | `Result<&LinkedSchool, SchoolError>` | Resolve the linked school's location from `ace.toml`. Linked school only — not authoring-aware. |
+| `require_authoring_school()` | `Result<PathBuf, SchoolError>`  | Cwd-first school for authoring commands; announced fallback to linked. |
+| `school_toml()`      | `Result<Option<&SchoolToml>, ConfigError>` | Raw school.toml content — merge input and config introspection. |
 | `school()`           | `Result<Option<&School>, SchoolError>` | Build the `School` domain object from school.toml. |
 | `skills()`           | `Result<&Skills<Decided>, SkillError>` | Discover `<school>/skills/` and resolve.           |
 | `override_backend`   | —                                      | Push a runtime override; invalidates resolved.     |
-| `reload_tree`        | `Result<&Resolved, ConfigError>`       | Re-read school.toml + invalidate downstream.       |
+| `invalidate_school_caches` | —                                | Drop school-derived caches after clone-on-first-run. |
 
 Never create new `Ace` instances inside commands — extend the single instance with lazy
 loading.

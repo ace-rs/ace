@@ -3,19 +3,16 @@ use std::path::Path;
 use super::ConfigError;
 use super::ace_toml::{self, AceToml};
 use super::paths::AcePaths;
-use super::school_paths;
-use super::school_toml::{self, SchoolToml};
 
-/// Raw config layers parsed from disk. `None` means "no file present" — distinct
-/// from "present but empty" so diagnostics can tell the two apart. Derived
-/// fields (school paths, the school's contributed backend name) are computed
-/// downstream by the resolver and binding layers.
+/// Raw `ace.toml` layers parsed from disk. `None` means "no file present" —
+/// distinct from "present but empty" so diagnostics can tell the two apart.
+/// School content is not a layer here: `crate::school` owns its location and
+/// loading, and the merge receives it as a separate input.
 #[derive(Clone, Default)]
 pub struct Tree {
     pub user: Option<AceToml>,
     pub project: Option<AceToml>,
     pub local: Option<AceToml>,
-    pub school: Option<SchoolToml>,
 }
 
 impl Tree {
@@ -34,7 +31,6 @@ impl Tree {
             user,
             project,
             local,
-            school: None,
         })
     }
 
@@ -45,28 +41,6 @@ impl Tree {
             .filter_map(|opt| opt.as_ref())
             .find(|l| !l.school.is_empty())
             .map(|l| l.school.clone())
-    }
-
-    /// Second pass: read school.toml from the resolved specifier's clone path.
-    /// No-op when no specifier is set or school.toml is missing/unreadable.
-    pub fn load_school(&mut self, project_dir: &Path) -> Result<(), ConfigError> {
-        let Some(spec) = self.specifier() else {
-            return Ok(());
-        };
-
-        let sp = school_paths::resolve(project_dir, &spec)?;
-        let school_toml_path = sp.root.join("school.toml");
-        if school_toml_path.exists()
-            && let Ok(st) = school_toml::load(&school_toml_path)
-        {
-            self.school = Some(st);
-        }
-        Ok(())
-    }
-
-    /// Backend name contributed by the school layer, if any.
-    pub fn school_backend(&self) -> Option<&str> {
-        self.school.as_ref().and_then(|s| s.backend.as_deref())
     }
 }
 

@@ -55,7 +55,7 @@ fn run_inner(
 }
 
 fn list(ace: &mut Ace, show_all: bool, names_only: bool) -> Result<(), CmdError> {
-    ace.require_resolved()?;
+    ace.require_config()?;
     let skills = ace.skills()?;
 
     let output = if names_only {

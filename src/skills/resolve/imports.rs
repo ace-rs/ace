@@ -12,8 +12,8 @@
 
 use std::collections::HashMap;
 
-use crate::config::school_toml::ImportDecl;
 use crate::glob;
+use crate::school::toml::ImportDecl;
 use crate::skills::discover::Tier;
 use crate::skills::identity::pattern_matches;
 use crate::skills::{Discovered, Locator, Skill};

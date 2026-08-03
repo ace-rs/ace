@@ -8,6 +8,7 @@ use crate::config::ace_toml::{self, AceToml, Trust};
 use crate::config::resolve::Source;
 use crate::config::tree::Tree;
 use crate::config::{ConfigKey, Scope};
+use crate::school::toml::SchoolToml;
 
 use super::CmdError;
 
@@ -52,7 +53,7 @@ fn run_inner(ace: &mut Ace, command: Option<Command>) -> Result<(), CmdError> {
 /// `backend = "..."` selector (one not in the registry) still prints the
 /// configured name without erroring — recovery is the bare `ace` command's job.
 fn show(ace: &Ace) -> Result<(), CmdError> {
-    let r = ace.require_resolved()?;
+    let r = ace.require_config()?;
     let backend_name = r.backend_name.value.clone();
 
     let session_prompt_value = r.session_prompt.value.clone();
@@ -101,7 +102,7 @@ fn get(ace: &mut Ace, key: &str) -> Result<(), CmdError> {
     let config_key = ConfigKey::parse(key)
         .ok_or_else(|| CmdError::usage(format!("unknown config key: {key}")))?;
 
-    let r = ace.require_resolved()?;
+    let r = ace.require_config()?;
 
     let value = match config_key {
         ConfigKey::School => r.school_specifier.value.clone().unwrap_or_default(),
@@ -142,7 +143,7 @@ fn set(ace: &mut Ace, key: &str, value: &str) -> Result<(), CmdError> {
     match config_key {
         ConfigKey::School => config.school = value.to_string(),
         ConfigKey::Backend => {
-            let known = known_backend_names(ace.require_tree()?);
+            let known = known_backend_names(ace.require_tree()?, ace.school_toml()?);
             if !known.contains(value) {
                 let mut listed: Vec<&str> = known.iter().map(String::as_str).collect();
                 listed.sort();
@@ -190,7 +191,7 @@ fn explain(ace: &Ace, key: Option<&str>) -> Result<(), CmdError> {
         })
         .transpose()?;
 
-    let resolved = ace.require_resolved()?.clone();
+    let resolved = ace.require_config()?.clone();
     let tree = ace.require_tree()?.clone();
     let overrides = ace.overrides().clone();
 
@@ -221,9 +222,8 @@ fn explain(ace: &Ace, key: Option<&str>) -> Result<(), CmdError> {
 
     if want(&ConfigKey::Backend) {
         let layers = scalar_layers(&tree, &overrides, |c| c.backend.clone());
-        let school_contrib = tree
-            .school
-            .as_ref()
+        let school_contrib = ace
+            .school_toml()?
             .and_then(|s| s.backend.clone())
             .filter(|s| !s.is_empty());
         blocks.push(format_block(
@@ -411,9 +411,9 @@ fn effective_trust(c: &AceToml) -> Trust {
 /// Names that resolve as a backend selector: built-ins + any `[[backends]]`
 /// declarations across school/user/project/local layers. Used by `ace config
 /// set backend` for early validation; resolve-time errors still apply.
-fn known_backend_names(tree: &Tree) -> HashSet<String> {
+fn known_backend_names(tree: &Tree, school: Option<&SchoolToml>) -> HashSet<String> {
     let mut names: HashSet<String> = Kind::ALL.iter().map(|k| k.name().to_string()).collect();
-    if let Some(st) = &tree.school {
+    if let Some(st) = school {
         for d in &st.backends {
             names.insert(d.name.clone());
         }

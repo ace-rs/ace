@@ -9,7 +9,7 @@ pub fn run(ace: &mut Ace, name: &str) {
 }
 
 fn run_inner(ace: &mut Ace, name: &str) -> Result<(), CmdError> {
-    ace.require_resolved()?;
+    ace.require_config()?;
     let rendered = {
         let skills = ace.skills()?;
         let skill = find_or_suggest(skills, name).map_err(|e| CmdError::usage(e.to_string()))?;

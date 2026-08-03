@@ -98,7 +98,6 @@ mod tests {
             user: Some(user),
             project: Some(project),
             local: Some(local),
-            school: None,
         }
     }
 

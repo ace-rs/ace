@@ -24,7 +24,7 @@ pub fn check_for_update(ace: &mut Ace) {
     if std::env::var("ACE_SKIP_UPDATE").as_deref() == Ok("1") {
         return;
     }
-    if let Ok(r) = ace.require_resolved()
+    if let Ok(r) = ace.require_config()
         && r.skip_update.value
     {
         return;

@@ -6,16 +6,16 @@ use once_cell::unsync::OnceCell;
 
 use crate::backend::registry::TemplateCtx;
 use crate::backend::{Backend, BackendError, registry};
-use crate::config;
 use crate::config::ace_toml::AceToml;
 use crate::config::paths::AcePaths;
 use crate::config::resolve;
 use crate::config::resolve::Resolved;
-use crate::config::school_paths::SchoolPaths;
 use crate::config::tree::Tree;
 use crate::config::{ConfigError, Scope};
 use crate::git::Git;
-use crate::school::{School, SchoolError};
+use crate::school::linked::LinkedSchool;
+use crate::school::toml::SchoolToml;
+use crate::school::{School, SchoolError, toml as school_toml};
 use crate::skills::{Decided, SkillError, Skills};
 
 pub use io::{Io, IoError, partition_picked};
@@ -34,7 +34,8 @@ pub struct Ace {
     tree: OnceCell<Tree>,
     resolved: OnceCell<Resolved>,
     backend: OnceCell<Backend>,
-    school_paths: OnceCell<SchoolPaths>,
+    linked_school: OnceCell<LinkedSchool>,
+    school_toml: OnceCell<Option<SchoolToml>>,
     school: OnceCell<Option<School>>,
     skills: OnceCell<Skills<Decided>>,
     overrides: AceToml,
@@ -53,7 +54,8 @@ impl Ace {
             tree: OnceCell::new(),
             resolved: OnceCell::new(),
             backend: OnceCell::new(),
-            school_paths: OnceCell::new(),
+            linked_school: OnceCell::new(),
+            school_toml: OnceCell::new(),
             school: OnceCell::new(),
             skills: OnceCell::new(),
             overrides: AceToml::default(),
@@ -108,11 +110,7 @@ impl Ace {
     /// Survives `State::resolve` failures, so recovery code paths can still
     /// inspect declared `[[backends]]` after an unknown-backend error.
     pub fn require_tree(&self) -> Result<&Tree, ConfigError> {
-        self.tree.get_or_try_init(|| {
-            let mut tree = Tree::load(&self.paths)?;
-            tree.load_school(&self.project_dir)?;
-            Ok(tree)
-        })
+        self.tree.get_or_try_init(|| Tree::load(&self.paths))
     }
 
     pub fn set_scope_override(&mut self, scope: Option<Scope>) {
@@ -127,14 +125,40 @@ impl Ace {
         &self.paths
     }
 
-    /// Lazy-load tree + school.toml + run the merge. Idempotent. The backend
-    /// binding is *not* eagerly resolved here — `backend()` does that on
-    /// demand so read-only commands survive a stale selector.
-    pub fn require_resolved(&self) -> Result<&Resolved, ConfigError> {
+    /// Lazy-load tree + school.toml + run the merge into the effective config.
+    /// Idempotent. The backend binding is *not* eagerly resolved here —
+    /// `backend()` does that on demand so read-only commands survive a stale
+    /// selector.
+    pub fn require_config(&self) -> Result<&Resolved, ConfigError> {
         self.resolved.get_or_try_init(|| {
             let tree = self.require_tree()?;
-            Ok(resolve::merge(tree, &self.overrides))
+            let school = self.school_toml()?;
+            Ok(resolve::merge(tree, school, &self.overrides))
         })
+    }
+
+    /// Lazy-load the linked school's `school.toml` content, raw. `Ok(None)`
+    /// when no school is configured, the school is uninitialized, or the file
+    /// is missing/unreadable. Prefer `school()` for the bound domain view;
+    /// this is for merge input and config introspection, which need fields
+    /// (backend, backends) the domain view deliberately drops.
+    pub fn school_toml(&self) -> Result<Option<&SchoolToml>, ConfigError> {
+        let cached = self.school_toml.get_or_try_init(|| {
+            let linked = match self.require_linked_school() {
+                Ok(linked) => linked,
+                Err(SchoolError::TreeLoad(e)) => return Err(e),
+                Err(
+                    SchoolError::NoSpecifier | SchoolError::NotInitialized | SchoolError::NoSchool,
+                ) => return Ok(None),
+            };
+
+            let path = linked.root.join("school.toml");
+            if !path.exists() {
+                return Ok(None);
+            }
+            Ok(school_toml::load(&path).ok())
+        })?;
+        Ok(cached.as_ref())
     }
 
     /// Lazy-load the resolved Backend binding (registry build + name lookup).
@@ -142,7 +166,7 @@ impl Ace {
     /// that isn't a built-in or declared `[[backends]]`.
     pub fn backend(&self) -> Result<&Backend, BackendError> {
         self.backend.get_or_try_init(|| {
-            let resolved = self.require_resolved()?;
+            let resolved = self.require_config()?;
             registry::bind(resolved, &self.template_ctx())
         })
     }
@@ -167,7 +191,7 @@ impl Ace {
     }
 
     /// Union of `exclude_mcp` across user/project/local scopes. Empty when no
-    /// tree is loaded; callers needing a guarantee should `require_resolved`
+    /// tree is loaded; callers needing a guarantee should `require_config`
     /// or `require_tree` first.
     pub fn excluded_mcp(&self) -> std::collections::HashSet<String> {
         let Ok(tree) = self.require_tree() else {
@@ -209,21 +233,21 @@ impl Ace {
     /// - Always resolves via `ace.toml`'s specifier. The presence of `school.toml`
     ///   in the workdir is *content*, not a location signal — a school repo that
     ///   wants to dogfood itself uses `school = "."` in its own `ace.toml`.
-    /// - `require_tree` → specifier → resolve via `school_paths::resolve`.
+    /// - `require_tree` → specifier → `LinkedSchool::resolve`.
     /// - Resolved root exists as a dir but lacks `school.toml` → `NotInitialized`
     ///   (covers cases 5 and 7: local pre-init / clone uninitialized upstream).
     /// - Resolved root absent → Ok; cmd/pull.rs self-heals via clone (case 8).
-    pub fn require_linked_school(&self) -> Result<&SchoolPaths, SchoolError> {
-        self.school_paths.get_or_try_init(|| {
+    pub fn require_linked_school(&self) -> Result<&LinkedSchool, SchoolError> {
+        self.linked_school.get_or_try_init(|| {
             let tree = self.require_tree()?;
             let Some(spec) = tree.specifier() else {
                 return Err(SchoolError::NoSpecifier);
             };
-            let paths = config::school_paths::resolve(&self.project_dir, &spec)?;
-            if paths.root.is_dir() && !paths.root.join("school.toml").exists() {
+            let linked = LinkedSchool::resolve(&self.project_dir, &spec)?;
+            if linked.root.is_dir() && !linked.root.join("school.toml").exists() {
                 return Err(SchoolError::NotInitialized);
             }
-            Ok(paths)
+            Ok(linked)
         })
     }
 
@@ -263,18 +287,14 @@ impl Ace {
         Ok(linked)
     }
 
-    /// Re-read school.toml from disk and invalidate downstream caches so the
-    /// next accessors derive from the freshly loaded tree. Used after
-    /// clone-on-first-run.
-    pub fn reload_tree(&mut self) -> Result<&Resolved, ConfigError> {
-        let mut tree = self.tree.take().ok_or(ConfigError::NoConfig)?;
-        tree.load_school(&self.project_dir)?;
-        self.tree = OnceCell::from(tree);
-        self.invalidate_resolved();
-        self.school_paths = OnceCell::new();
+    /// Drop every school-derived cache so the next accessors re-read from
+    /// disk. Used after clone-on-first-run, when school.toml newly exists.
+    pub fn invalidate_school_caches(&mut self) {
+        self.linked_school = OnceCell::new();
+        self.school_toml = OnceCell::new();
         self.school = OnceCell::new();
         self.skills = OnceCell::new();
-        self.require_resolved()
+        self.invalidate_resolved();
     }
 
     /// Lazy-load the resolved School binding. `Ok(None)` when no school is
@@ -283,8 +303,7 @@ impl Ace {
     /// selector points at an unknown backend.
     pub fn school(&self) -> Result<Option<&School>, SchoolError> {
         let cached = self.school.get_or_try_init(|| -> Result<_, SchoolError> {
-            let tree = self.require_tree()?;
-            Ok(tree.school.as_ref().map(|st| School::from(st.clone())))
+            Ok(self.school_toml()?.map(|st| School::from(st.clone())))
         })?;
         Ok(cached.as_ref())
     }

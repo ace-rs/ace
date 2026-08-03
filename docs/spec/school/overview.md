@@ -96,7 +96,7 @@ uses `school = "."` in its own `ace.toml`. Inputs (all rows resolve the linked s
 | 6   | yes | yes | remote | no  | `Err(NotInitialized)` — "run `ace school init`" | clone exists but lacks `school.toml`            |
 | 7   | yes | yes | remote | —   | `Ok` (clone dir absent)                         | first-run; `cmd/pull.rs` self-heals via clone   |
 
-**Detection rule for cases 4 and 6.** After `school_paths::resolve`, if the resolved root
+**Detection rule for cases 4 and 6.** After `LinkedSchool::resolve`, if the resolved root
 *exists as a directory* but does not contain `school.toml`, return
 `SchoolError::NotInitialized`. The `is_dir()` guard preserves case 7 — when the clone dir
 is absent entirely, return `Ok` so `cmd/pull.rs` can self-heal by cloning.

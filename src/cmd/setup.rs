@@ -26,7 +26,7 @@ fn run_inner(ace: &mut Ace, specifier: Option<&str>) -> Result<(), CmdError> {
     .run(ace)?;
 
     // Prepare school (install/update/link + MCP).
-    ace.require_resolved()?;
+    ace.require_config()?;
     super::main::prepare_school(ace, &resolved)?;
 
     // Post-prepare setup: instructions file. Gitignore refresh runs inside Prepare.

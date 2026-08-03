@@ -441,7 +441,6 @@ mod tests {
             user: None,
             project: Some(project),
             local: None,
-            school: None,
         }
     }
 

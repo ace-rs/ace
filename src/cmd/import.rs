@@ -1,7 +1,7 @@
 use crate::ace::Ace;
 use crate::actions::school::{AddImport, AddImportResult};
-use crate::config::school_toml::{self, ImportDecl};
 use crate::git;
+use crate::school::toml::{self as school_toml, ImportDecl};
 use crate::skills::name;
 
 use super::CmdError;

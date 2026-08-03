@@ -19,7 +19,7 @@ fn run_inner(ace: &mut Ace, force: bool, version: Option<String>) -> Result<(), 
         ace.done("update check skipped (ACE_SKIP_UPDATE=1)");
         return Ok(());
     }
-    if let Ok(r) = ace.require_resolved()
+    if let Ok(r) = ace.require_config()
         && r.skip_update.value
     {
         ace.done("update check skipped (skip_update = true)");

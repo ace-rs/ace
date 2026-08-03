@@ -5,7 +5,7 @@ use crate::ace::{Ace, IoError, partition_picked};
 use crate::actions::project::edit_mcp_config;
 use crate::backend::{Backend, Kind};
 use crate::config::ConfigError;
-use crate::config::school_toml::McpDecl;
+use crate::school::toml::McpDecl;
 use crate::templates::Template;
 
 #[derive(Debug, thiserror::Error)]

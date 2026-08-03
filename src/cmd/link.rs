@@ -2,7 +2,6 @@ use crate::ace::Ace;
 use crate::actions::project::Link;
 use crate::actions::project::link_skills;
 use crate::config::paths::ace_data_dir;
-use crate::config::school_paths;
 
 use super::CmdError;
 
@@ -12,26 +11,19 @@ pub fn run(ace: &mut Ace, force: bool) {
 }
 
 fn run_inner(ace: &mut Ace, force: bool) -> Result<(), CmdError> {
-    let specifier = ace
-        .require_resolved()?
-        .school_specifier
-        .value
-        .clone()
-        .ok_or(crate::school::SchoolError::NoSpecifier)?;
-
+    let school_root = ace.require_linked_school()?.root.clone();
     let project_dir = ace.project_dir().to_path_buf();
-    let school_paths = school_paths::resolve(&project_dir, &specifier)?;
 
     let backend = ace.backend()?;
     let backend_dir = backend.backend_dir();
     let backend_features = backend.features();
     let tree = ace.require_tree()?.clone();
-    let prepared = link_skills::prepare(&school_paths.root, &tree, backend_features)
+    let prepared = link_skills::prepare(&school_root, &tree, backend_features)
         .map_err(|e| CmdError::failed(format!("scan school skills: {e}")))?;
     let ace_data_root = ace_data_dir()?;
 
     let result = Link {
-        school_root: &school_paths.root,
+        school_root: &school_root,
         project_dir: &project_dir,
         backend_dir,
         skills: &prepared.desired,

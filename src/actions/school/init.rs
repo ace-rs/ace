@@ -3,8 +3,8 @@ use std::path::Path;
 use crate::ace::Ace;
 use crate::actions::project::UpdateGitignore;
 use crate::actions::school::pull_imports::{PullImports, PullImportsError};
-use crate::config::school_toml::{self, ImportDecl};
 use crate::config::{ConfigError, ace_toml};
+use crate::school::toml::{self as school_toml, ImportDecl};
 use crate::templates;
 
 /// Default school imported by every fresh school. Provides `ace-school` and

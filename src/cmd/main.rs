@@ -3,6 +3,8 @@ use crate::actions::project::{Prepare, PrepareResult, register_missing_mcp};
 use crate::backend::{Kind, OneShotRequest, PromptInput, SessionRequest};
 use crate::config::ace_toml::Trust;
 use crate::config::resolve::Source;
+use crate::school::SchoolError;
+use crate::school::linked::LinkedSchool;
 use crate::templates::session::{SessionPromptInput, build_session_prompt};
 
 use super::CmdError;
@@ -23,10 +25,10 @@ fn run_inner(
     should_resume: bool,
     one_shot_prompt: Option<String>,
 ) -> Result<(), CmdError> {
-    require_resolved_or_recover(ace)?;
+    require_config_or_recover(ace)?;
 
     let (specifier, school_from) = {
-        let r = ace.require_resolved()?;
+        let r = ace.require_config()?;
         let specifier = r
             .school_specifier
             .value
@@ -54,7 +56,7 @@ fn run_inner(
     let backend_dir = project_dir.join(ace.backend()?.backend_dir());
 
     let (resolved_session_prompt, trust, resume_pref, env) = {
-        let r = ace.require_resolved()?;
+        let r = ace.require_config()?;
         let env: std::collections::HashMap<String, String> = r
             .env
             .iter()
@@ -143,15 +145,19 @@ pub(super) fn prepare_school(ace: &mut Ace, specifier: &str) -> Result<PrepareRe
     let project_dir = ace.project_dir().to_path_buf();
     let preliminary_backend = ace.backend()?.clone();
 
+    // Paths-only resolution — first run has no school.toml yet, so the
+    // content-checked `require_linked_school` would refuse the very state
+    // Prepare exists to heal.
+    let school = LinkedSchool::resolve(&project_dir, specifier).map_err(SchoolError::TreeLoad)?;
     let prepare_result = (Prepare {
-        specifier,
+        school: &school,
         project_dir: &project_dir,
         backend: &preliminary_backend,
     })
     .run(ace)?;
 
     // Reload with fresh school.toml after Prepare.
-    ace.reload_tree()?;
+    ace.invalidate_school_caches();
 
     // Register MCP servers from school.toml.
     let (backend, entries, _) = super::mcp::load_school_mcp(ace)?;
@@ -171,8 +177,8 @@ pub(super) fn prepare_school(ace: &mut Ace, specifier: &str) -> Result<PrepareRe
 /// the user to pick a known backend, set it as a runtime override, and retry.
 /// Closes PROD9-146: a stale `backend = "..."` selector can no longer brick
 /// the session — the user gets a recovery prompt instead.
-fn require_resolved_or_recover(ace: &mut Ace) -> Result<(), CmdError> {
-    ace.require_resolved()?;
+fn require_config_or_recover(ace: &mut Ace) -> Result<(), CmdError> {
+    ace.require_config()?;
     match ace.backend() {
         Ok(_) => Ok(()),
         Err(crate::backend::BackendError::Unknown(name)) => recover_backend(ace, &name),
@@ -211,7 +217,7 @@ fn school_source_notice(from: Source, specifier: &str) -> Option<String> {
 fn list_known_backend_names(ace: &Ace) -> Result<Vec<String>, CmdError> {
     let tree = ace.require_tree()?;
     let mut names: Vec<String> = Kind::ALL.iter().map(|k| k.name().to_string()).collect();
-    if let Some(st) = &tree.school {
+    if let Some(st) = ace.school_toml()? {
         names.extend(st.backends.iter().map(|d| d.name.clone()));
     }
     for layer in [&tree.user, &tree.project, &tree.local]

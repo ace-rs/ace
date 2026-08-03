@@ -1,29 +1,36 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use super::ConfigError;
-use super::paths::ace_data_dir;
+use crate::config::ConfigError;
+use crate::config::paths::ace_data_dir;
 
+/// On-disk location of the linked school, resolved from an `ace.toml`
+/// specifier. Location only — content (`school.toml`) is loaded by the
+/// callers that need it.
 #[derive(Clone, Debug)]
-pub struct SchoolPaths {
+pub struct LinkedSchool {
     pub source: String,
     pub clone_path: Option<PathBuf>,
     pub root: PathBuf,
 }
 
-pub fn resolve(project_dir: &std::path::Path, specifier: &str) -> Result<SchoolPaths, ConfigError> {
-    let (source, path) = parse_specifier(specifier)?;
-    let (base, clone_path) = if source == "." {
-        (project_dir.to_path_buf(), None)
-    } else {
-        let clone_path = ace_data_dir()?.join(&source);
-        (clone_path.clone(), Some(clone_path))
-    };
-    let root = path.map(|p| base.join(p)).unwrap_or(base.clone());
-    Ok(SchoolPaths {
-        source: specifier.to_string(),
-        clone_path,
-        root,
-    })
+impl LinkedSchool {
+    pub fn resolve(project_dir: &Path, specifier: &str) -> Result<Self, ConfigError> {
+        let (source, path) = parse_specifier(specifier)?;
+
+        let (base, clone_path) = if source == "." {
+            (project_dir.to_path_buf(), None)
+        } else {
+            let clone_path = ace_data_dir()?.join(&source);
+            (clone_path.clone(), Some(clone_path))
+        };
+        let root = path.map(|p| base.join(p)).unwrap_or(base.clone());
+
+        Ok(Self {
+            source: specifier.to_string(),
+            clone_path,
+            root,
+        })
+    }
 }
 
 /// Parse "source:path" specifier into (source, optional path).
@@ -112,7 +119,8 @@ mod tests {
         ];
 
         for (spec, expected_root) in cases {
-            let p = resolve(&project, spec).expect("resolve should succeed for embedded spec");
+            let p = LinkedSchool::resolve(&project, spec)
+                .expect("resolve should succeed for embedded spec");
             assert!(
                 p.clone_path.is_none(),
                 "embedded school should have no clone path for {spec:?}"
@@ -126,7 +134,7 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let project = tmp.path().join("myproject");
         let data_root =
-            super::super::paths::ace_data_dir().expect("ace_data_dir should resolve in tests");
+            crate::config::paths::ace_data_dir().expect("ace_data_dir should resolve in tests");
         let cases: &[(&str, &str, &str)] = &[
             ("ace-rs/school", "ace/ace-rs/school", "ace/ace-rs/school"),
             (
@@ -137,7 +145,8 @@ mod tests {
         ];
 
         for (spec, clone_suffix, root_suffix) in cases {
-            let p = resolve(&project, spec).expect("resolve should succeed for remote spec");
+            let p = LinkedSchool::resolve(&project, spec)
+                .expect("resolve should succeed for remote spec");
 
             let clone = p
                 .clone_path
@@ -163,7 +172,7 @@ mod tests {
     fn resolve_rejects_traversal() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let project = tmp.path().join("myproject");
-        let result = resolve(&project, "owner/repo:../secret");
+        let result = LinkedSchool::resolve(&project, "owner/repo:../secret");
         assert!(result.is_err());
     }
 }

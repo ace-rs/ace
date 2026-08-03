@@ -431,13 +431,12 @@ mod tests {
             user: None,
             project: Some(project),
             local: Some(local),
-            school: None,
         }
     }
 
     fn bind_default(t: &Tree) -> Result<Backend, BackendError> {
         bind(
-            &resolve::merge(t, &AceToml::default()),
+            &resolve::merge(t, None, &AceToml::default()),
             &TemplateCtx::empty(),
         )
     }

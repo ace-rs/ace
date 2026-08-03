@@ -41,8 +41,8 @@ fn format_ace_toml(ace: &mut Ace, path: &Path) -> Result<(), CmdError> {
 }
 
 fn format_school_toml(ace: &mut Ace, path: &Path) -> Result<(), CmdError> {
-    let toml = config::school_toml::load(path)?;
-    config::school_toml::save(path, &toml)?;
+    let toml = crate::school::toml::load(path)?;
+    crate::school::toml::save(path, &toml)?;
     ace.done(&format!("Formatted {}", path.display()));
     Ok(())
 }

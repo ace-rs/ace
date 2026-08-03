@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use crate::ace::Ace;
 use crate::actions::project::PrepareError;
-use crate::config;
+use crate::school::linked::LinkedSchool;
 
 pub use crate::skills::{ChangeKind, SkillChange};
 
@@ -77,25 +77,20 @@ impl PullOutcome {
 /// Git fetch + ff-only merge school clone to latest origin/main.
 /// Dirty, ahead, or diverged clones are warned but not errors — update is skipped.
 pub struct Pull<'a> {
-    pub specifier: &'a str,
-    pub project_dir: &'a Path,
+    pub school: &'a LinkedSchool,
     pub force: bool,
 }
 
 impl Pull<'_> {
     pub fn run(&self, ace: &mut Ace) -> Result<PullOutcome, PrepareError> {
-        // -- resolve school paths --
-
-        let school_paths = config::school_paths::resolve(self.project_dir, self.specifier)?;
-
-        let Some(clone_path) = &school_paths.clone_path else {
+        let Some(clone_path) = &self.school.clone_path else {
             return Ok(PullOutcome::Embedded);
         };
 
         if !clone_path.join(".git").exists() {
             return Err(PrepareError::Clone(format!(
                 "school not installed: {}",
-                self.specifier
+                self.school.source
             )));
         }
 
@@ -141,7 +136,7 @@ impl Pull<'_> {
             .rev_parse("HEAD")
             .map_err(|e| PrepareError::Clone(e.to_string()))?;
 
-        ace.progress(&format!("Fetching {}", self.specifier));
+        ace.progress(&format!("Fetching {}", self.school.source));
         if let Err(e) = git.fetch("origin", "main") {
             ace.warn(&e.to_string());
             ace.hint(crate::git::auth_hint());

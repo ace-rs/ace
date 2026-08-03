@@ -35,7 +35,7 @@ pub enum PullImportsResult {
 impl PullImports<'_> {
     pub fn run(&self, ace: &mut Ace) -> Result<PullImportsResult, PullImportsError> {
         let toml_path = self.school_root.join("school.toml");
-        let school = config::school_toml::load(&toml_path)?;
+        let school = crate::school::toml::load(&toml_path)?;
 
         if school.imports.is_empty() {
             return Ok(PullImportsResult::NoImports);
@@ -156,7 +156,7 @@ impl PullImports<'_> {
 fn surface_import_diagnostics(
     ace: &mut Ace,
     resolution: &ImportsResolution,
-    decls: &[config::school_toml::ImportDecl],
+    decls: &[crate::school::toml::ImportDecl],
 ) {
     // Patterns and source labels are raw third-party `String`s (not `Locator`s,
     // whose Display self-sanitizes), so they go through `name::render` here.

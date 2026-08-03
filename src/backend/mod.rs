@@ -34,7 +34,7 @@ use std::process::Output;
 use serde::{Deserialize, Serialize};
 
 use crate::config::ace_toml::Trust;
-use crate::config::school_toml::McpDecl;
+use crate::school::toml::McpDecl;
 
 /// Inputs to an interactive session launch — exec-replace transport.
 ///

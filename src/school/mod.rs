@@ -1,8 +1,11 @@
+pub mod linked;
+pub mod toml;
+
 use serde::Serialize;
 use std::collections::HashMap;
 
+use self::toml::{ImportDecl, McpDecl, Project, SchoolToml};
 use crate::config::ConfigError;
-use crate::config::school_toml::{ImportDecl, McpDecl, Project, SchoolToml};
 
 /// Errors that can occur while binding a school. Wraps `ConfigError` for
 /// the underlying tree/load step and adds school-specific failure modes.

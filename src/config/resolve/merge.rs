@@ -8,11 +8,12 @@ use std::collections::HashMap;
 use crate::backend::Kind;
 use crate::config::ace_toml::{AceToml, BackendDecl, Trust};
 use crate::config::tree::Tree;
+use crate::school::toml::SchoolToml;
 
 use super::resolved::Resolved;
 use super::source::{Source, Sourced};
 
-pub fn merge(tree: &Tree, overrides: &AceToml) -> Resolved {
+pub fn merge(tree: &Tree, school: Option<&SchoolToml>, overrides: &AceToml) -> Resolved {
     let default = AceToml::default();
     let user = tree.user.as_ref().unwrap_or(&default);
     let project = tree.project.as_ref().unwrap_or(&default);
@@ -36,8 +37,8 @@ pub fn merge(tree: &Tree, overrides: &AceToml) -> Resolved {
 
     Resolved {
         school_specifier: school_specifier(&layers),
-        backend_name: backend_name(&layers, tree.school_backend()),
-        backend_decls: backend_decls(tree, &layers),
+        backend_name: backend_name(&layers, school.and_then(|s| s.backend.as_deref())),
+        backend_decls: backend_decls(school, &layers),
         session_prompt: session_prompt(&layers),
         env: env(&layers),
         trust: trust(&personal),
@@ -69,9 +70,12 @@ fn backend_name(layers: &[(Source, &AceToml); 4], school_backend: Option<&str>) 
     Sourced::at_default(Kind::default().into())
 }
 
-fn backend_decls(tree: &Tree, layers: &[(Source, &AceToml); 4]) -> Vec<Sourced<BackendDecl>> {
+fn backend_decls(
+    school: Option<&SchoolToml>,
+    layers: &[(Source, &AceToml); 4],
+) -> Vec<Sourced<BackendDecl>> {
     let mut out = Vec::new();
-    if let Some(st) = &tree.school {
+    if let Some(st) = school {
         for d in &st.backends {
             out.push(Sourced::new(d.clone(), Source::School));
         }
@@ -161,20 +165,13 @@ mod tests {
             user: None,
             project: Some(project),
             local: Some(local),
-            school: None,
         }
     }
 
-    fn tree_with_school_backend(project: AceToml, local: AceToml, backend: &str) -> Tree {
-        use crate::config::school_toml::SchoolToml;
-        Tree {
-            user: None,
-            project: Some(project),
-            local: Some(local),
-            school: Some(SchoolToml {
-                backend: Some(backend.to_string()),
-                ..SchoolToml::default()
-            }),
+    fn school_with_backend(backend: &str) -> SchoolToml {
+        SchoolToml {
+            backend: Some(backend.to_string()),
+            ..SchoolToml::default()
         }
     }
 
@@ -185,7 +182,7 @@ mod tests {
     #[test]
     fn school_project_wins() {
         let t = tree(ace("project-school", &[]), ace("", &[]));
-        let r = merge(&t, &empty_overrides());
+        let r = merge(&t, None, &empty_overrides());
         assert_eq!(r.school_specifier.value.as_deref(), Some("project-school"));
         assert_eq!(r.school_specifier.from, Source::Project);
     }
@@ -193,7 +190,7 @@ mod tests {
     #[test]
     fn school_local_overrides_project() {
         let t = tree(ace("project-school", &[]), ace("local-school", &[]));
-        let r = merge(&t, &empty_overrides());
+        let r = merge(&t, None, &empty_overrides());
         assert_eq!(r.school_specifier.value.as_deref(), Some("local-school"));
         assert_eq!(r.school_specifier.from, Source::Local);
     }
@@ -204,9 +201,8 @@ mod tests {
             user: Some(ace("user-school", &[])),
             project: None,
             local: None,
-            school: None,
         };
-        let r = merge(&t, &empty_overrides());
+        let r = merge(&t, None, &empty_overrides());
         assert_eq!(r.school_specifier.value.as_deref(), Some("user-school"));
         assert_eq!(r.school_specifier.from, Source::User);
     }
@@ -217,9 +213,8 @@ mod tests {
             user: Some(ace("user-school", &[])),
             project: Some(ace("project-school", &[])),
             local: None,
-            school: None,
         };
-        let r = merge(&t, &empty_overrides());
+        let r = merge(&t, None, &empty_overrides());
         assert_eq!(r.school_specifier.value.as_deref(), Some("project-school"));
         assert_eq!(r.school_specifier.from, Source::Project);
     }
@@ -227,7 +222,7 @@ mod tests {
     #[test]
     fn school_default_when_all_empty() {
         let t = tree(ace("", &[]), ace("", &[]));
-        let r = merge(&t, &empty_overrides());
+        let r = merge(&t, None, &empty_overrides());
         assert!(r.school_specifier.value.is_none());
         assert_eq!(r.school_specifier.from, Source::Default);
     }
@@ -240,7 +235,7 @@ mod tests {
         local.backend = Some(Kind::Claude.into());
 
         let t = tree(project, local);
-        let r = merge(&t, &empty_overrides());
+        let r = merge(&t, None, &empty_overrides());
         assert_eq!(r.backend_name.value, "claude");
         assert_eq!(r.backend_name.from, Source::Local);
     }
@@ -248,15 +243,16 @@ mod tests {
     #[test]
     fn backend_default_claude() {
         let t = tree(ace("", &[]), ace("", &[]));
-        let r = merge(&t, &empty_overrides());
+        let r = merge(&t, None, &empty_overrides());
         assert_eq!(r.backend_name.value, "claude");
         assert_eq!(r.backend_name.from, Source::Default);
     }
 
     #[test]
     fn backend_school_used() {
-        let t = tree_with_school_backend(ace("", &[]), ace("", &[]), Kind::Codex.name());
-        let r = merge(&t, &empty_overrides());
+        let t = tree(ace("", &[]), ace("", &[]));
+        let s = school_with_backend(Kind::Codex.name());
+        let r = merge(&t, Some(&s), &empty_overrides());
         assert_eq!(r.backend_name.value, "codex");
         assert_eq!(r.backend_name.from, Source::School);
     }
@@ -265,9 +261,10 @@ mod tests {
     fn backend_project_overrides_school() {
         let mut project = ace("", &[]);
         project.backend = Some(Kind::Claude.into());
-        let t = tree_with_school_backend(project, ace("", &[]), Kind::Codex.name());
+        let t = tree(project, ace("", &[]));
+        let s = school_with_backend(Kind::Codex.name());
 
-        let r = merge(&t, &empty_overrides());
+        let r = merge(&t, Some(&s), &empty_overrides());
         assert_eq!(r.backend_name.value, "claude");
         assert_eq!(r.backend_name.from, Source::Project);
     }
@@ -278,13 +275,14 @@ mod tests {
         project.backend = Some(Kind::Flaude.into());
         let mut local = ace("", &[]);
         local.backend = Some(Kind::Claude.into());
-        let t = tree_with_school_backend(project, local, Kind::Codex.name());
+        let t = tree(project, local);
+        let s = school_with_backend(Kind::Codex.name());
 
         let overrides = AceToml {
             backend: Some(Kind::Codex.into()),
             ..AceToml::default()
         };
-        let r = merge(&t, &overrides);
+        let r = merge(&t, Some(&s), &overrides);
         assert_eq!(r.backend_name.value, "codex");
         assert_eq!(r.backend_name.from, Source::Override);
     }
@@ -292,7 +290,7 @@ mod tests {
     #[test]
     fn env_additive_with_provenance() {
         let t = tree(ace("s", &[("A", "1")]), ace("s", &[("B", "2")]));
-        let r = merge(&t, &empty_overrides());
+        let r = merge(&t, None, &empty_overrides());
         assert_eq!(r.env["A"].value, "1");
         assert_eq!(r.env["A"].from, Source::Project);
         assert_eq!(r.env["B"].value, "2");
@@ -305,7 +303,7 @@ mod tests {
             ace("s", &[("KEY", "old"), ("KEEP", "yes")]),
             ace("s", &[("KEY", "new")]),
         );
-        let r = merge(&t, &empty_overrides());
+        let r = merge(&t, None, &empty_overrides());
         assert_eq!(r.env["KEY"].value, "new");
         assert_eq!(r.env["KEY"].from, Source::Local);
         assert_eq!(r.env["KEEP"].value, "yes");
@@ -317,7 +315,7 @@ mod tests {
         let mut project = ace("", &[]);
         project.session_prompt = Some("project prompt".to_string());
         let t = tree(project, ace("", &[]));
-        let r = merge(&t, &empty_overrides());
+        let r = merge(&t, None, &empty_overrides());
         assert_eq!(r.session_prompt.value, "project prompt");
         assert_eq!(r.session_prompt.from, Source::Project);
     }
@@ -325,7 +323,7 @@ mod tests {
     #[test]
     fn session_prompt_default_empty() {
         let t = tree(ace("", &[]), ace("", &[]));
-        let r = merge(&t, &empty_overrides());
+        let r = merge(&t, None, &empty_overrides());
         assert_eq!(r.session_prompt.value, "");
         assert_eq!(r.session_prompt.from, Source::Default);
     }
@@ -345,9 +343,8 @@ mod tests {
             user: Some(user),
             project: Some(AceToml::default()),
             local: Some(local),
-            school: None,
         };
-        let r = merge(&t, &empty_overrides());
+        let r = merge(&t, None, &empty_overrides());
         assert_eq!(r.trust.value, Trust::Yolo);
         assert_eq!(r.trust.from, Source::Local);
     }
@@ -362,9 +359,8 @@ mod tests {
             user: None,
             project: None,
             local: Some(local),
-            school: None,
         };
-        let r = merge(&t, &empty_overrides());
+        let r = merge(&t, None, &empty_overrides());
         assert_eq!(r.trust.value, Trust::Yolo);
         assert_eq!(r.trust.from, Source::Local);
     }
@@ -372,7 +368,7 @@ mod tests {
     #[test]
     fn trust_default_when_unset() {
         let t = tree(ace("", &[]), ace("", &[]));
-        let r = merge(&t, &empty_overrides());
+        let r = merge(&t, None, &empty_overrides());
         assert_eq!(r.trust.value, Trust::Default);
         assert_eq!(r.trust.from, Source::Default);
     }
@@ -380,7 +376,7 @@ mod tests {
     #[test]
     fn resume_default_true() {
         let t = tree(ace("s", &[]), ace("s", &[]));
-        let r = merge(&t, &empty_overrides());
+        let r = merge(&t, None, &empty_overrides());
         assert!(r.resume.value);
         assert_eq!(r.resume.from, Source::Default);
     }
@@ -390,7 +386,7 @@ mod tests {
         let mut local = ace("s", &[]);
         local.resume = Some(false);
         let t = tree(ace("s", &[]), local);
-        let r = merge(&t, &empty_overrides());
+        let r = merge(&t, None, &empty_overrides());
         assert!(!r.resume.value);
         assert_eq!(r.resume.from, Source::Local);
     }
@@ -401,7 +397,7 @@ mod tests {
         let mut project = ace("s", &[]);
         project.resume = Some(false);
         let t = tree(project, ace("s", &[]));
-        let r = merge(&t, &empty_overrides());
+        let r = merge(&t, None, &empty_overrides());
         assert!(r.resume.value);
         assert_eq!(r.resume.from, Source::Default);
     }
@@ -409,7 +405,7 @@ mod tests {
     #[test]
     fn skip_update_defaults_false() {
         let t = tree(ace("s", &[]), ace("s", &[]));
-        let r = merge(&t, &empty_overrides());
+        let r = merge(&t, None, &empty_overrides());
         assert!(!r.skip_update.value);
         assert_eq!(r.skip_update.from, Source::Default);
     }
@@ -421,7 +417,7 @@ mod tests {
         let mut local = ace("s", &[]);
         local.skip_update = Some(false);
         let t = tree(project, local);
-        let r = merge(&t, &empty_overrides());
+        let r = merge(&t, None, &empty_overrides());
         assert!(!r.skip_update.value);
         assert_eq!(r.skip_update.from, Source::Local);
     }
@@ -435,9 +431,8 @@ mod tests {
             }),
             project: None,
             local: None,
-            school: None,
         };
-        let r = merge(&t, &empty_overrides());
+        let r = merge(&t, None, &empty_overrides());
         assert!(r.skip_update.value);
         assert_eq!(r.skip_update.from, Source::User);
     }
@@ -460,7 +455,7 @@ mod tests {
         }];
 
         let t = tree(project, local);
-        let r = merge(&t, &empty_overrides());
+        let r = merge(&t, None, &empty_overrides());
 
         assert_eq!(r.backend_decls.len(), 2);
         assert_eq!(r.backend_decls[0].value.name, "p");

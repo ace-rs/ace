@@ -1,5 +1,6 @@
 use crate::ace::Ace;
-use crate::config::{paths, school_paths};
+use crate::config::paths;
+use crate::school::linked::LinkedSchool;
 
 use super::CmdError;
 
@@ -9,7 +10,7 @@ pub fn run(ace: &mut Ace, key: Option<&str>) {
 }
 
 fn run_inner(ace: &mut Ace, key: Option<&str>) -> Result<(), CmdError> {
-    let school_specifier = ace.require_resolved()?.school_specifier.value.clone();
+    let school_specifier = ace.require_config()?.school_specifier.value.clone();
     let p = paths::resolve(ace.project_dir())?;
 
     let all = build_paths(ace, &p, school_specifier.as_deref())?;
@@ -43,7 +44,7 @@ fn build_paths(
     out.push(("cache".into(), p.cache.display().to_string()));
 
     if let Some(spec) = school_specifier {
-        let sp = school_paths::resolve(ace.project_dir(), spec)?;
+        let sp = LinkedSchool::resolve(ace.project_dir(), spec)?;
         out.push(("school".into(), sp.root.display().to_string()));
     }
 

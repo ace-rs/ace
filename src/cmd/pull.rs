@@ -1,6 +1,6 @@
 use crate::ace::Ace;
 use crate::actions::project::{Pull, clone};
-use crate::config::school_paths;
+use crate::school::linked::LinkedSchool;
 
 use super::CmdError;
 
@@ -11,32 +11,28 @@ pub fn run(ace: &mut Ace) {
 
 fn run_inner(ace: &mut Ace) -> Result<(), CmdError> {
     let specifier = ace
-        .require_resolved()?
+        .require_config()?
         .school_specifier
         .value
         .clone()
         .ok_or(crate::school::SchoolError::NoSpecifier)?;
 
-    let project_dir = ace.project_dir().to_path_buf();
-    let school_paths = school_paths::resolve(&project_dir, &specifier)?;
+    // Paths-only resolution — self-heal must reach states the content-checked
+    // `require_linked_school` refuses (missing or uninitialized clone).
+    let school = LinkedSchool::resolve(ace.project_dir(), &specifier)?;
 
     // Self-heal: if the clone dir is gone (stale index, deleted cache, etc.),
     // clone instead of pulling — Pull would otherwise error "school not installed".
-    let needs_clone = school_paths
+    let needs_clone = school
         .clone_path
         .as_ref()
         .is_some_and(|p| !p.join(".git").exists());
 
     if needs_clone {
-        clone::Clone {
-            specifier: &specifier,
-            project_dir: &project_dir,
-        }
-        .run(ace)?;
+        clone::Clone { school: &school }.run(ace)?;
     } else {
         let outcome = (Pull {
-            specifier: &specifier,
-            project_dir: &project_dir,
+            school: &school,
             force: true,
         })
         .run(ace)?;

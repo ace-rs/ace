@@ -5,7 +5,7 @@ use clap::Subcommand;
 use crate::ace::Ace;
 use crate::actions::project::{RegisterMcp, RemoveMcp, edit_mcp_config};
 use crate::backend::McpStatus;
-use crate::config::school_toml::McpDecl;
+use crate::school::toml::McpDecl;
 
 use super::CmdError;
 
@@ -43,7 +43,7 @@ pub fn run(ace: &mut Ace, command: Option<Command>) {
 /// backend has. Deliberately does not probe health; that costs a subprocess
 /// round-trip per server and belongs to `ace mcp check`.
 fn run_list(ace: &mut Ace) -> Result<(), CmdError> {
-    ace.require_resolved()?;
+    ace.require_config()?;
 
     let backend = ace.backend()?.clone();
     let declared = ace.school()?.map(|s| s.mcp.clone()).unwrap_or_default();
@@ -124,7 +124,7 @@ fn inventory(
 
 /// `ace mcp check` — health check only, no mutations.
 fn run_check(ace: &mut Ace) -> Result<(), CmdError> {
-    ace.require_resolved()?;
+    ace.require_config()?;
 
     let (backend, entries, project_dir) = load_school_mcp(ace)?;
     if entries.is_empty() {
@@ -181,7 +181,7 @@ fn run_check(ace: &mut Ace) -> Result<(), CmdError> {
 
 /// `ace mcp reset` — remove every registered school-defined server.
 fn run_reset(ace: &mut Ace) -> Result<(), CmdError> {
-    ace.require_resolved()?;
+    ace.require_config()?;
 
     let (backend, entries, project_dir) = load_school_mcp(ace)?;
     let registered = backend.mcp_list(&project_dir);
@@ -208,7 +208,7 @@ fn run_reset(ace: &mut Ace) -> Result<(), CmdError> {
 
 /// `ace mcp unregister <name>` — remove one registered server.
 fn run_unregister(ace: &mut Ace, name: String) -> Result<(), CmdError> {
-    ace.require_resolved()?;
+    ace.require_config()?;
 
     let (backend, _, project_dir) = load_school_mcp(ace)?;
 
@@ -228,7 +228,7 @@ fn run_unregister(ace: &mut Ace, name: String) -> Result<(), CmdError> {
 
 /// `ace mcp register <name>` — un-skip and register a single school-defined MCP.
 fn run_register(ace: &mut Ace, name: String) -> Result<(), CmdError> {
-    ace.require_resolved()?;
+    ace.require_config()?;
 
     let backend = ace.backend()?.clone();
     let project_dir = ace.project_dir().to_path_buf();

@@ -1,22 +1,19 @@
-use std::path::Path;
-
 use crate::ace::Ace;
 use crate::actions::project::PrepareError;
-use crate::config;
 use crate::config::index_toml;
 use crate::git;
+use crate::school::linked::LinkedSchool;
+use crate::school::toml as school_toml;
 
 /// Install or reinstall school: git clone + index update. Also used as the
 /// self-heal path when a prior clone is missing or partial.
 pub struct Clone<'a> {
-    pub project_dir: &'a Path,
-    pub specifier: &'a str,
+    pub school: &'a LinkedSchool,
 }
 
 impl Clone<'_> {
     pub fn run(&self, ace: &mut Ace) -> Result<(), PrepareError> {
-        let school_paths = config::school_paths::resolve(self.project_dir, self.specifier)?;
-        let Some(clone_path) = &school_paths.clone_path else {
+        let Some(clone_path) = &self.school.clone_path else {
             return Ok(()); // embedded school
         };
 
@@ -32,10 +29,10 @@ impl Clone<'_> {
                 .map_err(|e| PrepareError::Clone(format!("remove stale clone dir: {e}")))?;
         }
 
-        let raw_repo = self
-            .specifier
+        let specifier = self.school.source.as_str();
+        let raw_repo = specifier
             .split_once(':')
-            .map_or(self.specifier, |(owner_repo, _)| owner_repo);
+            .map_or(specifier, |(owner_repo, _)| owner_repo);
         let repo = git::normalize_source(raw_repo);
         let url = format!("https://github.com/{repo}.git");
 
@@ -47,10 +44,9 @@ impl Clone<'_> {
         }
         ace.done(&format!("Cloned {repo}"));
 
-        update_index(&school_paths.source)?;
+        update_index(&self.school.source)?;
 
-        let school_toml_path = school_paths.root.join("school.toml");
-        let school_toml = config::school_toml::load(&school_toml_path)?;
+        let school_toml = school_toml::load(&self.school.root.join("school.toml"))?;
         ace.done(&format!("School: {}", school_toml.name));
 
         Ok(())
