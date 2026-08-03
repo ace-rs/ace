@@ -45,9 +45,3 @@ against the same checkout.
 
 Consequence for ACE: a hermes version can change under a running session with no package
 manager involved, and `hermes --version` describes whichever copy was invoked.
-
-## Building from source instead
-
-`scripts/harnesses.sh` builds a backend from upstream source into a disposable
-repo-local pen when you need a pinned copy rather than whatever your machine has —
-see `../guides/harnesses.md`.

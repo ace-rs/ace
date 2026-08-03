@@ -85,10 +85,10 @@ impersonating one) in integration tests. If a test needs a binary on
 ### Real backends live outside the test suite
 
 Real backend binaries are still needed — to read a CLI surface, or to confirm a backend
-consumes what ACE emits. They are built from source into `.harnesses/` by
-`scripts/harnesses.sh` (see `docs/guides/harnesses.md`) and are exercised by hand, never
-by `cargo test`. No test may look for `.harnesses/`, skip on its absence, or branch on
-what it finds there; a suite that passes with the pen deleted is the only passing suite.
+consumes what ACE emits. They are whatever is installed on the machine
+(`docs/vendor/backend-install.md`) and are exercised by hand, never by `cargo test`. No
+test may look for a backend binary, skip on its absence, or branch on what it finds; a
+suite that passes on a machine with no backend installed is the only passing suite.
 
 ### Unit tests own backend-specific behavior
 

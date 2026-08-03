@@ -26,9 +26,6 @@ ace.local.toml
 # Session scratch
 .tasks.md
 
-# Backend harness pen (scripts/harnesses.sh)
-.harnesses/
-
 # Added by cargo
 /target
 
