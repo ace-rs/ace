@@ -3,6 +3,7 @@ use std::path::Path;
 use std::process::Output;
 
 use super::{McpDecl, McpStatus, OneShotRequest, SessionRequest};
+use crate::config::ace_toml::Trust;
 
 pub(super) fn is_ready() -> bool {
     let auth = auth_path();
@@ -142,19 +143,19 @@ fn write_agent_file(project_dir: &Path, session_prompt: &str) -> Result<(), std:
     std::fs::write(agents_dir.join("ace.md"), content)
 }
 
+/// OpenCode's interactive mode exposes no approval flags whatsoever —
+/// `--dangerously-skip-permissions` belongs to `opencode run`, the one-shot
+/// path, which never carries a trust level.
+pub(super) fn supports_trust(trust: Trust) -> bool {
+    matches!(trust, Trust::Default)
+}
+
 /// Translate `SessionRequest` into opencode's interactive argv.
 fn build_session_args(req: &SessionRequest) -> Vec<String> {
     let mut args = Vec::new();
 
     if req.resume {
         args.push("--continue".to_string());
-    }
-
-    // OpenCode interactive mode has no trust flags.
-    // `--dangerously-skip-permissions` is `opencode run` only (one-shot).
-    match req.trust {
-        crate::config::ace_toml::Trust::Default => {}
-        crate::config::ace_toml::Trust::Auto | crate::config::ace_toml::Trust::Yolo => {}
     }
 
     args.extend(["--agent", "ace"].map(String::from));

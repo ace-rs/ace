@@ -91,6 +91,11 @@ fn build_one_shot_args(req: &OneShotRequest) -> Vec<String> {
     args
 }
 
+/// Codex carries approval and sandbox flags for every level ACE models.
+pub(super) fn supports_trust(_trust: Trust) -> bool {
+    true
+}
+
 /// CLI flags for the given trust level.
 ///
 /// `Auto` mirrors `--full-auto` (`-a on-request --sandbox workspace-write`) except

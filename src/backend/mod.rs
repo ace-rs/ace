@@ -171,6 +171,13 @@ impl Kind {
         )
     }
 
+    /// Whether this backend can honour the given trust level. A level it
+    /// cannot honour is announced to the user rather than dropped silently —
+    /// `docs/spec/backend.md` § Backend Contract.
+    pub fn supports_trust(&self, trust: Trust) -> bool {
+        dispatch!(self, supports_trust, trust)
+    }
+
     pub fn exec_session(&self, cmd: &[String], req: SessionRequest) -> Result<(), std::io::Error> {
         dispatch!(self, exec_session, cmd, req)
     }

@@ -43,8 +43,11 @@ Each backend must provide:
 - **`backend_dir()`** — project directory where school folders are linked.
 - **`instructions_file()`** — markdown file generated per-project during setup.
 - **`is_ready()`** — heuristic check that the backend is authenticated/configured.
-- **`supports_trust(trust)`** — validate whether the backend supports the given trust
-  level.
+- **`supports_trust(trust)`** — whether the backend can honour the given trust level.
+  Independent of whether it emits flags for it (flaude honours every level yet emits
+  none). Before launching a session, ACE checks this and announces an unsupported
+  level to the user — the backend runs with its own default permissions; the level is
+  never dropped silently.
 - **`exec_session(req)`** — launch an interactive backend session via exec-replace. Builds
   its Command from `SessionRequest` (trust, session prompt, project dir, env, extra args,
   resume). Returns `io::Error` on spawn failure; never returns on success (terminal hands

@@ -80,10 +80,19 @@ fn run_inner(
         excluded_skills: &excluded_skills,
     });
 
-    match trust {
-        Trust::Auto => ace.info("auto mode — AI decides approvals"),
-        Trust::Yolo => ace.warn("yolo mode — permission prompts disabled"),
-        Trust::Default => {}
+    let kind = ace.backend()?.kind;
+    if kind.supports_trust(trust) {
+        match trust {
+            Trust::Auto => ace.info("auto mode — AI decides approvals"),
+            Trust::Yolo => ace.warn("yolo mode — permission prompts disabled"),
+            Trust::Default => {}
+        }
+    } else {
+        ace.warn(&format!(
+            "{} does not support {} trust — running with its default permissions",
+            kind.name(),
+            trust.label(),
+        ));
     }
 
     let resume = should_resume && resume_pref;

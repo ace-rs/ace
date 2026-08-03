@@ -54,6 +54,19 @@ pub(super) fn exec_one_shot(
     cmd.output()
 }
 
+/// Claude exposes `--permission-mode` for every level ACE models.
+pub(super) fn supports_trust(_trust: Trust) -> bool {
+    true
+}
+
+fn trust_args(trust: Trust) -> &'static [&'static str] {
+    match trust {
+        Trust::Auto => &["--permission-mode", "auto"],
+        Trust::Yolo => &["--permission-mode", "bypassPermissions"],
+        Trust::Default => &[],
+    }
+}
+
 /// Translate `SessionRequest` into Claude's CLI argv (post-binary). Pure
 /// function — no I/O, no `Command`. Tested below.
 fn build_session_args(req: &SessionRequest) -> Vec<String> {
@@ -66,11 +79,7 @@ fn build_session_args(req: &SessionRequest) -> Vec<String> {
         args.push(req.session_prompt.clone());
     }
 
-    match req.trust {
-        Trust::Auto => args.extend(["--permission-mode", "auto"].map(String::from)),
-        Trust::Yolo => args.extend(["--permission-mode", "bypassPermissions"].map(String::from)),
-        Trust::Default => {}
-    }
+    args.extend(trust_args(req.trust).iter().map(|s| s.to_string()));
 
     args.extend(req.extra_args.iter().cloned());
     args

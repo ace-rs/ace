@@ -3,8 +3,15 @@ use std::path::PathBuf;
 use std::process::Output;
 
 use super::{McpDecl, McpStatus, OneShotRequest, PromptInput, SessionRequest};
+use crate::config::ace_toml::Trust;
 
 pub(super) fn is_ready() -> bool {
+    true
+}
+
+/// The fixture records the trust level verbatim rather than translating it
+/// to flags, so every level round-trips.
+pub(super) fn supports_trust(_trust: Trust) -> bool {
     true
 }
 
