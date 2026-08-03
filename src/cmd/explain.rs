@@ -13,7 +13,8 @@ fn run_inner(ace: &mut Ace, name: &str) -> Result<(), CmdError> {
     let rendered = {
         let skills = ace.skills()?;
         let skill = find_or_suggest(skills, name).map_err(|e| CmdError::usage(e.to_string()))?;
-        render(skill)
+        let meta = crate::skills::meta::load(&skill.path);
+        render(skill, meta.as_ref())
     };
     ace.data(&rendered);
     Ok(())

@@ -4,6 +4,7 @@
 //! reference to the matching `Skill<Decided>` (caller renders) or an
 //! `ExplainError::NotFound` carrying near-match suggestions.
 
+use crate::skills::meta::SkillMeta;
 use crate::skills::{Decided, Entry, Skill, Skills, Source};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -51,14 +52,22 @@ pub fn find_or_suggest<'a>(
     })
 }
 
-/// Render a single resolved skill's explanation block.
-pub fn render(skill: &Skill<Decided>) -> String {
+/// Render a single resolved skill's explanation block. `meta` is the skill's
+/// SKILL.md frontmatter when it has one; the caller loads it so this stays pure.
+pub fn render(skill: &Skill<Decided>, meta: Option<&SkillMeta>) -> String {
     let mut s = format!(
-        "{} ({})\n  status: {}\n  trace:\n",
+        "{} ({})\n  status: {}\n",
         crate::skills::name::render(skill.locator.as_str()),
         skill.tier.label(),
         skill.status().label(),
     );
+    if let Some(meta) = meta
+        && !meta.description.is_empty()
+    {
+        s.push_str(&format!("  description: {}\n", meta.description));
+    }
+
+    s.push_str("  trace:\n");
     for entry in &skill.state.trace {
         s.push_str("    ");
         s.push_str(&format_trace_line(entry));
@@ -186,10 +195,27 @@ mod tests {
         assert_eq!(skill.tier, Tier::Curated);
         assert_eq!(skill.state.trace.len(), 1);
 
-        let out = render(skill);
+        let out = render(skill, None);
         assert!(out.contains("active"));
         assert!(out.contains("base"));
         assert!(out.contains("implicit"));
+    }
+
+    #[test]
+    fn renders_frontmatter_description_when_present() {
+        let s = resolve(
+            &["rust-coding"],
+            &tree(AceToml::default(), AceToml::default(), AceToml::default()),
+        );
+        let skill = find_or_suggest(&s, "rust-coding").expect("known");
+
+        let meta = SkillMeta {
+            name: "rust-coding".to_string(),
+            description: "Rust-specific coding conventions.".to_string(),
+        };
+        let out = render(skill, Some(&meta));
+
+        assert!(out.contains("Rust-specific coding conventions."));
     }
 
     #[test]
@@ -204,7 +230,7 @@ mod tests {
         );
         let skill = find_or_suggest(&s, "rust-fmt").expect("known");
         assert_eq!(skill.state.decision, Decision::Excluded);
-        let out = render(skill);
+        let out = render(skill, None);
         assert!(out.contains("excluded"));
         assert!(out.contains("removed"));
         assert!(out.contains("project"));
@@ -224,7 +250,7 @@ mod tests {
         let skill = find_or_suggest(&s, "rust-fmt").expect("known");
         assert_eq!(skill.state.decision, Decision::Included);
         assert_eq!(skill.state.trace.len(), 3);
-        let out = render(skill);
+        let out = render(skill, None);
         assert!(out.contains("base"));
         assert!(out.contains("removed"));
         assert!(out.contains("re-added"));
