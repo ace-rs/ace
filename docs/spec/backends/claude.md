@@ -71,6 +71,10 @@ does not overwrite.
 
 **MCP list**: parsed from `~/.claude.json`.
 
+## Project paths
+
+Root: `.claude/`. ACE links `skills/`, `rules/`, `commands/`, and `agents/` beneath it.
+
 ## Linked Folders
 
 | Folder      | Supported |

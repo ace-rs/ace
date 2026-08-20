@@ -74,6 +74,11 @@ Config file: `opencode.json` in project root (JSONC format).
 ACE writes the config file directly — merging into existing content
 (preserving manually-added entries) rather than overwriting.
 
+## Project paths
+
+Root: `.opencode/`. ACE links `skills/`, `commands/`, and `agents/` beneath it. OpenCode
+does not consume a project `rules/` folder.
+
 ## Linked Folders
 
 | Folder      | Supported |

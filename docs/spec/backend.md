@@ -9,6 +9,21 @@
 | `opencode` | `opencode` | `.opencode` | `AGENTS.md`       | [backends/opencode.md](backends/opencode.md) |
 | `flaude`   | `flaude`   | `.claude`   | `CLAUDE.md`       | Test-only fixture backend (see testing.md)   |
 
+### Project path surface
+
+The backend root is only the first component of ACE's project path surface:
+
+| Backend kind | Root | ACE-linked project folders | Backend-native folders ACE does not link |
+| ------------ | ---- | -------------------------- | ----------------------------------------- |
+| `claude` | `.claude` | `skills/`, `rules/`, `commands/`, `agents/` | — |
+| `codex` | `.agents` | canonical school folders for compatibility; Codex natively consumes `skills/` | user/config rules, prompts, and agents |
+| `opencode` | `.opencode` | `skills/`, `commands/`, `agents/` | `rules/` |
+| `flaude` | `.claude` | same project paths as Claude | — |
+
+These are on-disk names, not capability labels. A future backend-specific rename must be
+exposed by the backend path surface and consumed by linking, discovery, and gitignore
+generation; those consumers must not grow backend-name conditionals or duplicate mappings.
+
 ## TOML Syntax
 
 ```toml

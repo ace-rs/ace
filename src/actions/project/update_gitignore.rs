@@ -132,6 +132,17 @@ mod tests {
     }
 
     #[test]
+    fn block_covers_every_current_backend_path_surface() {
+        let block = build_block();
+        for backend in Kind::ALL {
+            for folder in SCHOOL_FOLDERS {
+                let path = format!("{}/{folder}", backend.backend_dir());
+                assert!(block.contains(&path), "missing managed path {path}");
+            }
+        }
+    }
+
+    #[test]
     fn block_omits_static_prelude_and_dropped_patterns() {
         let block = build_block();
         for line in STATIC_PRELUDE {

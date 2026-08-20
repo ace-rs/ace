@@ -103,6 +103,12 @@ Automatic post-registration health checks in ACE's shared main flow are a separa
 cross-backend product decision. ACE does not introduce Codex-only auto-check behavior
 through the shared registration path.
 
+## Project paths
+
+Root: `.agents/`. ACE links the canonical school folders beneath it for compatibility;
+Codex natively consumes `.agents/skills/` only. Its rules, prompts, and config-defined
+agents live in user/config surfaces and are not ACE project links.
+
 ## Linked Folders
 
 | Folder      | Supported |

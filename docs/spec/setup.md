@@ -75,8 +75,11 @@ Prepare ensures the school is ready to use. It is called by both `ace setup` and
 
    Folders absent from the school are skipped.
 3. **Refresh `.gitignore` **: re-sync the ACE-managed block in `<project>/.gitignore`.
-   Block contents are backend-folder ignores (e.g. `.claude/skills`, `.agents/skills`) and
-   `ace.local.toml`. Marker comments delimit the block so re-runs are idempotent. If
+   Block contents are the complete on-disk paths ACE may link for every built-in backend
+   kind (for example `.claude/skills` and `.agents/skills`) plus `ace.local.toml`.
+   Paths come from the backend path surface, including any backend-specific folder mapping;
+   gitignore generation does not decide capabilities itself. Marker comments delimit the
+   block so re-runs are idempotent. If
    `.gitignore` does not yet exist, a small one-time prelude of OS/editor cruft
    (`.DS_Store`, `*.swp`, etc.) is seeded *outside* the marker block; ACE never re-syncs
    that surface again. School repos share the same codepath and identical block content
