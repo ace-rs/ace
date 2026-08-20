@@ -1,8 +1,2 @@
 school = "prod9/school"
-skills = [
-  "architect",
-  "code",
-  "rust-coding",
-  "skill-creator",
-  "skill-reviewer",
-]
+skills = ["architect", "code", "rust-coding", "ace", "ace-*"]
