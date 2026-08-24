@@ -1,45 +1,8 @@
 # ACE Overview
 
 ACE (Accelerated Coding Environment) is a CLI gateway into Claude Code, Codex, or
-OpenCode. It
-ensures the development environment is properly configured and up-to-date before handing
-off to the underlying AI coding tool.
-
-## Table of Contents
-
-- [index.md](index.md) — This file. Philosophy, school concept, lifecycle.
-- [ux.md](ux.md) — UX philosophy: how `ace` talks to its user.
-- [configuration.md](configuration.md) — Config file locations, layering, format.
-- [architecture.md](architecture.md) — Layers, data flow, dependency direction.
-- [setup.md](setup.md) — `ace setup` first-run flow.
-- [skills/model.md](skills/model.md) — What a skill IS: discovery cascade, identity,
-  frontmatter, sanitization.
-- [skills/selection.md](skills/selection.md) — Which skills are picked: match handle,
-  `[[imports]]` schema, cross-source merge.
-- [skills/emit.md](skills/emit.md) — Where skills land: school storage, backend emit
-  rule, loser-drop.
-- [skills/sync.md](skills/sync.md) — Consumer-side workflow: fetch, symlink, reconcile.
-- [skills/lifecycle.md](skills/lifecycle.md) — Typestate contract: the
-  `Discovered → Validated → Decided` lattice and the `Vetted` gate.
-- [prompt-templating.md](prompt-templating.md) — Session prompt composition and template
-  rendering.
-- [mcp.md](mcp.md) — MCP server design (remote-only, OAuth delegation).
-- [authentication.md](authentication.md) — Authentication (MCP OAuth, school repo access).
-- [backend.md](backend.md) — Backend abstraction contract.
-- [backends/claude.md](backends/claude.md) — Claude backend: permission modes, MCP, linked
-  folders.
-- [backends/codex.md](backends/codex.md) — Codex backend specifics.
-- [backends/opencode.md](backends/opencode.md) — OpenCode backend specifics.
-- [school/overview.md](school/overview.md) — School repository structure.
-- [school/school-toml.md](school/school-toml.md) — `school.toml` format reference.
-- [school/school-commands.md](school/school-commands.md) — `ace school` subcommands.
-- [school/standard-imports.md](school/standard-imports.md) — Standard `ace-rs/school`
-  import seeded on `ace school init`.
-- [migrations.md](migrations.md) — On-disk stores, layout versions, migration policy.
-- [exit-codes.md](exit-codes.md) — Process exit-code contract and the variant→code map.
-- [connect.md](connect.md) — `ace connect` agent bridge (designed, not yet implemented).
-- [testing.md](testing.md) — Integration test strategy, TestEnv pattern.
-- [upgrade.md](upgrade.md) — Self-update: version check, background upgrade, `ace upgrade`.
+OpenCode. It ensures the development environment is properly configured and up-to-date
+before handing off to the underlying AI coding tool.
 
 ## Philosophy
 

@@ -33,7 +33,8 @@ Rationale, two prongs:
 
 - **No version tracking by design.** The support matrix between non-deterministic LLMs,
   project versions, tool versions, and ACE versions is unwinnable; ACE deliberately
-  doesn't try. See [index.md § Versioning Philosophy](../index.md#versioning-philosophy).
+  doesn't try. See
+  [overview.md § Versioning Philosophy](../overview.md#versioning-philosophy).
 - **Upstream deletions don't propagate downstream.** Preservation principle: an upstream
   source removing a skill should not silently remove it from schools that already imported
   it. The school author decides when (or whether) to follow upstream's removal, by hand.
@@ -156,8 +157,8 @@ vestigial for Claude; no other code changes.
 
 ## Frontmatter passthrough
 
-Per [index.md](../index.md#versioning-philosophy) ("LLMs are not dumb consumers — they
-read the skill, adapt, and resolve compatibility gaps themselves"):
+Per [overview.md](../overview.md#versioning-philosophy) ("LLMs are not dumb consumers —
+they read the skill, adapt, and resolve compatibility gaps themselves"):
 
 - **All frontmatter passes through verbatim** to every backend. No stripping, no
   translation, no per-backend variant logic.
@@ -208,4 +209,4 @@ structurally unsafe link name to the backend by construction.
 - **Frontmatter translation** between backend variants — see
   [model.md](model.md#honored-fields-pass-through).
 - **Lockfile / pinning** — see
-  [index.md § Versioning Philosophy](../index.md#versioning-philosophy).
+  [overview.md § Versioning Philosophy](../overview.md#versioning-philosophy).

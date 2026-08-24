@@ -245,7 +245,7 @@ the unsanitized payload. They are outside ACE's protection envelope by their own
 - **Subpath import.** skills.sh's `add https://github.com/owner/repo/tree/main/skills/foo`
   shape is rejected; not tracked.
 - **Lockfile / pinning.** See
-  [index.md § Versioning Philosophy](../index.md#versioning-philosophy).
+  [overview.md § Versioning Philosophy](../overview.md#versioning-philosophy).
 - **Whole-repo recursive discovery** (skills.sh stage 3). See
   [What's deliberately excluded](#whats-deliberately-excluded).
 - **Frontmatter translation** between backend variants. LLMs adapt; ACE doesn't.

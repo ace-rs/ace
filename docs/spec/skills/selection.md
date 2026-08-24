@@ -302,6 +302,6 @@ author typed explicitly (including a selector that matches nothing) is at most
 ## Out of scope
 
 - **Lockfile / pinning** — see
-  [index.md § Versioning Philosophy](../index.md#versioning-philosophy).
+  [overview.md § Versioning Philosophy](../overview.md#versioning-philosophy).
 - **Plugin namespacing** in match patterns (e.g. `plugin-name:skill-name`) — see
   [model.md § Out of scope](model.md#out-of-scope).

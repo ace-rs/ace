@@ -73,13 +73,14 @@ warning; it is no longer an admission axis.
 
 ### 3. Shadowing is source-trust, not a name defense
 
-The name is a **label, not a capability**: the model reads the skill's *content* and adapts;
-being called `general-coding` grants no authority. A compromised import already has a live
-malicious channel — malice inside the skills it legitimately owns, auto-propagating under the
-[no-version philosophy](../spec/index.md#versioning-philosophy) — which is undefendable and
-*accepted*, the "trusted distro ships a bad package" case. "Name takeover" therefore escalates
-to nothing. Selection (`skills` / `exclude_skills`) already scopes the attack surface to what
-the author chose to trust.
+The name is a **label, not a capability**: the model reads the skill's *content* and
+adapts; being called `general-coding` grants no authority. A compromised import already
+has a live malicious channel — malice inside the skills it legitimately owns,
+auto-propagating under the
+[no-version philosophy](../spec/overview.md#versioning-philosophy) — which is
+undefendable and *accepted*, the "trusted distro ships a bad package" case. "Name
+takeover" therefore escalates to nothing. Selection (`skills` / `exclude_skills`) already
+scopes the attack surface to what the author chose to trust.
 
 The one ACE-domain takeover surface is a **path collision**: two sources resolving to the same
 identity path. That lands as a literal file clash in the school's git tree, visible at `pull`,

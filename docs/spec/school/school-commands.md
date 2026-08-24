@@ -83,7 +83,7 @@ The dirty guard in step 1 ensures user edits are never silently discarded.
 ## Skill Modification Workflow
 
 When ACE execs into the backend (the final lifecycle step in
-[index.md](../index.md)), it injects a session prompt that:
+[overview.md](../overview.md)), it injects a session prompt that:
 
 1. Tells the AI that skills are loaded from the linked school and are editable.
 2. Instructs it to propose changes back to the linked school's repo when skills are
@@ -202,7 +202,8 @@ muscle-memory; `pull` is the canonical verb.
 - Exact imports update only the named skill. If not found in the source, warns and skips.
 - Wildcard imports re-discover on every pull — new skills matching the pattern are picked
   up automatically. Existing skills are overwritten with the latest from the source,
-  consistent with ACE's always-latest versioning philosophy (see `docs/spec/index.md`).
+  consistent with ACE's always-latest versioning philosophy (see
+  `docs/spec/overview.md`).
 
 ## `ace school skills`
 
