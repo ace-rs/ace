@@ -18,7 +18,7 @@ use std::collections::HashMap;
 
 use clap::{Parser, Subcommand};
 
-use crate::ace::{Ace, IoError};
+use crate::ace::{Ace, IoError, WordmarkStyle};
 use crate::actions::migrate::MigrateError;
 use crate::actions::project::PrepareError;
 use crate::actions::project::RegisterMcpError;
@@ -227,6 +227,75 @@ enum Command {
     },
     /// Print version information
     Version,
+}
+
+trait Wordmark {
+    fn wordmark(&self) -> WordmarkStyle;
+}
+
+impl Wordmark for Command {
+    fn wordmark(&self) -> WordmarkStyle {
+        match self {
+            Self::New { .. } => WordmarkStyle::Big,
+            Self::Setup { .. }
+            | Self::Fmt
+            | Self::Format
+            | Self::Import { .. }
+            | Self::Pull
+            | Self::Link { .. }
+            | Self::Auto
+            | Self::Yolo => WordmarkStyle::Compact,
+            Self::Config {
+                command: Some(config::Command::Set { .. }),
+            } => WordmarkStyle::Compact,
+            Self::Mcp {
+                command:
+                    Some(
+                        mcp::Command::Reset
+                        | mcp::Command::Register { .. }
+                        | mcp::Command::Unregister { .. },
+                    ),
+            } => WordmarkStyle::Compact,
+            Self::School {
+                command: school::Command::Init { .. } | school::Command::Pull,
+            } => WordmarkStyle::Compact,
+            Self::Skills {
+                command:
+                    Some(
+                        skills::Command::Include { .. }
+                        | skills::Command::Exclude { .. }
+                        | skills::Command::Reset { .. },
+                    ),
+                ..
+            } => WordmarkStyle::Compact,
+            Self::Upgrade { silent: false, .. } => WordmarkStyle::Compact,
+            Self::Diff
+            | Self::Config { .. }
+            | Self::Paths { .. }
+            | Self::Mcp { .. }
+            | Self::School { .. }
+            | Self::Skills { .. }
+            | Self::Explain { .. }
+            | Self::Upgrade { silent: true, .. }
+            | Self::Version => WordmarkStyle::None,
+        }
+    }
+}
+
+impl Cli {
+    pub(crate) fn wordmark(&self) -> WordmarkStyle {
+        match &self.command {
+            None => {
+                if self.one_shot_prompt.is_some() {
+                    WordmarkStyle::None
+                } else {
+                    WordmarkStyle::Big
+                }
+            }
+            Some(Command::New { .. }) if self.one_shot_prompt.is_some() => WordmarkStyle::None,
+            Some(command) => command.wordmark(),
+        }
+    }
 }
 
 /// Error exit class. Success exits `0` via the normal `main()` return and never
@@ -713,6 +782,79 @@ mod tests {
             BUILD_IDENTITY,
             concat!(env!("CARGO_PKG_VERSION"), " (", env!("ACE_GIT_HASH"), ")")
         );
+    }
+
+    fn parses(args: &[&str]) -> Cli {
+        Cli::try_parse_from(args).expect("parse command")
+    }
+
+    #[test]
+    fn session_commands_use_the_big_wordmark() {
+        assert_eq!(parses(&["ace"]).wordmark(), WordmarkStyle::Big);
+        assert_eq!(parses(&["ace", "new"]).wordmark(), WordmarkStyle::Big);
+    }
+
+    #[test]
+    fn one_shot_session_uses_no_wordmark() {
+        assert_eq!(
+            parses(&["ace", "--prompt", "answer"]).wordmark(),
+            WordmarkStyle::None
+        );
+    }
+
+    #[test]
+    fn root_mutations_use_the_compact_wordmark() {
+        for args in [
+            &["ace", "setup"][..],
+            &["ace", "fmt"],
+            &["ace", "format"],
+            &["ace", "import", "owner/repo"],
+            &["ace", "pull"],
+            &["ace", "link"],
+            &["ace", "auto"],
+            &["ace", "yolo"],
+            &["ace", "upgrade"],
+        ] {
+            assert_eq!(parses(args).wordmark(), WordmarkStyle::Compact, "{args:?}");
+        }
+    }
+
+    #[test]
+    fn nested_mutations_use_the_compact_wordmark() {
+        for args in [
+            &["ace", "config", "set", "trust", "auto"][..],
+            &["ace", "mcp", "reset"],
+            &["ace", "mcp", "register", "docs"],
+            &["ace", "mcp", "unregister", "docs"],
+            &["ace", "school", "init"],
+            &["ace", "school", "pull"],
+            &["ace", "skills", "include", "code"],
+            &["ace", "skills", "exclude", "code"],
+            &["ace", "skills", "reset"],
+        ] {
+            assert_eq!(parses(args).wordmark(), WordmarkStyle::Compact, "{args:?}");
+        }
+    }
+
+    #[test]
+    fn read_surfaces_use_no_wordmark() {
+        for args in [
+            &["ace", "diff"][..],
+            &["ace", "config"],
+            &["ace", "config", "get", "trust"],
+            &["ace", "config", "explain"],
+            &["ace", "paths"],
+            &["ace", "mcp"],
+            &["ace", "mcp", "check"],
+            &["ace", "school", "skills"],
+            &["ace", "school", "validate"],
+            &["ace", "skills"],
+            &["ace", "explain", "code"],
+            &["ace", "upgrade", "--silent"],
+            &["ace", "version"],
+        ] {
+            assert_eq!(parses(args).wordmark(), WordmarkStyle::None, "{args:?}");
+        }
     }
 
     #[test]

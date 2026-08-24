@@ -157,6 +157,19 @@ const BIG_LOGO: &str = concat!(
     "\x1b[38;2;40;175;225m╰───\x1b[0m",
 );
 
+const COMPACT_LOGO: &str = concat!(
+    "\x1b[1;38;2;55;225;225mΠ",
+    "\x1b[38;2;30;205;230mC",
+    "\x1b[38;2;40;175;225mE\x1b[0m",
+);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WordmarkStyle {
+    Big,
+    Compact,
+    None,
+}
+
 impl Io {
     pub fn new(porcelain: bool, yes: bool) -> Self {
         let is_terminal = std::io::stderr().is_terminal();
@@ -207,11 +220,15 @@ impl Io {
         self.is_terminal && !self.porcelain && !self.yes && !self.ci
     }
 
-    pub fn logo(&self) -> &'static str {
-        if self.should_colorize() && self.should_emit() {
-            BIG_LOGO
-        } else {
-            ""
+    pub fn logo(&self, wordmark: WordmarkStyle) -> &'static str {
+        if !self.should_colorize() || !self.should_emit() {
+            return "";
+        }
+
+        match wordmark {
+            WordmarkStyle::Big => BIG_LOGO,
+            WordmarkStyle::Compact => COMPACT_LOGO,
+            WordmarkStyle::None => "",
         }
     }
 
@@ -497,7 +514,32 @@ mod tests {
             "\x1b[38;2;40;175;225m╰───\x1b[0m",
         );
 
-        assert_eq!(attended().logo(), expected);
+        assert_eq!(attended().logo(WordmarkStyle::Big), expected);
+    }
+
+    #[test]
+    fn logo_uses_the_locked_compact_wordmark() {
+        let expected = concat!(
+            "\x1b[1;38;2;55;225;225mΠ",
+            "\x1b[38;2;30;205;230mC",
+            "\x1b[38;2;40;175;225mE\x1b[0m",
+        );
+
+        assert_eq!(attended().logo(WordmarkStyle::Compact), expected);
+    }
+
+    #[test]
+    fn logo_suppresses_an_absent_wordmark() {
+        assert_eq!(attended().logo(WordmarkStyle::None), "");
+    }
+
+    #[test]
+    fn logo_suppresses_all_wordmarks_without_presentation() {
+        assert_eq!(piped().logo(WordmarkStyle::Big), "");
+        assert_eq!(
+            io_with(true, false, false, true).logo(WordmarkStyle::Compact),
+            ""
+        );
     }
 
     // Waiving prompts is an intention; machine-readable output is an

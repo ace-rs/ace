@@ -117,8 +117,22 @@ override — a user or local school also wins when the project declares none.
 
 ### Startup wordmarks
 
-ACE has two locked terminal wordmarks. Until command-specific presentation is
-specified, every eligible startup uses the big wordmark. The wordmark is followed by a
+ACE has two locked terminal wordmarks. Session entry uses the big wordmark, ACE-owned
+mutations use the compact wordmark, and read surfaces stay undecorated:
+
+| presentation | commands                                                     |
+|--------------|--------------------------------------------------------------|
+| big          | bare `ace`; `ace new`                                        |
+| compact      | `setup`; `fmt` / `format`; `import`; `config set`             |
+| compact      | `mcp reset` / `register` / `unregister`                       |
+| compact      | `school init` / `pull`; `skills include` / `exclude` / `reset` |
+| compact      | `pull`; `link`; `auto`; `yolo`; interactive `upgrade`         |
+| none         | one-shot `--prompt`; `diff`; bare `config`; `config get`       |
+| none         | `config explain`; `paths`; bare `mcp`; `mcp check`            |
+| none         | `school skills` / `validate`; bare `skills`; `explain`        |
+| none         | silent `upgrade`; `version`; help output                      |
+
+Aliases inherit their canonical command's presentation. The wordmark is followed by a
 regular `info` item identifying the build as `version X (commit)`, where `X` is the
 package version and `commit` is the build's short git hash.
 

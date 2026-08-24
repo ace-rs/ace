@@ -23,7 +23,7 @@ fn main() {
     let cli = Cli::parse();
     let mut io = Io::new(cli.porcelain, cli.yes);
 
-    let logo = io.logo();
+    let logo = io.logo(cli.wordmark());
     if !logo.is_empty() {
         eprintln!("{logo}");
         io.info(&format!("version {}", cmd::BUILD_IDENTITY));

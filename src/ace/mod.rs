@@ -18,7 +18,7 @@ use crate::school::toml::SchoolToml;
 use crate::school::{School, SchoolError, toml as school_toml};
 use crate::skills::{Decided, SkillError, Skills};
 
-pub use io::{Io, IoError, partition_picked};
+pub use io::{Io, IoError, WordmarkStyle, partition_picked};
 
 /// Lazy-cached session view. All read accessors take `&self` and populate
 /// their cell on first call via `OnceCell`. Mutations (overrides, reload)
