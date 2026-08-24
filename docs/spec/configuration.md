@@ -273,6 +273,12 @@ Key syntax:
 - Simple fields: `backend`, `school`, `trust`, `resume`, `session_prompt`, `skip_update`
 - Env map entries: `env.KEY` — dot-path into the `[env]` table (e.g.
   `ace config set env.ANTHROPIC_API_KEY sk-...`)
+- Backend instance fields: `backends.<instance>.model` and
+  `backends.<instance>.effort`. The instance may name a built-in or custom backend and
+  may itself contain dots; parsing is anchored by the `backends.` prefix and terminal
+  field. Values are opaque strings and are written unchanged. These shared fields default
+  to project scope, and explicit scope flags retain their usual precedence. No other
+  `[backends.<instance>]` field is writable through `ace config set`.
 
 ## Loading vs Validation
 

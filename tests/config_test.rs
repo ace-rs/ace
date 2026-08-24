@@ -311,6 +311,87 @@ fn config_set_env_dot_path() {
 }
 
 #[test]
+fn config_set_backend_field_model_for_builtin() {
+    let env = TestEnv::new();
+    env.setup_embedded("phoenix");
+
+    env.ace()
+        .args([
+            "config",
+            "set",
+            "backends.claude.model",
+            "provider/model@beta",
+        ])
+        .assert()
+        .success();
+
+    env.assert_contains("ace.toml", "[backends.claude]");
+    env.assert_contains("ace.toml", "model = \"provider/model@beta\"");
+}
+
+#[test]
+fn config_set_backend_field_effort_preserves_cross_layer_custom_backend() {
+    let env = TestEnv::new();
+    env.setup_embedded("phoenix");
+    env.write_file(
+        "config/ace/ace.toml",
+        concat!(
+            "[backends.bailer]\n",
+            "kind = \"claude\"\n",
+            "env = { API_TOKEN = \"secret\" }\n",
+        ),
+    );
+
+    env.ace()
+        .args(["config", "set", "backends.bailer.effort", "ultra"])
+        .assert()
+        .success();
+
+    env.ace()
+        .args(["config", "set", "backend", "bailer"])
+        .assert()
+        .success();
+
+    env.assert_contains("config/ace/ace.toml", "kind = \"claude\"");
+    env.assert_contains("config/ace/ace.toml", "API_TOKEN = \"secret\"");
+    env.assert_contains("ace.toml", "effort = \"ultra\"");
+    env.assert_contains("ace.toml", "backend = \"bailer\"");
+}
+
+#[test]
+fn config_set_backend_field_supports_dotted_name_and_explicit_scope() {
+    let env = TestEnv::new();
+    env.setup_embedded("phoenix");
+
+    env.ace()
+        .args([
+            "--local",
+            "config",
+            "set",
+            "backends.bedrock.claude.model",
+            "opus",
+        ])
+        .assert()
+        .success();
+
+    env.assert_contains("ace.local.toml", "[backends.\"bedrock.claude\"]");
+    env.assert_contains("ace.local.toml", "model = \"opus\"");
+    env.assert_not_contains("ace.toml", "bedrock.claude");
+}
+
+#[test]
+fn config_set_backend_field_rejects_unsupported_path() {
+    let env = TestEnv::new();
+    env.setup_embedded("phoenix");
+
+    env.ace()
+        .args(["config", "set", "backends.claude.cmd", "wrapper"])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("unknown config key"));
+}
+
+#[test]
 fn config_set_resume_to_local() {
     let env = TestEnv::new();
     env.setup_embedded("phoenix");

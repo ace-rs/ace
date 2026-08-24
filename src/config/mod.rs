@@ -80,6 +80,53 @@ pub enum ConfigKey {
     Env(String),
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum BackendConfigField {
+    Model,
+    Effort,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum ConfigSetKey {
+    Readable(ConfigKey),
+    Backend {
+        name: String,
+        field: BackendConfigField,
+    },
+}
+
+impl ConfigSetKey {
+    pub fn parse(key: &str) -> Option<Self> {
+        if let Some(config_key) = ConfigKey::parse(key) {
+            return Some(ConfigSetKey::Readable(config_key));
+        }
+
+        let backend_path = key.strip_prefix("backends.")?;
+        let (name, field_name) = backend_path.rsplit_once('.')?;
+        if name.is_empty() {
+            return None;
+        }
+
+        let field = match field_name {
+            "model" => BackendConfigField::Model,
+            "effort" => BackendConfigField::Effort,
+            _ => return None,
+        };
+
+        Some(ConfigSetKey::Backend {
+            name: name.to_string(),
+            field,
+        })
+    }
+
+    pub fn scope_key(&self) -> &str {
+        match self {
+            ConfigSetKey::Readable(config_key) => config_key.scope_key(),
+            ConfigSetKey::Backend { .. } => "backends",
+        }
+    }
+}
+
 impl ConfigKey {
     pub fn parse(key: &str) -> Option<Self> {
         if let Some(env_key) = key.strip_prefix("env.") {
@@ -130,6 +177,47 @@ mod config_key_tests {
     #[test]
     fn skip_update_default_scope_is_project() {
         assert_eq!(Scope::default_for_key("skip_update"), Scope::Project);
+    }
+}
+
+#[cfg(test)]
+mod config_set_key_tests {
+    use super::*;
+
+    #[test]
+    fn parse_backend_model() {
+        assert_eq!(
+            ConfigSetKey::parse("backends.claude.model"),
+            Some(ConfigSetKey::Backend {
+                name: "claude".to_string(),
+                field: BackendConfigField::Model,
+            }),
+        );
+    }
+
+    #[test]
+    fn parse_backend_effort_with_dotted_instance_name() {
+        assert_eq!(
+            ConfigSetKey::parse("backends.bedrock.claude.effort"),
+            Some(ConfigSetKey::Backend {
+                name: "bedrock.claude".to_string(),
+                field: BackendConfigField::Effort,
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_unsupported_or_incomplete_backend_paths() {
+        assert_eq!(ConfigSetKey::parse("backends.claude.cmd"), None);
+        assert_eq!(ConfigSetKey::parse("backends..model"), None);
+        assert_eq!(ConfigSetKey::parse("backends.claude"), None);
+    }
+
+    #[test]
+    fn backend_fields_default_to_project_scope() {
+        let key = ConfigSetKey::parse("backends.claude.model").expect("parse backend model");
+
+        assert_eq!(Scope::default_for_key(key.scope_key()), Scope::Project);
     }
 }
 

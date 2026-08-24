@@ -6,7 +6,7 @@ use crate::ace::Ace;
 use crate::config::ace_toml::{self, AceToml, Trust};
 use crate::config::resolve::Source;
 use crate::config::tree::Tree;
-use crate::config::{ConfigKey, Scope};
+use crate::config::{BackendConfigField, ConfigKey, ConfigSetKey, Scope};
 
 use super::CmdError;
 
@@ -19,7 +19,7 @@ pub enum Command {
     },
     /// Set a config value in the appropriate layer
     Set {
-        /// Key to write (school, backend, trust, resume, session_prompt, env.KEY)
+        /// Key to write (simple field, env.KEY, or backends.NAME.model/effort)
         key: String,
         /// Value to set
         value: String,
@@ -122,7 +122,7 @@ fn get(ace: &mut Ace, key: &str) -> Result<(), CmdError> {
 
 /// `ace config set <key> <value>` — write a field to the appropriate layer.
 fn set(ace: &mut Ace, key: &str, value: &str) -> Result<(), CmdError> {
-    let config_key = ConfigKey::parse(key)
+    let config_key = ConfigSetKey::parse(key)
         .ok_or_else(|| CmdError::usage(format!("unknown config key: {key}")))?;
 
     let scope = ace
@@ -139,34 +139,43 @@ fn set(ace: &mut Ace, key: &str, value: &str) -> Result<(), CmdError> {
     let mut config = ace_toml::load_or_default(target)?;
 
     match config_key {
-        ConfigKey::School => config.school = value.to_string(),
-        ConfigKey::Backend => {
-            let known = ace.known_backend_names()?;
-            if !known.iter().any(|n| n == value) {
-                return Err(CmdError::usage(format!(
-                    "unknown backend: {value} (known: {})",
-                    known.join(", "),
-                )));
+        ConfigSetKey::Readable(config_key) => match config_key {
+            ConfigKey::School => config.school = value.to_string(),
+            ConfigKey::Backend => {
+                let known = ace.known_backend_names()?;
+                if !known.iter().any(|n| n == value) {
+                    return Err(CmdError::usage(format!(
+                        "unknown backend: {value} (known: {})",
+                        known.join(", "),
+                    )));
+                }
+                config.backend = Some(value.to_string());
             }
-            config.backend = Some(value.to_string());
-        }
-        ConfigKey::Trust => {
-            let trust = parse_trust(value)?;
-            config.trust = trust;
-            config.yolo = false; // clear deprecated field
-        }
-        ConfigKey::Resume => {
-            let resume = parse_bool(value)?;
-            config.resume = Some(resume);
-        }
-        ConfigKey::SkipUpdate => {
-            config.skip_update = Some(parse_bool(value)?);
-        }
-        ConfigKey::SessionPrompt => {
-            config.session_prompt = Some(value.to_string());
-        }
-        ConfigKey::Env(env_key) => {
-            config.env.insert(env_key, value.to_string());
+            ConfigKey::Trust => {
+                let trust = parse_trust(value)?;
+                config.trust = trust;
+                config.yolo = false; // clear deprecated field
+            }
+            ConfigKey::Resume => {
+                let resume = parse_bool(value)?;
+                config.resume = Some(resume);
+            }
+            ConfigKey::SkipUpdate => {
+                config.skip_update = Some(parse_bool(value)?);
+            }
+            ConfigKey::SessionPrompt => {
+                config.session_prompt = Some(value.to_string());
+            }
+            ConfigKey::Env(env_key) => {
+                config.env.insert(env_key, value.to_string());
+            }
+        },
+        ConfigSetKey::Backend { name, field } => {
+            let backend = config.backends.entry(name).or_default();
+            match field {
+                BackendConfigField::Model => backend.model = Some(value.to_string()),
+                BackendConfigField::Effort => backend.effort = Some(value.to_string()),
+            }
         }
     }
 
