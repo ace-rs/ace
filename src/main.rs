@@ -26,7 +26,6 @@ fn main() {
     let logo = io.logo();
     if !logo.is_empty() {
         eprintln!("{logo}");
-        eprintln!("  {}\n", env!("ACE_GIT_HASH"));
     }
 
     let project_dir = std::env::current_dir().expect("cannot determine current directory");

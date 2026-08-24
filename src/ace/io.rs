@@ -145,16 +145,20 @@ pub struct Io {
     guard: Option<TerminalGuard>,
 }
 
-#[allow(dead_code)]
-pub const LOGO: &str = r"
-░█▀█░█▀▀░█▀▀
-░█▀█░█░░░█▀▀
-░▀░▀░▀▀▀░▀▀▀";
-
-pub const LOGO_COLOR: &str = "\x1b[36m
-░█▀█░█▀▀░█▀▀
-░█▀█░█░░░█▀▀
-░▀░▀░▀▀▀░▀▀▀\x1b[0m";
+const BIG_LOGO: &str = concat!(
+    "\x1b[1;38;2;55;225;225m╭──╮  ",
+    "\x1b[38;2;30;205;230m╭───  ",
+    "\x1b[38;2;40;175;225m╭───\x1b[0m\n",
+    "\x1b[1;38;2;55;225;225m│  │  ",
+    "\x1b[38;2;30;205;230m│     ",
+    "\x1b[38;2;40;175;225m│ ──\x1b[0m\n",
+    "\x1b[1;38;2;55;225;225m╵  ╵  ",
+    "\x1b[38;2;30;205;230m╰───  ",
+    "\x1b[38;2;40;175;225m╰───\x1b[0m  ",
+    "\x1b[38;2;105;135;145m",
+    env!("ACE_GIT_HASH"),
+    "\x1b[0m",
+);
 
 impl Io {
     pub fn new(porcelain: bool, yes: bool) -> Self {
@@ -208,7 +212,7 @@ impl Io {
 
     pub fn logo(&self) -> &'static str {
         if self.should_colorize() && self.should_emit() {
-            LOGO_COLOR
+            BIG_LOGO
         } else {
             ""
         }
@@ -480,6 +484,26 @@ mod tests {
         assert!(attended().should_colorize());
         assert!(!piped().should_colorize());
         assert!(!io_with(true, false, false, true).should_colorize());
+    }
+
+    #[test]
+    fn logo_uses_the_locked_big_wordmark() {
+        let expected = concat!(
+            "\x1b[1;38;2;55;225;225m╭──╮  ",
+            "\x1b[38;2;30;205;230m╭───  ",
+            "\x1b[38;2;40;175;225m╭───\x1b[0m\n",
+            "\x1b[1;38;2;55;225;225m│  │  ",
+            "\x1b[38;2;30;205;230m│     ",
+            "\x1b[38;2;40;175;225m│ ──\x1b[0m\n",
+            "\x1b[1;38;2;55;225;225m╵  ╵  ",
+            "\x1b[38;2;30;205;230m╰───  ",
+            "\x1b[38;2;40;175;225m╰───\x1b[0m  ",
+            "\x1b[38;2;105;135;145m",
+            env!("ACE_GIT_HASH"),
+            "\x1b[0m",
+        );
+
+        assert_eq!(attended().logo(), expected);
     }
 
     // Waiving prompts is an intention; machine-readable output is an
