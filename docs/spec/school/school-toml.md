@@ -64,7 +64,8 @@ school is identified by its GitHub `owner/repo` shorthand.
 Optional top-level string. Default backend name for projects that consume this school,
 used when no `ace.toml` / `ace.local.toml` / user config / CLI override sets one. Value is
 a built-in name (`claude`, `codex`, `opencode`) or a custom name declared in
-`[[backends]]` below. See [backend.md → Resolution Order](../backend.md#resolution-order).
+`[backends.<name>]` below. See
+[backend.md → Resolution Order](../backend.md#resolution-order).
 
 ```toml
 backend = "claude"
@@ -116,35 +117,37 @@ and what they do, enabling better cross-project reasoning and navigation.
 - `env` — Optional. Project-specific environment variables. Merged with top-level `[env]`
   (project values override).
 
-### `[[backends]]`
+### `[backends.<name>]`
 
-Array of backend declarations. Each entry registers a custom backend instance or partially
-overrides a built-in (`claude`, `codex`). See
+Keyed backend tables. Each key registers a custom backend instance or partially overrides
+a built-in (`claude`, `codex`, `opencode`). See
 [backend.md § Custom Backends](../backend.md#custom-backends) for kind resolution and
 layer-merge semantics.
 
-- `name` — Identifier. Becomes selectable via `backend = "<name>"` or `-b <name>`.
-- `kind` — Optional. Built-in name (`claude`, `codex`) the backend aliases. When omitted,
-  ACE infers from `name` matching a built-in, then from `cmd[0]` basename.
+- Table key — Identifier. Becomes selectable via `backend = "<name>"` or `-b <name>`.
+- `kind` — Optional. Built-in name (`claude`, `codex`, `opencode`) the backend aliases.
+  When omitted, ACE infers from the table key matching a built-in, then from `cmd[0]`
+  basename.
 - `cmd` — Optional. Argv for launching the backend. Defaults to `[kind.name()]`.
 - `env` — Optional. Environment variables set in the launched process. Merged with the
   top-level `[env]`; per-backend env wins on collision.
+- `model` — Optional opaque backend-native model name for every ACE-owned invocation.
+- `effort` — Optional opaque backend-native effort value for every ACE-owned invocation.
 
 ```toml
 # Override env on the built-in claude backend
-[[backends]]
-name = "claude"
+[backends.claude]
 env = { ANTHROPIC_BASE_URL = "https://proxy.example.com" }
+model = "opus"
+effort = "high"
 
 # Custom name aliasing claude, with its own env
-[[backends]]
-name = "bailer"
+[backends.bailer]
 kind = "claude"
 env = { ANTHROPIC_BASE_URL = "https://bailer.example.com" }
 
 # Wrap the claude binary through a process wrapper
-[[backends]]
-name = "claude-wrapped"
+[backends."claude-wrapped"]
 kind = "claude"
 cmd = ["wrapper", "claude"]
 ```

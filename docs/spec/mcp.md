@@ -144,10 +144,16 @@ check runs inside the backend's own environment with its own auth state, MCP cli
 token storage. ACE does not inspect backend config files or attempt to contact MCP servers
 directly.
 
-Each backend owns its full check execution: prompt construction, output format, and result
-parsing. The shared contract is `mcp_check(names) -> Vec<McpStatus>` where `McpStatus`
-carries a server name and a boolean ok/not-ok status. See
-[backend.md](backend.md#backend-contract) for details.
+Health checks must consume the selected, fully resolved `Backend`; they may not launch a
+hard-coded backend binary or bypass its configured command, environment, model, or
+effort. The implementation may delegate the full operation to the backend kind or issue
+one generic prompt through a shared backend execution path, but the resolved backend
+instance remains the execution boundary.
+
+Backend output remains visible while the check runs. Warnings, progress, and interactive
+prompts must reach the terminal instead of being hidden behind capture-and-parse. Any
+structured result interpretation happens without suppressing that live output. See
+[backend.md](backend.md#backend-contract) for the shared contract.
 
 ### Integration
 

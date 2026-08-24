@@ -2,6 +2,13 @@
 
 Binary: `opencode` | Dir: `.opencode` | Instructions: `AGENTS.md`
 
+## Model and Effort
+
+ACE translates a resolved `model` to `--model <value>`. OpenCode variants are
+provider-specific reasoning-effort choices: interactive sessions receive `effort` as the
+generated `ace` agent's `variant` field, while `run` receives `--variant <value>`. Values
+remain opaque to ACE.
+
 ## Readiness
 
 `~/.local/share/opencode/auth.json` exists and is non-empty. Stores provider

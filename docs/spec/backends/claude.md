@@ -2,6 +2,12 @@
 
 Binary: `claude` | Dir: `.claude` | Instructions: `CLAUDE.md`
 
+## Model and Effort
+
+ACE translates a resolved `model` to `--model <value>` and `effort` to
+`--effort <value>`. Both flags apply to interactive and print-mode invocations. Values
+remain opaque to ACE; Claude validates them.
+
 ## Readiness
 
 `~/.claude.json` exists with auth data. Created on first successful login.

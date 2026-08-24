@@ -223,16 +223,17 @@ the authored school itself stores after import.
 
 ## `ace school validate` (alias: `ace school check`)
 
-Typo-check `{{ ... }}` placeholders in `[[backends]].cmd[]` and `[[backends]].env` values
-against the closed set `{school_dir, project_dir, home, backend_dir}` (defined in
+Typo-check `{{ ... }}` placeholders in `[backends.<name>].cmd[]` and
+`[backends.<name>].env` values against the closed set
+`{school_dir, project_dir, home, backend_dir}` (defined in
 [backend.md → Custom Backends](../backend.md#custom-backends)).
 
 ### Flow
 
 1. Resolve the authored school root (cwd-first rule above).
 2. Load its `school.toml`.
-3. For each `[[backends]]` decl, parse every `cmd[i]` and every `env[key]` value as a
-   template. Any placeholder name not in the closed set is reported as an issue.
+3. For each `[backends.<name>]` table, parse every `cmd[i]` and every `env[key]` value
+   as a template. Any placeholder name not in the closed set is reported as an issue.
 4. Each issue is paired with a Levenshtein-≤2 did-you-mean suggestion when one of the
    allowed names is close.
 
@@ -255,8 +256,8 @@ Suggestion is omitted when no close match exists.
 
 ### Scope (v1)
 
-Only `[[backends]]` placeholders. Other shapes (`[[imports]]`, `[[mcp]]`, etc.) are not
-validated — see `docs/decisions/2026-05-09-school-validate-scope.md` for rationale.
+Only `[backends.<name>]` placeholders. Other shapes (`[[imports]]`, `[[mcp]]`, etc.) are
+not validated — see `docs/decisions/2026-05-09-school-validate-scope.md` for rationale.
 `ace school validate` is not auto-run by `ace school pull` or `ace setup`; users invoke it
 explicitly.
 

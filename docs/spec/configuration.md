@@ -25,7 +25,7 @@ Each layer can set:
 - `backend` — backend name (highest-priority `Some` wins: local → project → user →
   school's `school.toml` → fallback `claude`). Built-ins: `"claude"`, `"codex"`,
   `"opencode"` (plus the debug-only `"flaude"` test fixture, absent from release builds).
-  Custom names are valid when declared in `[[backends]]` (see
+  Custom names are valid when declared in `[backends.<name>]` (see
   [Custom backends](#custom-backends)). See [backend.md](backend.md).
 - `session_prompt` — additional prompt text (last non-empty wins)
 - `env` — environment variables (additive merge, later keys override)
@@ -57,38 +57,43 @@ entirely.
 
 ## Custom backends
 
-`[[backends]]` declarations seed or augment the backend registry. Built-ins (`claude`,
-`codex`, `opencode`, and the debug-only `flaude`) are pre-registered; declarations
-override their `env` /`cmd` or introduce new names that reuse an existing built-in's
-behavior (its *kind*).
+`[backends.<name>]` tables seed or augment the backend registry. Built-ins (`claude`,
+`codex`, `opencode`, and the debug-only `flaude`) are pre-registered; matching keys
+override their settings, while new keys reuse an existing built-in's behavior (its
+*kind*). The legacy `[[backends]]` array shape is not accepted.
 
 ### Fields
 
-- `name` — registry key. Required. May match a built-in (override) or be new.
+- Table key — registry key. May match a built-in (override) or be new. Quote names that
+  are not bare TOML keys, for example `[backends."bedrock-claude"]`.
 - `kind` — built-in name whose behavior to reuse (`"claude"`, `"codex"`, `"opencode"`).
   Optional.
 - `cmd` — argv for launching the binary. `cmd[0]` is the program; `cmd[1..]` are prepended
   to runtime args. Optional.
 - `env` — environment variables merged into the launched process. Optional.
+- `model` — opaque backend-native model name applied to every ACE-owned model invocation.
+- `effort` — opaque backend-native effort value applied to every ACE-owned model
+  invocation.
 
 ### Layer order
 
-`[[backends]]` may appear in `school.toml` and in any `ace.toml` / `ace.local.toml` layer.
-Resolution walks **built-ins → school → user → project → local**, applying each
-declaration in order.
+`[backends.<name>]` may appear in `school.toml` and in any `ace.toml` /
+`ace.local.toml` layer. Resolution walks **built-ins → school → user → project → local**,
+applying each keyed patch in order.
 
 ### Resolution rules
 
-For each declaration:
+For each keyed patch:
 
 - **Name already registered** (built-in or earlier-layer custom) — partial override:
   - `env` per-key last-wins.
   - `cmd` last-wins-non-empty (empty `cmd` does not clobber a prior value).
+  - `model` and `effort` each last-win when present.
   - `kind`, if specified, must match the existing entry's kind. Mismatch errors with
     `BackendError::KindMismatch`.
 - **New name** — kind is resolved by trying:
   1. Explicit `kind` field.
-  2. `name` matching a built-in name.
+  2. Table key matching a built-in name.
   3. `cmd[0]` basename matching a built-in name.
   4. Otherwise: error `BackendError::Unresolvable`.
 
@@ -107,25 +112,23 @@ Unknown names error with `BackendError::Unknown` at resolve time.
 
 ```toml
 # Tweak built-in claude's env
-[[backends]]
-name = "claude"
+[backends.claude]
 env = { ANTHROPIC_LOG = "debug" }
+model = "opus"
+effort = "high"
 
 # Custom backend reusing claude's binary
-[[backends]]
-name = "bailer"
+[backends.bailer]
 kind = "claude"
 env = { ANTHROPIC_BASE_URL = "..." }
 
 # Custom backend with a forked binary; kind inferred from cmd[0] basename
-[[backends]]
-name = "bedrock-claude"
+[backends."bedrock-claude"]
 cmd = ["claude-bedrock"]
 env = { AWS_REGION = "..." }
 
 # Local layer adds an env var to a school-declared custom backend
-[[backends]]
-name = "bailer"
+[backends.bailer]
 env = { API_TOKEN = "..." }
 ```
 

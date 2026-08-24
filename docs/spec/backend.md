@@ -75,9 +75,9 @@ Each backend must provide:
   env, extra args; no resume, trust, or session prompt — the non-interactive entry point
   doesn't take approval modes or system-prompt injection). Returns
   `io::Result<std::process::Output>` — caller inspects `status.success()` and `stderr` for
-  non-zero exits. `ace -p` is the only caller — ACE itself no longer drives the backend
-  programmatically. See
-  § Intent Mapping below.
+  non-zero exits. `ace -p` uses this captured form; model-driven backend operations that
+  require live diagnostics must use an execution path that preserves terminal output.
+  See § Intent Mapping below.
 - **`mcp_list()`** — list currently registered MCP server names.
 - **`mcp_add(entry)`** — register a remote MCP server.
 - **`mcp_remove(name)`** — unregister a remote MCP server by name.
@@ -97,9 +97,10 @@ one `exec(Intent)`: the return types differ fundamentally (never-returns vs capt
 builds its argv from the matching request type. The argv builder is the polymorphic core;
 transport just decides whether to exec-replace or spawn-and-capture.
 
-Known trade-off: `ace -p` routes through `exec_one_shot`, which captures-then-prints —
-output buffers until the child exits rather than streaming. Accepted; a third
-spawn-and-tee transport isn't worth the surface area unless user feedback flags it.
+`ace -p` routes through `exec_one_shot`, which captures then prints after the child
+exits. That buffering belongs to the user-requested one-shot surface only. Model-driven
+internal operations may not reuse it when doing so would hide warnings, progress, or
+prompts; they must preserve live backend output through the resolved `Backend` boundary.
 
 ### Per-Backend Argv
 
@@ -153,36 +154,38 @@ product decision and may vary by backend or evolve over time.
 
 ## Custom Backends
 
-`[[backends]]` declarations let a school, user, or project register additional backend
-entries alongside the built-ins. A custom backend is **not** a new `Kind` — it's a named
-instance that aliases a built-in `Kind` and may override its launch `cmd` and `env`. The
-backend contract (MCP, readiness, instructions file, linked-folder layout) is inherited
-from the aliased `Kind`.
+The `[backends.<name>]` table lets a school, user, or project configure a built-in or
+register an additional backend name. A custom backend is **not** a new `Kind` — it is a
+named instance that aliases a built-in `Kind`. The backend contract (MCP, readiness,
+instructions file, linked-folder layout) is inherited from the aliased `Kind`.
 
 ### TOML Syntax
 
 ```toml
-[[backends]]
-name = "bailer"            # required — selectable via `backend = "bailer"` or `-b bailer`
-kind = "claude"            # optional — see kind resolution below
-cmd  = ["claude"]          # optional — argv for launch; defaults to [kind.name()]
-env  = { ANTHROPIC_BASE_URL = "https://proxy.example.com" }  # optional
+[backends.bailer]           # key is selectable via `backend = "bailer"` or `-b bailer`
+kind = "claude"             # optional — see kind resolution below
+cmd = ["claude"]            # optional — argv for launch; defaults to [kind.name()]
+env = { ANTHROPIC_BASE_URL = "https://proxy.example.com" }
+model = "opus"              # optional opaque backend-native value
+effort = "high"             # optional opaque backend-native value
 ```
 
-Valid in `school.toml` (`[[backends]]`), user, project, and local config.
+Valid in `school.toml`, user, project, and local config. The legacy `[[backends]]` array
+shape is invalid; backend identity lives only in the table key.
 
 ### Kind Resolution
 
 For a new name, `kind` is resolved in order:
 
 1. Explicit `kind = "..."` field (must be a built-in name).
-2. `name` matches a built-in name → that kind.
+2. The table key matches a built-in name → that kind.
 3. `cmd[0]` basename matches a built-in name → that kind.
 4. Otherwise → `BackendError::Unresolvable`.
 
 For a name that already exists (built-in or earlier-layer custom), the decl partially
-overrides the existing entry: `env` merges per-key (last wins), `cmd` last-wins-non-empty,
-and a declared `kind` must match the existing kind (otherwise `BackendError::KindMismatch`).
+overrides the existing entry: `env` merges per-key; `cmd`, `model`, and `effort` are
+last-wins when present; and a declared `kind` must match the existing kind (otherwise
+`BackendError::KindMismatch`).
 
 ### Layer Merge
 
@@ -222,8 +225,8 @@ plus a `{{ ... }}` reference, or written as a literal path. Rendering happens in
 
 ### Use Cases
 
-- **Override env or cmd for a built-in** — e.g. point `claude` at a corporate proxy by
-  setting `[[backends]] name = "claude" env = { ANTHROPIC_BASE_URL = "..." }`.
+- **Override a built-in** — e.g. `[backends.claude]` can set `env`, `cmd`, `model`, or
+  `effort` for every session selecting `backend = "claude"` in that resolved tree.
 - **Multiple instances of the same kind** — register `bailer` and `bedrock-claude` as
   separate names, each with its own env, both backed by `Kind::Claude`. Users select via
   `backend = "..."`.
@@ -233,3 +236,18 @@ plus a `{{ ... }}` reference, or written as a literal path. Rendering happens in
 
 A custom backend cannot introduce new behavior beyond what its aliased `Kind` provides.
 Adding a genuinely new backend requires extending the `Kind` enum in source.
+
+## Model and Effort
+
+`model` and `effort` are optional opaque strings on each backend instance. ACE does not
+maintain a shared model catalogue or normalize effort values across vendors. The resolved
+`Backend` owns one pair, and its `Kind` translates each configured value through the
+backend's native launch surface.
+
+The pair governs every model process ACE launches through that backend: interactive
+sessions, `ace -p`, and model-driven operations such as MCP health checks. There is no
+secondary pair. A missing field leaves that choice to the backend's own default.
+
+Backend-native translation is documented in the per-backend specs. Runtime passthrough
+arguments remain opaque and come after ACE-owned arguments, preserving their existing
+ability to override a configured choice for one invocation.

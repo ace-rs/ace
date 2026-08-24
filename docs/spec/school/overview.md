@@ -145,9 +145,10 @@ projects. Skill layout (flat vs nested, identity rules) is documented in
 
 Beyond on-disk folders, `school.toml` itself ships first-class declarations that ACE
 applies to subscriber projects: top-level `session_prompt` (injected into every session),
-`[[mcp]]` server registrations, `[[backends]]` custom-backend entries, `[[projects]]`
-catalog, and `[[imports]]` skill provenance (including wholesale-imports of another school
-via `skill = "*"`). See [school-toml.md](school-toml.md) for the full reference.
+`[[mcp]]` server registrations, `[backends.<name>]` custom-backend entries,
+`[[projects]]` catalog, and `[[imports]]` skill provenance (including wholesale-imports
+of another school via `skill = "*"`). See [school-toml.md](school-toml.md) for the full
+reference.
 
 Every school created by `ace school init` is seeded with a `[[imports]]` entry for
 `ace-rs/school` (the standard school) — see [standard-imports.md](standard-imports.md).

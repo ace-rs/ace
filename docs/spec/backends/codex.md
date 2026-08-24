@@ -5,6 +5,12 @@ Binary: `codex` | Dir: `.agents` | Instructions: `AGENTS.md`
 Verified against codex 0.145.0 and the vendored
 [Codex manual](../../vendor/codex-manual.md) (2026-08-03).
 
+## Model and Effort
+
+ACE translates a resolved `model` to `--model <value>` and `effort` to the native
+`-c model_reasoning_effort=<value>` configuration override. Both apply to interactive and
+`exec` invocations. Values remain opaque to ACE; Codex validates them.
+
 ## Readiness
 
 `~/.codex/auth.json` exists, **or** `OPENAI_API_KEY`/`CODEX_API_KEY` env var is set.

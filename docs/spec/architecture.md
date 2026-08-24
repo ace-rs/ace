@@ -158,6 +158,6 @@ code branch on feature bits. `FEATURE_NESTED_SKILLS` is the one that matters tod
   (alphabetical-by-source tiebreaker, warn, drop the loser).
 
 A global `MAX_SKILL_DEPTH` cap routes over-deep skills to the flatten branch even on
-nested-capable backends. Custom `[[backends]]` entries inherit their kind's features. The
-bitmask is the extension point: add a `FEATURE_*` constant, set the bit, branch on the bit —
-never on the name.
+nested-capable backends. Custom `[backends.<name>]` entries inherit their kind's
+features. The bitmask is the extension point: add a `FEATURE_*` constant, set the bit,
+branch on the bit — never on the name.
