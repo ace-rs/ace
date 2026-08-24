@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
 use crate::config::ace_toml::BackendDecl;
@@ -23,9 +23,9 @@ pub struct SchoolToml {
     #[serde(skip_serializing_if = "is_empty_vec")]
     pub imports: Vec<ImportDecl>,
     /// Custom backend declarations seeded by the school. Layered upstream of
-    /// user/project/local `[[backends]]` decls.
-    #[serde(skip_serializing_if = "is_empty_vec")]
-    pub backends: Vec<BackendDecl>,
+    /// user/project/local keyed backend declarations.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub backends: BTreeMap<String, BackendDecl>,
 }
 
 /// One `[[imports]]` declaration. Spec: `docs/spec/skills/selection.md`
@@ -115,6 +115,9 @@ pub struct Project {
 pub fn load(path: &Path) -> Result<SchoolToml, ConfigError> {
     let content = std::fs::read_to_string(path)?;
     let mut config: SchoolToml = toml::from_str(&content)?;
+    for (name, backend) in &mut config.backends {
+        backend.name.clone_from(name);
+    }
     for decl in &mut config.imports {
         decl.normalize();
     }
@@ -130,6 +133,22 @@ pub fn save(path: &Path, toml: &SchoolToml) -> Result<(), ConfigError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn load_injects_backend_identity_from_table_key() {
+        let dir = tempfile::tempdir().expect("create tempdir");
+        let path = dir.path().join("school.toml");
+        std::fs::write(
+            &path,
+            "[backends.bailer]\nkind = \"claude\"\nmodel = \"opus\"\n",
+        )
+        .expect("write school config");
+
+        let school = load(&path).expect("load school config");
+        let backend = school.backends.get("bailer").expect("bailer backend");
+        assert_eq!(backend.name, "bailer");
+        assert_eq!(backend.model.as_deref(), Some("opus"));
+    }
 
     // -- backcompat: singular `skill` --
 

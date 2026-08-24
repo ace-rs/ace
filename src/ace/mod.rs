@@ -108,7 +108,7 @@ impl Ace {
 
     /// Lazy-load the raw config tree (parse-only; no merge, no binding).
     /// Survives `State::resolve` failures, so recovery code paths can still
-    /// inspect declared `[[backends]]` after an unknown-backend error.
+    /// inspect declared `[backends.<name>]` tables after an unknown-backend error.
     pub fn require_tree(&self) -> Result<&Tree, ConfigError> {
         self.tree.get_or_try_init(|| Tree::load(&self.paths))
     }
@@ -164,7 +164,7 @@ impl Ace {
 
     /// Lazy-load the resolved Backend binding (registry build + name lookup).
     /// `Err(BackendError::Unknown(_))` when the selector points at a name
-    /// that isn't a built-in or declared `[[backends]]`.
+    /// that isn't a built-in or declared `[backends.<name>]`.
     pub fn backend(&self) -> Result<&Backend, BackendError> {
         self.backend.get_or_try_init(|| {
             let resolved = self.require_config()?;
@@ -173,7 +173,7 @@ impl Ace {
     }
 
     /// Names that resolve as a backend selector: built-ins plus every
-    /// `[[backends]]` declaration across school/user/project/local layers.
+    /// `[backends.<name>]` declaration across school/user/project/local layers.
     /// Sorted, deduped. Used for selector validation and recovery prompts.
     pub fn known_backend_names(&self) -> Result<Vec<String>, ConfigError> {
         let resolved = self.require_config()?;
@@ -187,7 +187,7 @@ impl Ace {
     }
 
     /// Build the `TemplateCtx` used to render `{{ ... }}` placeholders inside
-    /// `[[backends]].cmd` and `env`. Unresolved school path → empty string,
+    /// `[backends.<name>].cmd` and `env`. Unresolved school path → empty string,
     /// matching the unknown-placeholder rule in
     /// `docs/spec/backend.md § Path Templating`.
     fn template_ctx(&self) -> TemplateCtx {

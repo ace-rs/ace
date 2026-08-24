@@ -104,14 +104,11 @@ fn exec_backcompat_yolo_true() {
 
 #[test]
 fn exec_custom_backend_records_cmd() {
-    // A custom backend with kind=flaude and an explicit cmd should land
-    // intact in the recorded SessionOpts.cmd — proves Backend.cmd[0] flows
-    // through Backend::exec_session into the per-backend exec.
     let env = TestEnv::new();
     env.setup_flaude_school("name = \"test-school\"\n");
     env.write_file(
         "ace.local.toml",
-        "[[backends]]\nname = \"myflaude\"\nkind = \"flaude\"\ncmd = [\"my-binary\", \"--flag\"]\n",
+        "[backends.myflaude]\nkind = \"flaude\"\ncmd = [\"my-binary\", \"--flag\"]\n",
     );
 
     env.ace().args(["--backend", "myflaude"]).assert().success();
@@ -123,8 +120,6 @@ fn exec_custom_backend_records_cmd() {
 
 #[test]
 fn exec_builtin_backend_records_default_cmd() {
-    // Built-in flaude (no [[backends]] override) should still record cmd —
-    // defaulted to [kind.name()].
     let env = TestEnv::new();
     env.setup_flaude_school("name = \"test-school\"\n");
 
@@ -137,13 +132,11 @@ fn exec_builtin_backend_records_default_cmd() {
 
 #[test]
 fn exec_backend_flag_overrides_configured_backend() {
-    // Declare a second flaude-kind backend and select it via --backend.
-    // The recorded cmd proves the override took effect.
     let env = TestEnv::new();
     env.setup_flaude_school("name = \"test-school\"\n");
     env.write_file(
         "ace.local.toml",
-        "[[backends]]\nname = \"alt\"\nkind = \"flaude\"\ncmd = [\"alt-binary\"]\n",
+        "[backends.alt]\nkind = \"flaude\"\ncmd = [\"alt-binary\"]\n",
     );
 
     env.ace().args(["--backend", "alt"]).assert().success();
@@ -154,6 +147,49 @@ fn exec_backend_flag_overrides_configured_backend() {
         records[0].cmd,
         vec!["alt-binary"],
         "should use overridden backend cmd"
+    );
+}
+
+#[test]
+fn configured_model_and_effort_precede_runtime_passthrough() {
+    let env = TestEnv::new();
+    env.setup_flaude_school("name = \"test-school\"\n");
+    env.write_file(
+        "ace.local.toml",
+        "[backends.flaude]\nmodel = \"configured-model\"\neffort = \"high\"\n",
+    );
+
+    let output = env
+        .ace()
+        .args([
+            "-p",
+            "hello",
+            "--",
+            "--model",
+            "runtime-model",
+            "--effort",
+            "low",
+        ])
+        .output()
+        .expect("ace run");
+
+    assert!(output.status.success(), "ace should succeed");
+    let record: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("parse flaude record");
+    assert_eq!(
+        record["model"].as_str(),
+        Some("configured-model"),
+        "resolved model should reach the backend",
+    );
+    assert_eq!(
+        record["effort"].as_str(),
+        Some("high"),
+        "resolved effort should reach the backend",
+    );
+    assert_eq!(
+        record["extra_args"],
+        serde_json::json!(["--model", "runtime-model", "--effort", "low"]),
+        "runtime arguments follow ACE-owned launch arguments",
     );
 }
 
@@ -218,7 +254,7 @@ fn custom_backend_env_reaches_exec() {
     env.setup_flaude_school("name = \"test-school\"\n");
     env.write_file(
         "ace.local.toml",
-        "[[backends]]\nname = \"myflaude\"\nkind = \"flaude\"\n\n[backends.env]\nMY_VAR = \"hello\"\n",
+        "[backends.myflaude]\nkind = \"flaude\"\n\n[backends.myflaude.env]\nMY_VAR = \"hello\"\n",
     );
 
     env.ace().args(["--backend", "myflaude"]).assert().success();

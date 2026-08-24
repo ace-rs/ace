@@ -13,8 +13,13 @@ pub(super) fn is_ready() -> bool {
             .unwrap_or(false)
 }
 
-pub(super) fn exec_session(launch: &[String], req: SessionRequest) -> Result<(), std::io::Error> {
-    write_agent_file(&req.project_dir, &req.session_prompt)?;
+pub(super) fn exec_session(
+    launch: &[String],
+    model: Option<&str>,
+    effort: Option<&str>,
+    req: SessionRequest,
+) -> Result<(), std::io::Error> {
+    write_agent_file(&req.project_dir, &req.session_prompt, model, effort)?;
 
     let (program, prefix) = launch
         .split_first()
@@ -28,13 +33,15 @@ pub(super) fn exec_session(launch: &[String], req: SessionRequest) -> Result<(),
         cmd.env(key, val);
     }
 
-    cmd.args(build_session_args(&req));
+    cmd.args(build_session_args(model, effort, &req));
 
     Err(crate::platform::exec_replace(cmd))
 }
 
 pub(super) fn exec_one_shot(
     launch: &[String],
+    model: Option<&str>,
+    effort: Option<&str>,
     req: OneShotRequest,
 ) -> Result<Output, std::io::Error> {
     let (program, prefix) = launch
@@ -49,7 +56,7 @@ pub(super) fn exec_one_shot(
         cmd.env(key, val);
     }
 
-    cmd.args(build_one_shot_args(&req));
+    cmd.args(build_one_shot_args(model, effort, &req));
 
     if matches!(req.prompt, super::PromptInput::Stdin) {
         cmd.stdin(std::process::Stdio::inherit());
@@ -133,12 +140,28 @@ fn auth_path() -> std::path::PathBuf {
 }
 
 /// Write the ACE agent file that carries the session prompt.
-fn write_agent_file(project_dir: &Path, session_prompt: &str) -> Result<(), std::io::Error> {
+fn write_agent_file(
+    project_dir: &Path,
+    session_prompt: &str,
+    model: Option<&str>,
+    effort: Option<&str>,
+) -> Result<(), std::io::Error> {
     let agents_dir = project_dir.join(".opencode/agents");
     std::fs::create_dir_all(&agents_dir)?;
 
+    let model = model
+        .map(|value| format!("model: {}\n", serde_json::Value::String(value.to_string())))
+        .unwrap_or_default();
+    let variant = effort
+        .map(|value| {
+            format!(
+                "variant: {}\n",
+                serde_json::Value::String(value.to_string())
+            )
+        })
+        .unwrap_or_default();
     let content = format!(
-        "---\ndescription: \"ACE-provisioned coding session\"\nmode: all\n---\n\n{session_prompt}\n"
+        "---\ndescription: \"ACE-provisioned coding session\"\nmode: all\n{model}{variant}---\n\n{session_prompt}\n"
     );
     std::fs::write(agents_dir.join("ace.md"), content)
 }
@@ -151,7 +174,11 @@ pub(super) fn supports_trust(trust: Trust) -> bool {
 }
 
 /// Translate `SessionRequest` into opencode's interactive argv.
-fn build_session_args(req: &SessionRequest) -> Vec<String> {
+fn build_session_args(
+    _model: Option<&str>,
+    _effort: Option<&str>,
+    req: &SessionRequest,
+) -> Vec<String> {
     let mut args = Vec::new();
 
     if req.resume {
@@ -164,8 +191,18 @@ fn build_session_args(req: &SessionRequest) -> Vec<String> {
 }
 
 /// Translate `OneShotRequest` into opencode's `run` argv.
-fn build_one_shot_args(req: &OneShotRequest) -> Vec<String> {
+fn build_one_shot_args(
+    model: Option<&str>,
+    effort: Option<&str>,
+    req: &OneShotRequest,
+) -> Vec<String> {
     let mut args = vec!["run".to_string(), "--agent".to_string(), "ace".to_string()];
+    if let Some(value) = model {
+        args.extend(["--model".to_string(), value.to_string()]);
+    }
+    if let Some(value) = effort {
+        args.extend(["--variant".to_string(), value.to_string()]);
+    }
     args.extend(req.extra_args.iter().cloned());
 
     match &req.prompt {
@@ -267,7 +304,7 @@ mod tests {
 
     #[test]
     fn session_args_default() {
-        let args = build_session_args(&req());
+        let args = build_session_args(None, None, &req());
         assert_eq!(args, vec!["--agent", "ace"]);
     }
 
@@ -275,7 +312,7 @@ mod tests {
     fn session_args_resume() {
         let mut r = req();
         r.resume = true;
-        let args = build_session_args(&r);
+        let args = build_session_args(None, None, &r);
         assert_eq!(args, vec!["--continue", "--agent", "ace"]);
     }
 
@@ -283,7 +320,7 @@ mod tests {
     fn session_args_extra_args_come_last() {
         let mut r = req();
         r.extra_args = vec!["--model".to_string(), "anthropic/claude-sonnet".to_string()];
-        let args = build_session_args(&r);
+        let args = build_session_args(None, None, &r);
         assert_eq!(
             args,
             vec!["--agent", "ace", "--model", "anthropic/claude-sonnet"]
@@ -294,14 +331,17 @@ mod tests {
 
     #[test]
     fn one_shot_args_inline() {
-        let args =
-            build_one_shot_args(&one_shot(super::super::PromptInput::Inline("hello".into())));
+        let args = build_one_shot_args(
+            None,
+            None,
+            &one_shot(super::super::PromptInput::Inline("hello".into())),
+        );
         assert_eq!(args, vec!["run", "--agent", "ace", "hello"]);
     }
 
     #[test]
     fn one_shot_args_stdin() {
-        let args = build_one_shot_args(&one_shot(super::super::PromptInput::Stdin));
+        let args = build_one_shot_args(None, None, &one_shot(super::super::PromptInput::Stdin));
         assert_eq!(args, vec!["run", "--agent", "ace"]);
     }
 
@@ -309,7 +349,7 @@ mod tests {
     fn one_shot_args_extra_args_before_prompt() {
         let mut r = one_shot(super::super::PromptInput::Inline("hi".into()));
         r.extra_args = vec!["--model".to_string(), "anthropic/claude-sonnet".to_string()];
-        let args = build_one_shot_args(&r);
+        let args = build_one_shot_args(None, None, &r);
         assert_eq!(
             args,
             vec![
@@ -318,6 +358,49 @@ mod tests {
                 "ace",
                 "--model",
                 "anthropic/claude-sonnet",
+                "hi"
+            ]
+        );
+    }
+
+    #[test]
+    fn session_model_and_effort_configure_the_ace_agent() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let project_dir = tmp.path().canonicalize().expect("canonicalize");
+
+        write_agent_file(
+            &project_dir,
+            "test prompt",
+            Some("provider: model"),
+            Some("yes"),
+        )
+        .expect("should write");
+
+        let content = std::fs::read_to_string(project_dir.join(".opencode/agents/ace.md"))
+            .expect("should read");
+        assert!(content.contains("model: \"provider: model\"\n"));
+        assert!(content.contains("variant: \"yes\"\n"));
+    }
+
+    #[test]
+    fn run_model_and_variant_precede_passthrough_args() {
+        let mut request = one_shot(super::super::PromptInput::Inline("hi".into()));
+        request.extra_args = vec!["--model".into(), "override".into()];
+
+        let args = build_one_shot_args(Some("anthropic/claude-sonnet"), Some("max"), &request);
+
+        assert_eq!(
+            args,
+            vec![
+                "run",
+                "--agent",
+                "ace",
+                "--model",
+                "anthropic/claude-sonnet",
+                "--variant",
+                "max",
+                "--model",
+                "override",
                 "hi"
             ]
         );
@@ -478,7 +561,7 @@ mod tests {
     fn agent_file_content() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let project_dir = tmp.path().canonicalize().expect("canonicalize");
-        write_agent_file(&project_dir, "test prompt").expect("should write");
+        write_agent_file(&project_dir, "test prompt", None, None).expect("should write");
 
         let path = project_dir.join(".opencode/agents/ace.md");
         assert!(path.exists(), "agent file should exist");

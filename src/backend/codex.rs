@@ -13,7 +13,12 @@ pub(super) fn is_ready() -> bool {
             .unwrap_or(false)
 }
 
-pub(super) fn exec_session(launch: &[String], req: SessionRequest) -> Result<(), std::io::Error> {
+pub(super) fn exec_session(
+    launch: &[String],
+    model: Option<&str>,
+    effort: Option<&str>,
+    req: SessionRequest,
+) -> Result<(), std::io::Error> {
     let (program, prefix) = launch
         .split_first()
         .map(|(p, rest)| (p.as_str(), rest))
@@ -26,13 +31,15 @@ pub(super) fn exec_session(launch: &[String], req: SessionRequest) -> Result<(),
         cmd.env(key, val);
     }
 
-    cmd.args(build_session_args(&req));
+    cmd.args(build_session_args(model, effort, &req));
 
     Err(crate::platform::exec_replace(cmd))
 }
 
 pub(super) fn exec_one_shot(
     launch: &[String],
+    model: Option<&str>,
+    effort: Option<&str>,
     req: OneShotRequest,
 ) -> Result<Output, std::io::Error> {
     let (program, prefix) = launch
@@ -47,7 +54,7 @@ pub(super) fn exec_one_shot(
         cmd.env(key, val);
     }
 
-    cmd.args(build_one_shot_args(&req));
+    cmd.args(build_one_shot_args(model, effort, &req));
 
     if matches!(req.prompt, PromptInput::Stdin) {
         cmd.stdin(Stdio::inherit());
@@ -57,7 +64,11 @@ pub(super) fn exec_one_shot(
 }
 
 /// Translate `SessionRequest` into codex's CLI argv (post-binary). Pure function.
-fn build_session_args(req: &SessionRequest) -> Vec<String> {
+fn build_session_args(
+    model: Option<&str>,
+    effort: Option<&str>,
+    req: &SessionRequest,
+) -> Vec<String> {
     let mut args = Vec::new();
 
     if req.resume {
@@ -74,6 +85,19 @@ fn build_session_args(req: &SessionRequest) -> Vec<String> {
         ));
     }
 
+    if let Some(value) = model {
+        args.extend(["--model".to_string(), value.to_string()]);
+    }
+    if let Some(value) = effort {
+        args.extend([
+            "-c".to_string(),
+            format!(
+                "model_reasoning_effort={}",
+                toml::Value::String(value.to_string())
+            ),
+        ]);
+    }
+
     args.extend(req.extra_args.iter().cloned());
     args
 }
@@ -81,8 +105,24 @@ fn build_session_args(req: &SessionRequest) -> Vec<String> {
 /// Translate `OneShotRequest` into codex's `exec` argv. Inline prompts are
 /// passed as the positional prompt argument; Stdin uses codex's `-` sentinel
 /// (verified against codex-rs/exec/src/cli.rs `StdinPromptBehavior::Forced`).
-fn build_one_shot_args(req: &OneShotRequest) -> Vec<String> {
+fn build_one_shot_args(
+    model: Option<&str>,
+    effort: Option<&str>,
+    req: &OneShotRequest,
+) -> Vec<String> {
     let mut args = vec!["exec".to_string()];
+    if let Some(value) = model {
+        args.extend(["--model".to_string(), value.to_string()]);
+    }
+    if let Some(value) = effort {
+        args.extend([
+            "-c".to_string(),
+            format!(
+                "model_reasoning_effort={}",
+                toml::Value::String(value.to_string())
+            ),
+        ]);
+    }
     args.extend(req.extra_args.iter().cloned());
     match &req.prompt {
         PromptInput::Inline(text) => args.push(text.clone()),
@@ -482,7 +522,7 @@ mod tests {
 
     #[test]
     fn session_args_default_includes_developer_instructions() {
-        let args = build_session_args(&req());
+        let args = build_session_args(None, None, &req());
         assert!(args.iter().any(|a| a == "-c"));
         assert!(
             args.iter()
@@ -491,8 +531,32 @@ mod tests {
     }
 
     #[test]
+    fn session_configured_values_are_native_and_precede_passthrough_args() {
+        let mut request = req();
+        request.extra_args = vec!["-c".into(), "model_reasoning_effort=\"override\"".into()];
+
+        let args = build_session_args(Some("gpt-5.3"), Some("x high"), &request);
+        let model_position = args
+            .iter()
+            .position(|arg| arg == "--model")
+            .expect("model flag");
+
+        assert_eq!(
+            &args[model_position..],
+            [
+                "--model",
+                "gpt-5.3",
+                "-c",
+                "model_reasoning_effort=\"x high\"",
+                "-c",
+                "model_reasoning_effort=\"override\""
+            ]
+        );
+    }
+
+    #[test]
     fn one_shot_args_inline_uses_exec_subcommand() {
-        let args = build_one_shot_args(&one_shot(PromptInput::Inline("hello".into())));
+        let args = build_one_shot_args(None, None, &one_shot(PromptInput::Inline("hello".into())));
         assert_eq!(args.first().map(String::as_str), Some("exec"));
         assert_eq!(args.last().map(String::as_str), Some("hello"));
         assert!(
@@ -505,7 +569,7 @@ mod tests {
 
     #[test]
     fn one_shot_args_stdin_uses_dash_sentinel() {
-        let args = build_one_shot_args(&one_shot(PromptInput::Stdin));
+        let args = build_one_shot_args(None, None, &one_shot(PromptInput::Stdin));
         assert_eq!(args, vec!["exec", "-"]);
     }
 
@@ -513,8 +577,30 @@ mod tests {
     fn one_shot_args_extra_args_precede_prompt() {
         let mut r = one_shot(PromptInput::Inline("hi".into()));
         r.extra_args = vec!["--model".to_string(), "gpt-5".to_string()];
-        let args = build_one_shot_args(&r);
+        let args = build_one_shot_args(None, None, &r);
         assert_eq!(args, vec!["exec", "--model", "gpt-5", "hi"]);
+    }
+
+    #[test]
+    fn configured_model_and_effort_precede_passthrough_args() {
+        let mut request = one_shot(PromptInput::Inline("hi".into()));
+        request.extra_args = vec!["--model".into(), "override".into()];
+
+        let args = build_one_shot_args(Some("gpt-5.3"), Some("xhigh"), &request);
+
+        assert_eq!(
+            args,
+            vec![
+                "exec",
+                "--model",
+                "gpt-5.3",
+                "-c",
+                "model_reasoning_effort=\"xhigh\"",
+                "--model",
+                "override",
+                "hi"
+            ]
+        );
     }
 
     #[test]

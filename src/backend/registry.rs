@@ -1,4 +1,4 @@
-//! Merge `[[backends]]` declarations into a `Backend` registry, then bind a
+//! Merge `[backends.<name>]` declarations into a `Backend` registry, then bind a
 //! resolved name to a concrete `Backend`.
 //!
 //! Layer-walk logic lives here so `Registry` (in `super`) stays independent
@@ -12,7 +12,7 @@ use crate::config::ace_toml::BackendDecl;
 use crate::config::resolve::{Resolved, Sourced};
 use crate::templates::Template;
 
-/// Render context for `{{ ... }}` placeholders inside `[[backends]].cmd` and
+/// Render context for `{{ ... }}` placeholders inside backend `cmd` and
 /// `env` values. `{{ backend_dir }}` is derived per-decl from the resolved
 /// `Kind`, not carried here. See `docs/spec/backend.md § Path Templating`.
 #[derive(Debug, Default, Clone)]
@@ -136,6 +136,12 @@ fn merge_decl(
         for (k, v) in &decl.env {
             existing.env.insert(k.clone(), render(v, &vars));
         }
+        if let Some(model) = &decl.model {
+            existing.model = Some(model.clone());
+        }
+        if let Some(effort) = &decl.effort {
+            existing.effort = Some(effort.clone());
+        }
         return Ok(());
     }
 
@@ -156,6 +162,8 @@ fn merge_decl(
         kind,
         cmd,
         env,
+        model: decl.model.clone(),
+        effort: decl.effort.clone(),
     });
     Ok(())
 }
@@ -203,6 +211,8 @@ mod tests {
             kind: None,
             cmd: Vec::new(),
             env: HashMap::new(),
+            model: None,
+            effort: None,
         }
     }
 
@@ -237,6 +247,23 @@ mod tests {
         let d2 = decl("claude"); // empty cmd — must not clobber
         merge_decl(&mut reg, &d2, &TemplateCtx::empty()).expect("merge2");
         assert_eq!(reg.lookup("claude").unwrap().cmd, vec!["claude-bedrock"]);
+    }
+
+    #[test]
+    fn model_and_effort_each_merge_when_present() {
+        let mut registry = Registry::with_builtins();
+        let mut project = decl("claude");
+        project.model = Some("opus".into());
+        project.effort = Some("medium".into());
+        merge_decl(&mut registry, &project, &TemplateCtx::empty()).expect("project merge");
+
+        let mut local = decl("claude");
+        local.effort = Some("high".into());
+        merge_decl(&mut registry, &local, &TemplateCtx::empty()).expect("local merge");
+
+        let backend = registry.lookup("claude").expect("claude backend");
+        assert_eq!(backend.model.as_deref(), Some("opus"));
+        assert_eq!(backend.effort.as_deref(), Some("high"));
     }
 
     #[test]
@@ -454,14 +481,19 @@ mod tests {
     fn bind_per_backend_env_merges_into_backend() {
         let mut project = ace_with("s", &[]);
         project.backend = Some(Kind::Claude.into());
-        project.backends = vec![BackendDecl {
-            name: "claude".into(),
-            kind: None,
-            cmd: Vec::new(),
-            env: [("API_BASE".to_string(), "https://example.com".to_string())]
-                .into_iter()
-                .collect(),
-        }];
+        project.backends.insert(
+            "claude".into(),
+            BackendDecl {
+                name: "claude".into(),
+                kind: None,
+                cmd: Vec::new(),
+                env: [("API_BASE".to_string(), "https://example.com".to_string())]
+                    .into_iter()
+                    .collect(),
+                model: None,
+                effort: None,
+            },
+        );
 
         let t = tree(project, ace_with("s", &[]));
         let backend = bind_default(&t).expect("bind");
@@ -478,14 +510,19 @@ mod tests {
     fn bind_custom_backend_selectable_by_name() {
         let mut project = ace_with("s", &[]);
         project.backend = Some("bailer".into());
-        project.backends = vec![BackendDecl {
-            name: "bailer".into(),
-            kind: Some(Kind::Claude.into()),
-            cmd: Vec::new(),
-            env: [("ANTHROPIC_BASE_URL".to_string(), "https://x".to_string())]
-                .into_iter()
-                .collect(),
-        }];
+        project.backends.insert(
+            "bailer".into(),
+            BackendDecl {
+                name: "bailer".into(),
+                kind: Some(Kind::Claude.into()),
+                cmd: Vec::new(),
+                env: [("ANTHROPIC_BASE_URL".to_string(), "https://x".to_string())]
+                    .into_iter()
+                    .collect(),
+                model: None,
+                effort: None,
+            },
+        );
 
         let t = tree(project, ace_with("s", &[]));
         let backend = bind_default(&t).expect("bind");
@@ -503,27 +540,37 @@ mod tests {
     fn bind_per_backend_env_layer_collision_local_wins() {
         let mut project = ace_with("s", &[]);
         project.backend = Some(Kind::Claude.into());
-        project.backends = vec![BackendDecl {
-            name: "claude".into(),
-            kind: None,
-            cmd: Vec::new(),
-            env: [
-                ("KEEP".to_string(), "yes".to_string()),
-                ("KEY".to_string(), "old".to_string()),
-            ]
-            .into_iter()
-            .collect(),
-        }];
-
-        let mut local = ace_with("s", &[]);
-        local.backends = vec![BackendDecl {
-            name: "claude".into(),
-            kind: None,
-            cmd: Vec::new(),
-            env: [("KEY".to_string(), "new".to_string())]
+        project.backends.insert(
+            "claude".into(),
+            BackendDecl {
+                name: "claude".into(),
+                kind: None,
+                cmd: Vec::new(),
+                env: [
+                    ("KEEP".to_string(), "yes".to_string()),
+                    ("KEY".to_string(), "old".to_string()),
+                ]
                 .into_iter()
                 .collect(),
-        }];
+                model: None,
+                effort: None,
+            },
+        );
+
+        let mut local = ace_with("s", &[]);
+        local.backends.insert(
+            "claude".into(),
+            BackendDecl {
+                name: "claude".into(),
+                kind: None,
+                cmd: Vec::new(),
+                env: [("KEY".to_string(), "new".to_string())]
+                    .into_iter()
+                    .collect(),
+                model: None,
+                effort: None,
+            },
+        );
 
         let t = tree(project, local);
         let backend = bind_default(&t).expect("bind");

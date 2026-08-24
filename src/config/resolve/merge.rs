@@ -76,16 +76,22 @@ fn backend_decls(
 ) -> Vec<Sourced<BackendDecl>> {
     let mut out = Vec::new();
     if let Some(st) = school {
-        for d in &st.backends {
-            out.push(Sourced::new(d.clone(), Source::School));
+        for (name, decl) in &st.backends {
+            out.push(sourced_backend(name, decl, Source::School));
         }
     }
     for (src, layer) in layers {
-        for d in &layer.backends {
-            out.push(Sourced::new(d.clone(), *src));
+        for (name, decl) in &layer.backends {
+            out.push(sourced_backend(name, decl, *src));
         }
     }
     out
+}
+
+fn sourced_backend(name: &str, decl: &BackendDecl, source: Source) -> Sourced<BackendDecl> {
+    let mut keyed_decl = decl.clone();
+    keyed_decl.name = name.to_string();
+    Sourced::new(keyed_decl, source)
 }
 
 fn session_prompt(layers: &[(Source, &AceToml); 4]) -> Sourced<String> {
@@ -440,19 +446,29 @@ mod tests {
     #[test]
     fn backend_decls_collected_with_provenance() {
         let mut project = ace("", &[]);
-        project.backends = vec![BackendDecl {
-            name: "p".into(),
-            kind: None,
-            cmd: Vec::new(),
-            env: HashMap::new(),
-        }];
+        project.backends.insert(
+            "p".into(),
+            BackendDecl {
+                name: "p".into(),
+                kind: None,
+                cmd: Vec::new(),
+                env: HashMap::new(),
+                model: None,
+                effort: None,
+            },
+        );
         let mut local = ace("", &[]);
-        local.backends = vec![BackendDecl {
-            name: "l".into(),
-            kind: None,
-            cmd: Vec::new(),
-            env: HashMap::new(),
-        }];
+        local.backends.insert(
+            "l".into(),
+            BackendDecl {
+                name: "l".into(),
+                kind: None,
+                cmd: Vec::new(),
+                env: HashMap::new(),
+                model: None,
+                effort: None,
+            },
+        );
 
         let t = tree(project, local);
         let r = merge(&t, None, &empty_overrides());
@@ -462,5 +478,21 @@ mod tests {
         assert_eq!(r.backend_decls[0].from, Source::Project);
         assert_eq!(r.backend_decls[1].value.name, "l");
         assert_eq!(r.backend_decls[1].from, Source::Local);
+    }
+
+    #[test]
+    fn backend_decl_identity_comes_from_each_layer_key() {
+        let mut project = ace("", &[]);
+        project.backends.insert(
+            "keyed-name".into(),
+            BackendDecl {
+                name: "ignored-field".into(),
+                ..BackendDecl::default()
+            },
+        );
+
+        let resolved = merge(&tree(project, AceToml::default()), None, &empty_overrides());
+
+        assert_eq!(resolved.backend_decls[0].value.name, "keyed-name");
     }
 }

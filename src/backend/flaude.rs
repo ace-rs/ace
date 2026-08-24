@@ -15,7 +15,12 @@ pub(super) fn supports_trust(_trust: Trust) -> bool {
     true
 }
 
-pub(super) fn exec_session(launch: &[String], req: SessionRequest) -> Result<(), std::io::Error> {
+pub(super) fn exec_session(
+    launch: &[String],
+    model: Option<&str>,
+    effort: Option<&str>,
+    req: SessionRequest,
+) -> Result<(), std::io::Error> {
     let Some(path) = exec_record_path() else {
         return Ok(());
     };
@@ -31,6 +36,8 @@ pub(super) fn exec_session(launch: &[String], req: SessionRequest) -> Result<(),
         "extra_args": req.extra_args,
         "cmd": launch,
         "env": req.env,
+        "model": model,
+        "effort": effort,
     });
 
     let mut file = std::fs::OpenOptions::new()
@@ -44,6 +51,8 @@ pub(super) fn exec_session(launch: &[String], req: SessionRequest) -> Result<(),
 
 pub(super) fn exec_one_shot(
     launch: &[String],
+    model: Option<&str>,
+    effort: Option<&str>,
     req: OneShotRequest,
 ) -> Result<Output, std::io::Error> {
     use std::io::Write;
@@ -60,6 +69,8 @@ pub(super) fn exec_one_shot(
         "extra_args": req.extra_args,
         "cmd": launch,
         "env": req.env,
+        "model": model,
+        "effort": effort,
     });
 
     if let Some(path) = exec_record_path() {

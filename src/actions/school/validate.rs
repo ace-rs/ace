@@ -11,19 +11,16 @@ pub struct Validate<'a> {
 }
 
 impl Validate<'_> {
-    /// Walk `school.toml` `[[backends]]`, print one issue per line via
+    /// Walk `school.toml` `[backends.<name>]` tables, print one issue per line via
     /// `ace.data`, return the issue count. Caller decides exit status.
     pub fn run(&self, ace: &mut Ace) -> Result<usize, ConfigError> {
         let toml = school_toml::load(&self.school_root.join("school.toml"))?;
 
         let mut count = 0;
-        for backend in &toml.backends {
+        for (name, backend) in &toml.backends {
             for (i, s) in backend.cmd.iter().enumerate() {
                 for u in templates::check(s, BackendVars::NAMES) {
-                    ace.data(&format_issue(
-                        &format!("backends[{}].cmd[{i}]", backend.name),
-                        &u,
-                    ));
+                    ace.data(&format_issue(&format!("backends[{name}].cmd[{i}]"), &u));
                     count += 1;
                 }
             }
@@ -34,10 +31,7 @@ impl Validate<'_> {
             for key in env_keys {
                 let value = &backend.env[key];
                 for u in templates::check(value, BackendVars::NAMES) {
-                    ace.data(&format_issue(
-                        &format!("backends[{}].env[{key}]", backend.name),
-                        &u,
-                    ));
+                    ace.data(&format_issue(&format!("backends[{name}].env[{key}]"), &u));
                     count += 1;
                 }
             }

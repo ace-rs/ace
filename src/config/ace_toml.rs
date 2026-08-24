@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::str::FromStr;
 
@@ -8,6 +8,7 @@ use super::{ConfigError, is_empty_map, is_empty_str};
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct BackendDecl {
+    #[serde(skip)]
     pub name: String,
     /// Explicit kind (built-in name: claude/codex/flaude). When omitted,
     /// kind is inferred from `name` matching a built-in, then from `cmd[0]`
@@ -20,6 +21,10 @@ pub struct BackendDecl {
     pub cmd: Vec<String>,
     #[serde(skip_serializing_if = "is_empty_map")]
     pub env: HashMap<String, String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -65,7 +70,7 @@ impl FromStr for Trust {
 pub struct AceToml {
     #[serde(skip_serializing_if = "is_empty_str")]
     pub school: String,
-    /// Backend name (resolved against the registry — built-ins or `[[backends]]`
+    /// Backend name (resolved against the registry — built-ins or `[backends.<name>]`
     /// declarations). Stored as a string; validation happens at lookup time.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub backend: Option<String>,
@@ -107,14 +112,15 @@ pub struct AceToml {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub exclude_mcp: Vec<String>,
 
-    /// Per-backend declarations: env overrides for built-ins, full custom backends later.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub backends: Vec<BackendDecl>,
+    /// Per-backend declarations keyed by their registry identity.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub backends: BTreeMap<String, BackendDecl>,
 }
 
 pub fn load(path: &Path) -> Result<AceToml, ConfigError> {
     let content = std::fs::read_to_string(path)?;
-    let config: AceToml = toml::from_str(&content)?;
+    let mut config: AceToml = toml::from_str(&content)?;
+    inject_backend_names(&mut config.backends);
     Ok(config)
 }
 
@@ -122,9 +128,19 @@ pub fn load(path: &Path) -> Result<AceToml, ConfigError> {
 /// Errors on invalid TOML or other I/O failures.
 pub fn load_or_default(path: &Path) -> Result<AceToml, ConfigError> {
     match std::fs::read_to_string(path) {
-        Ok(content) => Ok(toml::from_str(&content)?),
+        Ok(content) => {
+            let mut config: AceToml = toml::from_str(&content)?;
+            inject_backend_names(&mut config.backends);
+            Ok(config)
+        }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(AceToml::default()),
         Err(e) => Err(ConfigError::from(e)),
+    }
+}
+
+fn inject_backend_names(backends: &mut BTreeMap<String, BackendDecl>) {
+    for (name, backend) in backends {
+        backend.name.clone_from(name);
     }
 }
 
@@ -185,31 +201,28 @@ mod tests {
     }
 
     #[test]
-    fn load_parses_backends_array() {
+    fn load_parses_keyed_backends() {
         let dir = tempfile::tempdir().expect("create tempdir");
         let path = dir.path().join("ace.toml");
         std::fs::write(
             &path,
-            "[[backends]]\nname = \"claude\"\n\n[backends.env]\nANTHROPIC_BASE_URL = \"https://example.com\"\n",
+            "[backends.claude]\nmodel = \"opus\"\neffort = \"high\"\n\n[backends.claude.env]\nANTHROPIC_BASE_URL = \"https://example.com\"\n",
         )
         .expect("write");
 
-        let config = load(&path).expect("load");
-        assert_eq!(config.backends.len(), 1);
-        assert_eq!(config.backends[0].name, "claude");
-        assert!(config.backends[0].kind.is_none());
-        assert!(config.backends[0].cmd.is_empty());
+        let config = load(&path).expect("keyed backend table must parse");
+        let backend = config.backends.get("claude").expect("claude backend");
+        assert_eq!(backend.name, "claude");
+        assert_eq!(backend.model.as_deref(), Some("opus"));
+        assert_eq!(backend.effort.as_deref(), Some("high"));
         assert_eq!(
-            config.backends[0]
-                .env
-                .get("ANTHROPIC_BASE_URL")
-                .map(String::as_str),
+            backend.env.get("ANTHROPIC_BASE_URL").map(String::as_str),
             Some("https://example.com"),
         );
     }
 
     #[test]
-    fn load_parses_backends_with_kind_and_cmd() {
+    fn load_rejects_legacy_backends_array() {
         let dir = tempfile::tempdir().expect("create tempdir");
         let path = dir.path().join("ace.toml");
         std::fs::write(
@@ -225,15 +238,9 @@ AWS_REGION = "us-east-1"
         )
         .expect("write");
 
-        let config = load(&path).expect("load");
-        assert_eq!(config.backends.len(), 1);
-        let b = &config.backends[0];
-        assert_eq!(b.name, "bedrock-claude");
-        assert_eq!(b.kind.as_deref(), Some("claude"));
-        assert_eq!(b.cmd, vec!["claude-bedrock", "--profile", "prod"]);
-        assert_eq!(
-            b.env.get("AWS_REGION").map(String::as_str),
-            Some("us-east-1")
+        assert!(
+            load(&path).is_err(),
+            "legacy backend arrays must be rejected"
         );
     }
 

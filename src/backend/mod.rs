@@ -178,16 +178,24 @@ impl Kind {
         dispatch!(self, supports_trust, trust)
     }
 
-    pub fn exec_session(&self, cmd: &[String], req: SessionRequest) -> Result<(), std::io::Error> {
-        dispatch!(self, exec_session, cmd, req)
+    pub fn exec_session(
+        &self,
+        cmd: &[String],
+        model: Option<&str>,
+        effort: Option<&str>,
+        req: SessionRequest,
+    ) -> Result<(), std::io::Error> {
+        dispatch!(self, exec_session, cmd, model, effort, req)
     }
 
     pub fn exec_one_shot(
         &self,
         cmd: &[String],
+        model: Option<&str>,
+        effort: Option<&str>,
         req: OneShotRequest,
     ) -> Result<Output, std::io::Error> {
-        dispatch!(self, exec_one_shot, cmd, req)
+        dispatch!(self, exec_one_shot, cmd, model, effort, req)
     }
 
     #[allow(dead_code)]
@@ -237,6 +245,8 @@ impl From<Kind> for Backend {
             kind,
             cmd: vec![kind.name().to_string()],
             env: HashMap::new(),
+            model: None,
+            effort: None,
         }
     }
 }
@@ -249,15 +259,17 @@ impl Default for Backend {
 
 /// A resolved backend instance: identity (`name`), behavior (`kind`), and runtime
 /// overrides (`cmd`, `env`). Built-ins are pre-built singletons; custom entries
-/// from `[[backends]]` populate the registry alongside built-ins.
+/// from `[backends.<name>]` populate the registry alongside built-ins.
 #[derive(Debug, Clone)]
 pub struct Backend {
     pub name: String,
     pub kind: Kind,
     /// Argv for launching the binary. Built-ins seed `[kind.name()]`; custom
-    /// backends from `[[backends]]` override.
+    /// backends from `[backends.<name>]` override.
     pub cmd: Vec<String>,
     pub env: HashMap<String, String>,
+    pub model: Option<String>,
+    pub effort: Option<String>,
 }
 
 impl Backend {
@@ -278,14 +290,24 @@ impl Backend {
         for (k, v) in &self.env {
             req.env.insert(k.clone(), v.clone());
         }
-        self.kind.exec_session(&self.cmd, req)
+        self.kind.exec_session(
+            &self.cmd,
+            self.model.as_deref(),
+            self.effort.as_deref(),
+            req,
+        )
     }
 
     pub fn exec_one_shot(&self, mut req: OneShotRequest) -> Result<Output, std::io::Error> {
         for (k, v) in &self.env {
             req.env.insert(k.clone(), v.clone());
         }
-        self.kind.exec_one_shot(&self.cmd, req)
+        self.kind.exec_one_shot(
+            &self.cmd,
+            self.model.as_deref(),
+            self.effort.as_deref(),
+            req,
+        )
     }
 
     pub fn mcp_list(&self, project_dir: &Path) -> HashSet<String> {
@@ -310,7 +332,7 @@ impl Backend {
 }
 
 /// Name → Backend lookup. Built with `Registry::with_builtins()`; layer-merge
-/// from `[[backends]]` happens in `registry::build_registry`.
+/// from `[backends.<name>]` happens in `registry::build_registry`.
 #[derive(Debug, Default, Clone)]
 pub struct Registry {
     entries: HashMap<String, Backend>,
@@ -398,7 +420,7 @@ mod tests {
 
     #[test]
     fn custom_backend_inherits_kind_features() {
-        // `[[backends]] name = "my-codex" kind = "codex"` must inherit
+        // `[backends.my-codex] kind = "codex"` must inherit
         // FEATURE_NESTED_SKILLS via Backend::features → Kind::features.
         // Pins the delegator at Backend::features against silent regression.
         let custom = Backend {
@@ -406,6 +428,8 @@ mod tests {
             kind: Kind::Codex,
             cmd: vec!["custom-codex".to_string()],
             env: HashMap::new(),
+            model: None,
+            effort: None,
         };
         assert_eq!(custom.features(), FEATURE_NESTED_SKILLS);
 
@@ -414,6 +438,8 @@ mod tests {
             kind: Kind::Claude,
             cmd: vec!["custom-claude".to_string()],
             env: HashMap::new(),
+            model: None,
+            effort: None,
         };
         assert_eq!(custom_flat.features(), 0);
     }
