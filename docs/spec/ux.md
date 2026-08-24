@@ -118,8 +118,9 @@ override — a user or local school also wins when the project declares none.
 ### Startup wordmarks
 
 ACE has two locked terminal wordmarks. Until command-specific presentation is
-specified, every eligible startup uses the big wordmark. Both forms append the
-build's short git hash in muted blue-gray (`rgb(105, 135, 145)`).
+specified, every eligible startup uses the big wordmark. The wordmark is followed by a
+regular `info` item identifying the build as `version X (commit)`, where `X` is the
+package version and `commit` is the build's short git hash.
 
 The big wordmark uses three fixed letter colors: A is `rgb(55, 225, 225)`, C is
 `rgb(30, 205, 230)`, and E is `rgb(40, 175, 225)`. Its A has no crossbar, and
@@ -128,19 +129,21 @@ its E is the same open silhouette as C with a detached middle stroke:
 ```text
 ╭──╮  ╭───  ╭───
 │  │  │     │ ──
-╵  ╵  ╰───  ╰───  97ba9e2
+╵  ╵  ╰───  ╰───
+  version 0.9.2 (97ba9e2)
 ```
 
 The compact wordmark uses Greek capital pi followed by regular Latin C and E,
 with the same per-letter colors:
 
 ```text
-ΠCE  97ba9e2
+ΠCE
+  version 0.9.2 (97ba9e2)
 ```
 
-The hash above is illustrative. Rendering uses the current build hash, keeps
-the logo terminal-only, suppresses it for `--porcelain` and silenced output,
-and emits no leading or trailing blank row.
+The version and hash above are illustrative. Rendering uses the current package version
+and build hash, keeps the logo and build information terminal-only, suppresses them for
+`--porcelain` and silenced output, and emits no leading or trailing blank row.
 
 ## 7. Re-running is safe and informative
 

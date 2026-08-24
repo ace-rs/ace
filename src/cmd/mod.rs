@@ -29,11 +29,14 @@ use crate::config::ace_toml::{AceToml, Trust};
 use crate::config::{ConfigError, Scope};
 use crate::git::GitError;
 
+pub(crate) const BUILD_IDENTITY: &str =
+    concat!(env!("CARGO_PKG_VERSION"), " (", env!("ACE_GIT_HASH"), ")");
+
 #[derive(Parser)]
 #[command(
     name = "ace",
     about = "Accelerated Coding Environment",
-    version = concat!(env!("CARGO_PKG_VERSION"), " (", env!("ACE_GIT_HASH"), ")"),
+    version = BUILD_IDENTITY,
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -578,10 +581,7 @@ pub fn run(ace: &mut Ace, cli: Cli) {
             version,
         } => upgrade::run(ace, silent, force, version),
         Command::Version => {
-            println!(
-                "ace {}",
-                concat!(env!("CARGO_PKG_VERSION"), " (", env!("ACE_GIT_HASH"), ")")
-            );
+            println!("ace {BUILD_IDENTITY}");
         }
     }
 }
@@ -706,6 +706,14 @@ pub(crate) fn exit_on_err(ace: &mut Ace, result: Result<(), CmdError>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn build_identity_contains_the_package_version_and_commit() {
+        assert_eq!(
+            BUILD_IDENTITY,
+            concat!(env!("CARGO_PKG_VERSION"), " (", env!("ACE_GIT_HASH"), ")")
+        );
+    }
 
     #[test]
     fn root_dash_dash_passthrough() {

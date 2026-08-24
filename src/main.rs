@@ -21,11 +21,12 @@ use cmd::Cli;
 
 fn main() {
     let cli = Cli::parse();
-    let io = Io::new(cli.porcelain, cli.yes);
+    let mut io = Io::new(cli.porcelain, cli.yes);
 
     let logo = io.logo();
     if !logo.is_empty() {
         eprintln!("{logo}");
+        io.info(&format!("version {}", cmd::BUILD_IDENTITY));
     }
 
     let project_dir = std::env::current_dir().expect("cannot determine current directory");
