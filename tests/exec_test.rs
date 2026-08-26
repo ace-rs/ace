@@ -213,6 +213,19 @@ fn exec_session_default_resumes() {
 }
 
 #[test]
+fn exec_resume_preference_can_start_fresh() {
+    let env = TestEnv::new();
+    env.setup_flaude_school("name = \"test-school\"\n");
+    env.write_file("ace.local.toml", "resume = false\n");
+
+    env.ace().assert().success();
+
+    let records = env.read_flaude_exec_records();
+    assert_eq!(records.len(), 1);
+    assert!(!records[0].resume, "resume=false should start fresh");
+}
+
+#[test]
 fn exec_new_does_not_resume() {
     let env = TestEnv::new();
     env.setup_flaude_school("name = \"test-school\"\n");

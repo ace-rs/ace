@@ -48,7 +48,7 @@ pub struct SessionOptions {
     pub project_dir: PathBuf,
     pub env: HashMap<String, String>,
     pub extra_args: Vec<String>,
-    pub resume: bool,
+    pub resume: ResumeMode,
     pub backend_mode: BackendMode,
 }
 
@@ -85,6 +85,12 @@ impl BackendMode {
             Self::WithServer => "with-server",
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResumeMode {
+    Fresh,
+    Latest,
 }
 
 /// Health check result for a single MCP server.

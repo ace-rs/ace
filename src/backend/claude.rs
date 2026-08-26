@@ -15,7 +15,7 @@ pub(super) fn exec_session(
     launch: &[String],
     model: Option<&str>,
     effort: Option<&str>,
-    req: SessionOptions,
+    options: SessionOptions,
 ) -> Result<(), std::io::Error> {
     let (program, prefix) = launch
         .split_first()
@@ -23,13 +23,13 @@ pub(super) fn exec_session(
         .unwrap_or(("claude", &[][..]));
     let mut cmd = Command::new(program);
     cmd.args(prefix);
-    cmd.current_dir(&req.project_dir);
+    cmd.current_dir(&options.project_dir);
 
-    for (key, val) in &req.env {
+    for (key, val) in &options.env {
         cmd.env(key, val);
     }
 
-    cmd.args(build_session_args(model, effort, &req));
+    cmd.args(build_session_args(model, effort, &options));
 
     Err(crate::platform::exec_replace(cmd))
 }
@@ -38,7 +38,7 @@ pub(super) fn exec_one_shot(
     launch: &[String],
     model: Option<&str>,
     effort: Option<&str>,
-    req: OneShotOptions,
+    options: OneShotOptions,
 ) -> Result<Output, std::io::Error> {
     let (program, prefix) = launch
         .split_first()
@@ -46,15 +46,15 @@ pub(super) fn exec_one_shot(
         .unwrap_or(("claude", &[][..]));
     let mut cmd = Command::new(program);
     cmd.args(prefix);
-    cmd.current_dir(&req.project_dir);
+    cmd.current_dir(&options.project_dir);
 
-    for (key, val) in &req.env {
+    for (key, val) in &options.env {
         cmd.env(key, val);
     }
 
-    cmd.args(build_one_shot_args(model, effort, &req));
+    cmd.args(build_one_shot_args(model, effort, &options));
 
-    if matches!(req.prompt, PromptInput::Stdin) {
+    if matches!(options.prompt, PromptInput::Stdin) {
         cmd.stdin(Stdio::inherit());
     }
 
@@ -79,18 +79,19 @@ fn trust_args(trust: Trust) -> &'static [&'static str] {
 fn build_session_args(
     model: Option<&str>,
     effort: Option<&str>,
-    req: &SessionOptions,
+    options: &SessionOptions,
 ) -> Vec<String> {
     let mut args = Vec::new();
 
-    if req.resume {
-        args.push("--continue".to_string());
-    } else {
-        args.push("--system-prompt".to_string());
-        args.push(req.session_prompt.clone());
+    match options.resume {
+        super::ResumeMode::Fresh => {
+            args.push("--system-prompt".to_string());
+            args.push(options.session_prompt.clone());
+        }
+        super::ResumeMode::Latest => args.push("--continue".to_string()),
     }
 
-    args.extend(trust_args(req.trust).iter().map(|s| s.to_string()));
+    args.extend(trust_args(options.trust).iter().map(|s| s.to_string()));
     if let Some(value) = model {
         args.extend(["--model".to_string(), value.to_string()]);
     }
@@ -98,7 +99,7 @@ fn build_session_args(
         args.extend(["--effort".to_string(), value.to_string()]);
     }
 
-    args.extend(req.extra_args.iter().cloned());
+    args.extend(options.extra_args.iter().cloned());
     args
 }
 
@@ -108,10 +109,10 @@ fn build_session_args(
 fn build_one_shot_args(
     model: Option<&str>,
     effort: Option<&str>,
-    req: &OneShotOptions,
+    options: &OneShotOptions,
 ) -> Vec<String> {
     let mut args = vec!["-p".to_string()];
-    if let PromptInput::Inline(text) = &req.prompt {
+    if let PromptInput::Inline(text) = &options.prompt {
         args.push(text.clone());
     }
     if let Some(value) = model {
@@ -120,7 +121,7 @@ fn build_one_shot_args(
     if let Some(value) = effort {
         args.extend(["--effort".to_string(), value.to_string()]);
     }
-    args.extend(req.extra_args.iter().cloned());
+    args.extend(options.extra_args.iter().cloned());
     args
 }
 
@@ -290,14 +291,14 @@ mod tests {
     use std::collections::HashMap;
     use std::path::PathBuf;
 
-    fn req() -> SessionOptions {
+    fn session_options() -> SessionOptions {
         SessionOptions {
             trust: Trust::Default,
             session_prompt: "SP".to_string(),
             project_dir: PathBuf::from("/tmp"),
             env: HashMap::new(),
             extra_args: Vec::new(),
-            resume: false,
+            resume: super::super::ResumeMode::Fresh,
             backend_mode: super::super::BackendMode::Normal,
         }
     }
@@ -313,33 +314,33 @@ mod tests {
 
     #[test]
     fn session_args_default() {
-        let args = build_session_args(None, None, &req());
+        let args = build_session_args(None, None, &session_options());
         assert_eq!(args, vec!["--system-prompt".to_string(), "SP".to_string()]);
     }
 
     #[test]
     fn session_args_resume_replaces_system_prompt() {
-        let mut r = req();
-        r.resume = true;
-        let args = build_session_args(None, None, &r);
+        let mut options = session_options();
+        options.resume = super::super::ResumeMode::Latest;
+        let args = build_session_args(None, None, &options);
         assert_eq!(args, vec!["--continue".to_string()]);
     }
 
     #[test]
     fn session_args_extra_args_come_last() {
-        let mut r = req();
-        r.extra_args = vec!["--model".to_string(), "opus".to_string()];
-        let args = build_session_args(None, None, &r);
+        let mut options = session_options();
+        options.extra_args = vec!["--model".to_string(), "opus".to_string()];
+        let args = build_session_args(None, None, &options);
         let last_two = &args[args.len() - 2..];
         assert_eq!(last_two, ["--model", "opus"]);
     }
 
     #[test]
     fn session_configured_model_and_effort_precede_passthrough_args() {
-        let mut request = req();
-        request.extra_args = vec!["--effort".into(), "override".into()];
+        let mut options = session_options();
+        options.extra_args = vec!["--effort".into(), "override".into()];
 
-        let args = build_session_args(Some("opus"), Some("high"), &request);
+        let args = build_session_args(Some("opus"), Some("high"), &options);
         let configured = args
             .windows(6)
             .find(|window| window[0] == "--model")
@@ -375,10 +376,10 @@ mod tests {
 
     #[test]
     fn configured_model_and_effort_precede_passthrough_args() {
-        let mut request = one_shot(PromptInput::Inline("hi".into()));
-        request.extra_args = vec!["--model".into(), "override".into()];
+        let mut options = one_shot(PromptInput::Inline("hi".into()));
+        options.extra_args = vec!["--model".into(), "override".into()];
 
-        let args = build_one_shot_args(Some("opus"), Some("high"), &request);
+        let args = build_one_shot_args(Some("opus"), Some("high"), &options);
 
         assert_eq!(
             args,

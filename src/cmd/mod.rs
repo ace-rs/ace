@@ -1,5 +1,6 @@
 mod config;
 mod diff;
+mod error;
 mod explain;
 mod fmt;
 mod import;
@@ -18,17 +19,12 @@ use std::collections::HashMap;
 
 use clap::{Parser, Subcommand};
 
-use crate::ace::{Ace, IoError, StartError, StartMode, WordmarkStyle};
-use crate::actions::migrate::MigrateError;
-use crate::actions::project::PrepareError;
-use crate::actions::project::RegisterMcpError;
-use crate::actions::project::SetupError;
-use crate::actions::school::InitError;
-use crate::actions::school::{AddImportError, PullImportsError};
-use crate::backend::BackendMode;
+use crate::ace::{Ace, StartMode, WordmarkStyle};
+use crate::backend::{BackendMode, ResumeMode};
+use crate::config::Scope;
 use crate::config::ace_toml::{AceToml, Trust};
-use crate::config::{ConfigError, Scope};
-use crate::git::GitError;
+
+pub(crate) use error::{CmdError, exit_on_err};
 
 pub(crate) const BUILD_IDENTITY: &str =
     concat!(env!("CARGO_PKG_VERSION"), " (", env!("ACE_GIT_HASH"), ")");
@@ -299,294 +295,6 @@ impl Cli {
     }
 }
 
-/// Error exit class. Success exits `0` via the normal `main()` return and never
-/// flows through `CmdError`, so there is no `Ok` here. See
-/// `docs/spec/exit-codes.md`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ExitCode {
-    Usage,
-    Unavailable,
-    Operational,
-    Cancelled,
-}
-
-impl ExitCode {
-    pub(crate) fn code(self) -> i32 {
-        match self {
-            Self::Usage => 1,
-            Self::Unavailable => 2,
-            Self::Operational => 3,
-            Self::Cancelled => 130,
-        }
-    }
-}
-
-#[derive(Debug, thiserror::Error)]
-pub(crate) enum CmdError {
-    #[error("{0}")]
-    Start(#[from] StartError),
-    #[error("{0}")]
-    Io(#[from] std::io::Error),
-    #[error("{0}")]
-    Config(#[from] ConfigError),
-    #[error("{0}")]
-    Backend(#[from] crate::backend::BackendError),
-    #[error("{0}")]
-    School(#[from] crate::school::SchoolError),
-    #[error("{0}")]
-    Skill(#[from] crate::skills::SkillError),
-    #[error("{0}")]
-    Setup(#[from] SetupError),
-    #[error("{0}")]
-    Prepare(#[from] PrepareError),
-    #[error("{0}")]
-    McpRegister(#[from] RegisterMcpError),
-    #[error("{0}")]
-    Import(#[from] AddImportError),
-    #[error("{0}")]
-    InitSchool(#[from] InitError),
-    #[error("{0}")]
-    PullImports(#[from] PullImportsError),
-    #[error("{0}")]
-    Git(#[from] GitError),
-    #[error("{0}")]
-    Migrate(#[from] MigrateError),
-    #[error("{0}")]
-    Prompt(#[from] IoError),
-    /// Ad-hoc error built at a call site. Its exit class is mandatory at
-    /// construction (`usage`/`unavailable`/`failed`) — there is no
-    /// un-classified catch-all to reach for.
-    #[error("{message}")]
-    Adhoc {
-        message: String,
-        hints: Vec<String>,
-        code: ExitCode,
-    },
-}
-
-impl CmdError {
-    /// Bad input the user supplied — CLI flags/args or authored config. Exit 1.
-    pub fn usage(message: impl Into<String>) -> Self {
-        Self::adhoc(message, ExitCode::Usage)
-    }
-
-    /// A required resource or precondition is absent. Exit 2.
-    pub fn unavailable(message: impl Into<String>) -> Self {
-        Self::adhoc(message, ExitCode::Unavailable)
-    }
-
-    /// A valid operation was attempted and failed. Exit 3.
-    pub fn failed(message: impl Into<String>) -> Self {
-        Self::adhoc(message, ExitCode::Operational)
-    }
-
-    fn adhoc(message: impl Into<String>, code: ExitCode) -> Self {
-        Self::Adhoc {
-            message: message.into(),
-            hints: Vec::new(),
-            code,
-        }
-    }
-
-    /// Attach a single recovery hint, preserving the error's class.
-    pub fn with_hint(self, hint: impl Into<String>) -> Self {
-        self.with_hints(vec![hint.into()])
-    }
-
-    /// Attach recovery hints, rendered in order, preserving the error's class.
-    pub fn with_hints(self, extra: Vec<String>) -> Self {
-        match self {
-            Self::Adhoc {
-                message,
-                mut hints,
-                code,
-            } => {
-                hints.extend(extra);
-                Self::Adhoc {
-                    message,
-                    hints,
-                    code,
-                }
-            }
-            // Hints only attach to ad-hoc errors; typed variants carry their own.
-            other => other,
-        }
-    }
-
-    /// Recovery hints paired with the error. Empty means no known recovery
-    /// action for this variant; callers should not synthesize one.
-    pub fn hints(&self) -> Vec<String> {
-        match self {
-            Self::Start(error) => error.hint().map(str::to_string).into_iter().collect(),
-            Self::School(e) => e.hint().map(str::to_string).into_iter().collect(),
-            Self::Migrate(e) => e.hint().map(str::to_string).into_iter().collect(),
-            Self::Prepare(e) => e.hint().map(str::to_string).into_iter().collect(),
-            Self::Prompt(e) => e.hint().map(str::to_string).into_iter().collect(),
-            Self::Adhoc { hints, .. } => hints.clone(),
-            _ => Vec::new(),
-        }
-    }
-
-    /// Process exit class for this error. Wrapper variants delegate to the
-    /// inner error. See `docs/spec/exit-codes.md`.
-    pub fn exit_code(&self) -> ExitCode {
-        match self {
-            Self::Adhoc { code, .. } => *code,
-            Self::Start(error) => start_exit_code(error),
-            Self::Prompt(e) => io_exit_code(e),
-            Self::Io(_) | Self::Git(_) => ExitCode::Operational,
-            Self::Config(e) => config_exit_code(e),
-            Self::Backend(e) => backend_exit_code(e),
-            Self::School(e) => school_exit_code(e),
-            Self::Skill(e) => skill_exit_code(e),
-            Self::Setup(e) => setup_exit_code(e),
-            Self::Prepare(e) => prepare_exit_code(e),
-            Self::McpRegister(e) => mcp_register_exit_code(e),
-            Self::Import(e) => add_import_exit_code(e),
-            Self::InitSchool(e) => init_exit_code(e),
-            Self::PullImports(e) => pull_imports_exit_code(e),
-            Self::Migrate(e) => migrate_exit_code(e),
-        }
-    }
-}
-
-fn start_exit_code(error: &StartError) -> ExitCode {
-    match error {
-        StartError::Io(_) => ExitCode::Operational,
-        StartError::Config(error) => config_exit_code(error),
-        StartError::Backend(error) => backend_exit_code(error),
-        StartError::School(error) => school_exit_code(error),
-        StartError::Prepare(error) => prepare_exit_code(error),
-        StartError::Prompt(error) => io_exit_code(error),
-        StartError::InvalidStartMode => ExitCode::Usage,
-    }
-}
-
-// -- Exit-class mapping per leaf error. Wrapper variants delegate inward. --
-
-fn io_exit_code(e: &IoError) -> ExitCode {
-    match e {
-        IoError::Cancelled => ExitCode::Cancelled,
-        // Ambient precondition, not something the user mis-typed.
-        IoError::NoTerminal { .. } => ExitCode::Unavailable,
-        IoError::AskingWaived { .. } | IoError::MachineReadable { .. } => ExitCode::Usage,
-        IoError::Io(_) => ExitCode::Operational,
-    }
-}
-
-fn config_exit_code(e: &ConfigError) -> ExitCode {
-    match e {
-        // Bad content the user authored in a config file.
-        ConfigError::Parse(_)
-        | ConfigError::Encode(_)
-        | ConfigError::TraversalInSource(_)
-        | ConfigError::TraversalInPath(_) => ExitCode::Usage,
-        ConfigError::NoConfig
-        | ConfigError::NoConfigDir
-        | ConfigError::NoCacheDir
-        | ConfigError::NoDataDir => ExitCode::Unavailable,
-        ConfigError::Io(_) => ExitCode::Operational,
-    }
-}
-
-fn migrate_exit_code(e: &MigrateError) -> ExitCode {
-    match e {
-        // State this binary is too old to read is a missing precondition, not a
-        // failed operation — upgrading fixes it.
-        MigrateError::FromTheFuture { .. } => ExitCode::Unavailable,
-        MigrateError::Config(c) => config_exit_code(c),
-        MigrateError::Io(_) => ExitCode::Operational,
-    }
-}
-
-fn backend_exit_code(e: &crate::backend::BackendError) -> ExitCode {
-    use crate::backend::BackendError;
-    match e {
-        BackendError::TreeLoad(c) => config_exit_code(c),
-        BackendError::Unknown(_) => ExitCode::Unavailable,
-        BackendError::Unresolvable(_) | BackendError::KindMismatch { .. } => ExitCode::Usage,
-    }
-}
-
-fn school_exit_code(e: &crate::school::SchoolError) -> ExitCode {
-    use crate::school::SchoolError;
-    match e {
-        SchoolError::TreeLoad(c) => config_exit_code(c),
-        SchoolError::NoSpecifier
-        | SchoolError::NotInitialized
-        | SchoolError::NotCloned
-        | SchoolError::NoSchool => ExitCode::Unavailable,
-    }
-}
-
-fn skill_exit_code(e: &crate::skills::SkillError) -> ExitCode {
-    use crate::skills::SkillError;
-    match e {
-        SkillError::TreeLoad(c) => config_exit_code(c),
-        SkillError::School(s) => school_exit_code(s),
-        SkillError::Discovery(_) => ExitCode::Operational,
-    }
-}
-
-fn setup_exit_code(e: &SetupError) -> ExitCode {
-    match e {
-        SetupError::Config(c) => config_exit_code(c),
-        SetupError::NotInGitRepo => ExitCode::Unavailable,
-        SetupError::AlreadySetUp => ExitCode::Usage,
-    }
-}
-
-fn prepare_exit_code(e: &PrepareError) -> ExitCode {
-    match e {
-        PrepareError::Config(c) => config_exit_code(c),
-        PrepareError::Backend(error) => backend_exit_code(error),
-        PrepareError::School(error) => school_exit_code(error),
-        PrepareError::Clone(_) | PrepareError::Write(_) => ExitCode::Operational,
-        // The tree is intact; it is waiting on a decision only the user can make.
-        PrepareError::BlockedLinks(_) => ExitCode::Unavailable,
-    }
-}
-
-fn mcp_register_exit_code(e: &RegisterMcpError) -> ExitCode {
-    match e {
-        RegisterMcpError::Register(_) => ExitCode::Operational,
-        RegisterMcpError::Io(p) => io_exit_code(p),
-        RegisterMcpError::Config(c) => config_exit_code(c),
-    }
-}
-
-fn add_import_exit_code(e: &AddImportError) -> ExitCode {
-    match e {
-        AddImportError::NoSkills(_) | AddImportError::SkillNotFound(_) => ExitCode::Usage,
-        AddImportError::Config(c) => config_exit_code(c),
-        AddImportError::Clone(_)
-        | AddImportError::Io(_)
-        | AddImportError::RejectedImports { .. }
-        | AddImportError::BrokenSubmodule(_) => ExitCode::Operational,
-    }
-}
-
-fn init_exit_code(e: &InitError) -> ExitCode {
-    match e {
-        InitError::NotInGitRepo => ExitCode::Unavailable,
-        InitError::AlreadyExists => ExitCode::Usage,
-        InitError::Config(c) => config_exit_code(c),
-        InitError::Write(_) => ExitCode::Operational,
-        InitError::Pull(p) => pull_imports_exit_code(p),
-    }
-}
-
-fn pull_imports_exit_code(e: &PullImportsError) -> ExitCode {
-    match e {
-        PullImportsError::Config(c) => config_exit_code(c),
-        PullImportsError::InvalidDecl { .. } => ExitCode::Usage,
-        PullImportsError::Io(_)
-        | PullImportsError::Git(_)
-        | PullImportsError::RejectedImports { .. }
-        | PullImportsError::BrokenSubmodules { .. } => ExitCode::Operational,
-    }
-}
-
 pub fn run(ace: &mut Ace, cli: Cli) {
     let overrides = match build_overrides(&cli) {
         Ok(o) => o,
@@ -622,7 +330,13 @@ pub fn run(ace: &mut Ace, cli: Cli) {
     }
 
     let Some(command) = cli.command else {
-        let mode = start_mode(cli.one_shot_prompt, true);
+        let mode = match cli.one_shot_prompt {
+            Some(prompt) => StartMode::OneShot { prompt },
+            None => StartMode::Session {
+                resume: ResumeMode::Latest,
+                backend: BackendMode::Normal,
+            },
+        };
         return main::run(ace, cli.backend_args, mode);
     };
 
@@ -662,7 +376,13 @@ pub fn run(ace: &mut Ace, cli: Cli) {
         Command::Pull => pull::run(ace),
         Command::Link { force } => link::run(ace, force),
         Command::New { backend_args } => {
-            let mode = start_mode(cli.one_shot_prompt, false);
+            let mode = match cli.one_shot_prompt {
+                Some(prompt) => StartMode::OneShot { prompt },
+                None => StartMode::Session {
+                    resume: ResumeMode::Fresh,
+                    backend: BackendMode::Normal,
+                },
+            };
             main::run(ace, backend_args, mode)
         }
         Command::Auto => yolo::run(ace, crate::config::ace_toml::Trust::Auto),
@@ -675,16 +395,6 @@ pub fn run(ace: &mut Ace, cli: Cli) {
         Command::Version => {
             println!("ace {BUILD_IDENTITY}");
         }
-    }
-}
-
-fn start_mode(one_shot_prompt: Option<String>, resume: bool) -> StartMode {
-    match one_shot_prompt {
-        Some(prompt) => StartMode::OneShot { prompt },
-        None => StartMode::Session {
-            resume,
-            backend: BackendMode::Normal,
-        },
     }
 }
 
@@ -794,28 +504,9 @@ fn parse_env_overrides(entries: &[String]) -> Result<HashMap<String, String>, Cm
     Ok(out)
 }
 
-pub(crate) fn exit_on_err(ace: &mut Ace, result: Result<(), CmdError>) {
-    if let Err(e) = result {
-        let hints = e.hints();
-        ace.error(&e.to_string());
-        for h in hints {
-            ace.hint(&h);
-        }
-        std::process::exit(e.exit_code().code());
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn build_identity_contains_the_package_version_and_commit() {
-        assert_eq!(
-            BUILD_IDENTITY,
-            concat!(env!("CARGO_PKG_VERSION"), " (", env!("ACE_GIT_HASH"), ")")
-        );
-    }
 
     fn parses(args: &[&str]) -> Cli {
         Cli::try_parse_from(args).expect("parse command")
@@ -832,27 +523,6 @@ mod tests {
         assert_eq!(
             parses(&["ace", "--prompt", "answer"]).wordmark(),
             WordmarkStyle::None
-        );
-    }
-
-    #[test]
-    fn prompt_selects_one_shot_mode() {
-        assert_eq!(
-            start_mode(Some("answer".to_string()), true),
-            StartMode::OneShot {
-                prompt: "answer".to_string(),
-            }
-        );
-    }
-
-    #[test]
-    fn session_mode_carries_resume_and_backend_mode() {
-        assert_eq!(
-            start_mode(None, false),
-            StartMode::Session {
-                resume: false,
-                backend: BackendMode::Normal,
-            }
         );
     }
 
@@ -936,159 +606,6 @@ mod tests {
     fn opencode_flag_resolves_to_opencode_backend() {
         let cli = Cli::try_parse_from(["ace", "--opencode"]).expect("parse");
         assert_eq!(backend_override_flags(&cli), vec!["opencode".to_string()]);
-    }
-
-    #[test]
-    fn cmd_error_hints_school_delegates_to_leaf() {
-        let err = CmdError::School(crate::school::SchoolError::NoSpecifier);
-        assert_eq!(
-            err.hints(),
-            vec!["run `ace setup` to choose a school".to_string()]
-        );
-    }
-
-    #[test]
-    fn cmd_error_hints_school_no_hint_when_leaf_returns_none() {
-        let inner = crate::school::SchoolError::TreeLoad(ConfigError::NoConfigDir);
-        let err = CmdError::School(inner);
-        assert!(err.hints().is_empty());
-    }
-
-    #[test]
-    fn cmd_error_hints_migrate_delegates_to_leaf() {
-        let err = CmdError::Migrate(MigrateError::FromTheFuture {
-            path: std::path::PathBuf::from("/tmp/index.toml"),
-            found: "9999-01-01".to_string(),
-        });
-        assert_eq!(
-            err.hints(),
-            vec!["upgrade ace to use this install".to_string()]
-        );
-    }
-
-    #[test]
-    fn cmd_error_with_hint_carries_single_hint() {
-        let err = CmdError::failed("boom").with_hint("do the thing");
-        assert_eq!(err.to_string(), "boom");
-        assert_eq!(err.hints(), vec!["do the thing".to_string()]);
-    }
-
-    #[test]
-    fn cmd_error_with_hints_preserves_order() {
-        let err = CmdError::failed("boom").with_hints(vec![
-            "first".to_string(),
-            "second".to_string(),
-            "third".to_string(),
-        ]);
-        assert_eq!(
-            err.hints(),
-            vec![
-                "first".to_string(),
-                "second".to_string(),
-                "third".to_string()
-            ]
-        );
-    }
-
-    #[test]
-    fn cmd_error_adhoc_has_no_hint_by_default() {
-        let err = CmdError::failed("plain failure");
-        assert!(err.hints().is_empty());
-    }
-
-    // -- exit-code contract (docs/spec/exit-codes.md) --
-
-    fn git_err() -> GitError {
-        GitError::Exec {
-            cmd: "status".into(),
-            source: std::io::Error::other("boom"),
-        }
-    }
-
-    #[test]
-    fn adhoc_constructors_carry_their_class() {
-        assert_eq!(CmdError::usage("x").exit_code(), ExitCode::Usage);
-        assert_eq!(
-            CmdError::unavailable("x").exit_code(),
-            ExitCode::Unavailable
-        );
-        assert_eq!(CmdError::failed("x").exit_code(), ExitCode::Operational);
-    }
-
-    #[test]
-    fn hints_preserve_the_class() {
-        let err = CmdError::unavailable("no school").with_hint("run ace setup");
-        assert_eq!(err.exit_code(), ExitCode::Unavailable);
-    }
-
-    #[test]
-    fn cancellation_maps_to_130() {
-        assert_eq!(
-            CmdError::Prompt(IoError::Cancelled).exit_code(),
-            ExitCode::Cancelled
-        );
-        assert_eq!(ExitCode::Cancelled.code(), 130);
-    }
-
-    #[test]
-    fn preconditions_map_to_unavailable() {
-        use crate::school::SchoolError;
-        assert_eq!(
-            CmdError::School(SchoolError::NoSpecifier).exit_code(),
-            ExitCode::Unavailable
-        );
-        assert_eq!(
-            CmdError::School(SchoolError::NotInitialized).exit_code(),
-            ExitCode::Unavailable
-        );
-        assert_eq!(
-            CmdError::Backend(crate::backend::BackendError::Unknown("x".into())).exit_code(),
-            ExitCode::Unavailable
-        );
-        assert_eq!(
-            CmdError::Setup(SetupError::NotInGitRepo).exit_code(),
-            ExitCode::Unavailable
-        );
-        assert_eq!(
-            CmdError::Config(ConfigError::NoConfig).exit_code(),
-            ExitCode::Unavailable
-        );
-    }
-
-    #[test]
-    fn operations_map_to_operational() {
-        assert_eq!(CmdError::Git(git_err()).exit_code(), ExitCode::Operational);
-        assert_eq!(
-            CmdError::Prepare(PrepareError::Clone("nope".into())).exit_code(),
-            ExitCode::Operational
-        );
-    }
-
-    #[test]
-    fn authored_config_defects_map_to_usage() {
-        // Decision 3: malformed config the user wrote is their Usage error.
-        let parse = toml::from_str::<toml::Table>("x = ").expect_err("bad toml");
-        assert_eq!(
-            CmdError::Config(ConfigError::Parse(parse)).exit_code(),
-            ExitCode::Usage
-        );
-        assert_eq!(
-            CmdError::Config(ConfigError::TraversalInPath("..".into())).exit_code(),
-            ExitCode::Usage
-        );
-        assert_eq!(
-            CmdError::Backend(crate::backend::BackendError::Unresolvable("x".into())).exit_code(),
-            ExitCode::Usage
-        );
-    }
-
-    #[test]
-    fn wrapper_variants_delegate_to_inner() {
-        // Setup wraps Config; the inner code wins, not a fixed outer one.
-        assert_eq!(
-            CmdError::Setup(SetupError::Config(ConfigError::NoConfig)).exit_code(),
-            ExitCode::Unavailable
-        );
     }
 
     #[test]

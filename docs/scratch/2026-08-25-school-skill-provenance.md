@@ -167,15 +167,15 @@ upstream    discovered identities per source at latest main
 
 Then classify every identity before any filesystem mutation.
 
-| Prior owner | Desired owner | Path exists | Classification          | Action |
-|-------------|---------------|-------------|-------------------------|--------|
-| none        | source A      | no          | new import              | copy; record A |
-| none        | source A      | yes         | unmanaged collision     | block identity |
-| source A    | source A      | yes         | normal refresh          | overwrite latest |
-| source A    | source A      | no          | manually removed        | restore latest |
-| source A    | none          | yes         | stale owned skill       | retain; report |
-| source A    | none          | no          | acknowledged removal    | drop provenance |
-| source A    | source B      | yes/no      | ownership handoff       | require transfer |
+| Prior owner | Desired owner | Path exists | Classification       | Action           |
+| ----------- | ------------- | ----------- | -------------------- | ---------------- |
+| none        | source A      | no          | new import           | copy; record A   |
+| none        | source A      | yes         | unmanaged collision  | block identity   |
+| source A    | source A      | yes         | normal refresh       | overwrite latest |
+| source A    | source A      | no          | manually removed     | restore latest   |
+| source A    | none          | yes         | stale owned skill    | retain; report   |
+| source A    | none          | no          | acknowledged removal | drop provenance  |
+| source A    | source B      | yes/no      | ownership handoff    | require transfer |
 
 The classifier returns a complete plan before writes begin. A conflict in one identity
 does not justify a partial hidden decision. Healthy independent identities may still

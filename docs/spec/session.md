@@ -77,7 +77,12 @@ project discovery
 ```rust
 enum StartMode {
     OneShot { prompt: String },
-    Session { resume: bool, backend: BackendMode },
+    Session { resume: ResumeMode, backend: BackendMode },
+}
+
+enum ResumeMode {
+    Fresh,
+    Latest,
 }
 
 enum BackendMode {
@@ -85,6 +90,9 @@ enum BackendMode {
     WithServer,
 }
 ```
+
+`Fresh` starts a new native session. `Latest` asks the backend to resume its most recent
+session for the project, subject to the resolved personal resume preference.
 
 Callers construct and configure `Ace`, then call `ace.start(mode)`. `Normal` requests the
 backend's standard native chat harness. `WithServer` requires a server-capable launch;

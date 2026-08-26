@@ -19,7 +19,7 @@ pub(super) fn exec_session(
     launch: &[String],
     model: Option<&str>,
     effort: Option<&str>,
-    req: SessionOptions,
+    options: SessionOptions,
 ) -> Result<(), std::io::Error> {
     let Some(path) = exec_record_path() else {
         return Ok(());
@@ -29,14 +29,14 @@ pub(super) fn exec_session(
 
     let record = serde_json::json!({
         "action": "exec_session",
-        "trust": req.trust,
-        "resume": req.resume,
-        "backend_mode": req.backend_mode.label(),
-        "session_prompt": req.session_prompt,
-        "project_dir": req.project_dir.to_string_lossy(),
-        "extra_args": req.extra_args,
+        "trust": options.trust,
+        "resume": matches!(options.resume, super::ResumeMode::Latest),
+        "backend_mode": options.backend_mode.label(),
+        "session_prompt": options.session_prompt,
+        "project_dir": options.project_dir.to_string_lossy(),
+        "extra_args": options.extra_args,
         "cmd": launch,
-        "env": req.env,
+        "env": options.env,
         "model": model,
         "effort": effort,
     });
@@ -54,11 +54,11 @@ pub(super) fn exec_one_shot(
     launch: &[String],
     model: Option<&str>,
     effort: Option<&str>,
-    req: OneShotOptions,
+    options: OneShotOptions,
 ) -> Result<Output, std::io::Error> {
     use std::io::Write;
 
-    let prompt_repr = match &req.prompt {
+    let prompt_repr = match &options.prompt {
         PromptInput::Inline(text) => serde_json::json!({"kind": "inline", "text": text}),
         PromptInput::Stdin => serde_json::json!({"kind": "stdin"}),
     };
@@ -66,10 +66,10 @@ pub(super) fn exec_one_shot(
     let record = serde_json::json!({
         "action": "exec_one_shot",
         "prompt": prompt_repr,
-        "project_dir": req.project_dir.to_string_lossy(),
-        "extra_args": req.extra_args,
+        "project_dir": options.project_dir.to_string_lossy(),
+        "extra_args": options.extra_args,
         "cmd": launch,
-        "env": req.env,
+        "env": options.env,
         "model": model,
         "effort": effort,
     });

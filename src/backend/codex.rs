@@ -17,7 +17,7 @@ pub(super) fn exec_session(
     launch: &[String],
     model: Option<&str>,
     effort: Option<&str>,
-    req: SessionOptions,
+    options: SessionOptions,
 ) -> Result<(), std::io::Error> {
     let (program, prefix) = launch
         .split_first()
@@ -25,13 +25,13 @@ pub(super) fn exec_session(
         .unwrap_or(("codex", &[][..]));
     let mut cmd = Command::new(program);
     cmd.args(prefix);
-    cmd.current_dir(&req.project_dir);
+    cmd.current_dir(&options.project_dir);
 
-    for (key, val) in &req.env {
+    for (key, val) in &options.env {
         cmd.env(key, val);
     }
 
-    cmd.args(build_session_args(model, effort, &req));
+    cmd.args(build_session_args(model, effort, &options));
 
     Err(crate::platform::exec_replace(cmd))
 }
@@ -40,7 +40,7 @@ pub(super) fn exec_one_shot(
     launch: &[String],
     model: Option<&str>,
     effort: Option<&str>,
-    req: OneShotOptions,
+    options: OneShotOptions,
 ) -> Result<Output, std::io::Error> {
     let (program, prefix) = launch
         .split_first()
@@ -48,15 +48,15 @@ pub(super) fn exec_one_shot(
         .unwrap_or(("codex", &[][..]));
     let mut cmd = Command::new(program);
     cmd.args(prefix);
-    cmd.current_dir(&req.project_dir);
+    cmd.current_dir(&options.project_dir);
 
-    for (key, val) in &req.env {
+    for (key, val) in &options.env {
         cmd.env(key, val);
     }
 
-    cmd.args(build_one_shot_args(model, effort, &req));
+    cmd.args(build_one_shot_args(model, effort, &options));
 
-    if matches!(req.prompt, PromptInput::Stdin) {
+    if matches!(options.prompt, PromptInput::Stdin) {
         cmd.stdin(Stdio::inherit());
     }
 
@@ -67,23 +67,26 @@ pub(super) fn exec_one_shot(
 fn build_session_args(
     model: Option<&str>,
     effort: Option<&str>,
-    req: &SessionOptions,
+    options: &SessionOptions,
 ) -> Vec<String> {
     let mut args = Vec::new();
 
-    if req.resume {
-        args.extend(["resume", "--last"].map(String::from));
+    match options.resume {
+        super::ResumeMode::Fresh => {
+            args.push("-c".to_string());
+            args.push(format!(
+                "developer_instructions={}",
+                toml::Value::String(options.session_prompt.clone()),
+            ));
+        }
+        super::ResumeMode::Latest => args.extend(["resume", "--last"].map(String::from)),
     }
 
-    args.extend(trust_args(req.trust).iter().map(|s| (*s).to_string()));
-
-    if !req.resume {
-        args.push("-c".to_string());
-        args.push(format!(
-            "developer_instructions={}",
-            toml::Value::String(req.session_prompt.clone()),
-        ));
-    }
+    args.extend(
+        trust_args(options.trust)
+            .iter()
+            .map(|value| (*value).to_string()),
+    );
 
     if let Some(value) = model {
         args.extend(["--model".to_string(), value.to_string()]);
@@ -98,7 +101,7 @@ fn build_session_args(
         ]);
     }
 
-    args.extend(req.extra_args.iter().cloned());
+    args.extend(options.extra_args.iter().cloned());
     args
 }
 
@@ -108,7 +111,7 @@ fn build_session_args(
 fn build_one_shot_args(
     model: Option<&str>,
     effort: Option<&str>,
-    req: &OneShotOptions,
+    options: &OneShotOptions,
 ) -> Vec<String> {
     let mut args = vec!["exec".to_string()];
     if let Some(value) = model {
@@ -123,8 +126,8 @@ fn build_one_shot_args(
             ),
         ]);
     }
-    args.extend(req.extra_args.iter().cloned());
-    match &req.prompt {
+    args.extend(options.extra_args.iter().cloned());
+    match &options.prompt {
         PromptInput::Inline(text) => args.push(text.clone()),
         PromptInput::Stdin => args.push("-".to_string()),
     }
@@ -500,14 +503,14 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
 
-    fn req() -> SessionOptions {
+    fn session_options() -> SessionOptions {
         SessionOptions {
             trust: Trust::Default,
             session_prompt: "SP".to_string(),
             project_dir: PathBuf::from("/tmp"),
             env: HashMap::new(),
             extra_args: Vec::new(),
-            resume: false,
+            resume: super::super::ResumeMode::Fresh,
             backend_mode: super::super::BackendMode::Normal,
         }
     }
@@ -523,7 +526,7 @@ mod tests {
 
     #[test]
     fn session_args_default_includes_developer_instructions() {
-        let args = build_session_args(None, None, &req());
+        let args = build_session_args(None, None, &session_options());
         assert!(args.iter().any(|a| a == "-c"));
         assert!(
             args.iter()
@@ -533,10 +536,10 @@ mod tests {
 
     #[test]
     fn session_configured_values_are_native_and_precede_passthrough_args() {
-        let mut request = req();
-        request.extra_args = vec!["-c".into(), "model_reasoning_effort=\"override\"".into()];
+        let mut options = session_options();
+        options.extra_args = vec!["-c".into(), "model_reasoning_effort=\"override\"".into()];
 
-        let args = build_session_args(Some("gpt-5.3"), Some("x high"), &request);
+        let args = build_session_args(Some("gpt-5.3"), Some("x high"), &options);
         let model_position = args
             .iter()
             .position(|arg| arg == "--model")
@@ -584,10 +587,10 @@ mod tests {
 
     #[test]
     fn configured_model_and_effort_precede_passthrough_args() {
-        let mut request = one_shot(PromptInput::Inline("hi".into()));
-        request.extra_args = vec!["--model".into(), "override".into()];
+        let mut options = one_shot(PromptInput::Inline("hi".into()));
+        options.extra_args = vec!["--model".into(), "override".into()];
 
-        let args = build_one_shot_args(Some("gpt-5.3"), Some("xhigh"), &request);
+        let args = build_one_shot_args(Some("gpt-5.3"), Some("xhigh"), &options);
 
         assert_eq!(
             args,

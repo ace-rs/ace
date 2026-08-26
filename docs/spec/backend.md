@@ -65,9 +65,10 @@ Each backend must provide:
   never dropped silently.
 - **`exec_session(options)`** — launch an interactive backend session via exec-replace.
   Builds its Command from `SessionOptions` (trust, session prompt, project dir, env,
-  extra args, resume, backend mode). Returns `io::Error` on spawn failure; never returns
-  on success (terminal hands off to the child). When `resume = true`, some backends may
-  fail if no prior session exists (Claude) while others handle it gracefully (Codex).
+  extra args, typed resume mode, backend mode). Returns `io::Error` on spawn failure;
+  never returns on success (terminal hands off to the child). In `Latest` mode, some
+  backends may fail if no prior session exists (Claude) while others handle it gracefully
+  (Codex).
   ACE prints a hint before exec so the user knows to run `ace new` on failure. See
   [backends/claude.md → Session Resume](backends/claude.md#session-resume).
 - **`exec_one_shot(options)`** — spawn the backend non-interactively and capture

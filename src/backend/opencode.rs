@@ -17,9 +17,9 @@ pub(super) fn exec_session(
     launch: &[String],
     model: Option<&str>,
     effort: Option<&str>,
-    req: SessionOptions,
+    options: SessionOptions,
 ) -> Result<(), std::io::Error> {
-    write_agent_file(&req.project_dir, &req.session_prompt, model, effort)?;
+    write_agent_file(&options.project_dir, &options.session_prompt, model, effort)?;
 
     let (program, prefix) = launch
         .split_first()
@@ -27,13 +27,13 @@ pub(super) fn exec_session(
         .unwrap_or(("opencode", &[][..]));
     let mut cmd = std::process::Command::new(program);
     cmd.args(prefix);
-    cmd.current_dir(&req.project_dir);
+    cmd.current_dir(&options.project_dir);
 
-    for (key, val) in &req.env {
+    for (key, val) in &options.env {
         cmd.env(key, val);
     }
 
-    cmd.args(build_session_args(model, effort, &req));
+    cmd.args(build_session_args(model, effort, &options));
 
     Err(crate::platform::exec_replace(cmd))
 }
@@ -42,7 +42,7 @@ pub(super) fn exec_one_shot(
     launch: &[String],
     model: Option<&str>,
     effort: Option<&str>,
-    req: OneShotOptions,
+    options: OneShotOptions,
 ) -> Result<Output, std::io::Error> {
     let (program, prefix) = launch
         .split_first()
@@ -50,15 +50,15 @@ pub(super) fn exec_one_shot(
         .unwrap_or(("opencode", &[][..]));
     let mut cmd = std::process::Command::new(program);
     cmd.args(prefix);
-    cmd.current_dir(&req.project_dir);
+    cmd.current_dir(&options.project_dir);
 
-    for (key, val) in &req.env {
+    for (key, val) in &options.env {
         cmd.env(key, val);
     }
 
-    cmd.args(build_one_shot_args(model, effort, &req));
+    cmd.args(build_one_shot_args(model, effort, &options));
 
-    if matches!(req.prompt, super::PromptInput::Stdin) {
+    if matches!(options.prompt, super::PromptInput::Stdin) {
         cmd.stdin(std::process::Stdio::inherit());
     }
 
@@ -177,16 +177,16 @@ pub(super) fn supports_trust(trust: Trust) -> bool {
 fn build_session_args(
     _model: Option<&str>,
     _effort: Option<&str>,
-    req: &SessionOptions,
+    options: &SessionOptions,
 ) -> Vec<String> {
     let mut args = Vec::new();
 
-    if req.resume {
+    if matches!(options.resume, super::ResumeMode::Latest) {
         args.push("--continue".to_string());
     }
 
     args.extend(["--agent", "ace"].map(String::from));
-    args.extend(req.extra_args.iter().cloned());
+    args.extend(options.extra_args.iter().cloned());
     args
 }
 
@@ -194,7 +194,7 @@ fn build_session_args(
 fn build_one_shot_args(
     model: Option<&str>,
     effort: Option<&str>,
-    req: &OneShotOptions,
+    options: &OneShotOptions,
 ) -> Vec<String> {
     let mut args = vec!["run".to_string(), "--agent".to_string(), "ace".to_string()];
     if let Some(value) = model {
@@ -203,9 +203,9 @@ fn build_one_shot_args(
     if let Some(value) = effort {
         args.extend(["--variant".to_string(), value.to_string()]);
     }
-    args.extend(req.extra_args.iter().cloned());
+    args.extend(options.extra_args.iter().cloned());
 
-    match &req.prompt {
+    match &options.prompt {
         super::PromptInput::Inline(text) => args.push(text.clone()),
         super::PromptInput::Stdin => {} // opencode run reads stdin when no positional prompt
     }
@@ -280,14 +280,14 @@ mod tests {
     use std::collections::HashMap;
     use std::path::PathBuf;
 
-    fn req() -> SessionOptions {
+    fn session_options() -> SessionOptions {
         SessionOptions {
             trust: crate::config::ace_toml::Trust::Default,
             session_prompt: "SP".to_string(),
             project_dir: PathBuf::from("/tmp"),
             env: HashMap::new(),
             extra_args: Vec::new(),
-            resume: false,
+            resume: super::super::ResumeMode::Fresh,
             backend_mode: super::super::BackendMode::Normal,
         }
     }
@@ -305,23 +305,23 @@ mod tests {
 
     #[test]
     fn session_args_default() {
-        let args = build_session_args(None, None, &req());
+        let args = build_session_args(None, None, &session_options());
         assert_eq!(args, vec!["--agent", "ace"]);
     }
 
     #[test]
     fn session_args_resume() {
-        let mut r = req();
-        r.resume = true;
-        let args = build_session_args(None, None, &r);
+        let mut options = session_options();
+        options.resume = super::super::ResumeMode::Latest;
+        let args = build_session_args(None, None, &options);
         assert_eq!(args, vec!["--continue", "--agent", "ace"]);
     }
 
     #[test]
     fn session_args_extra_args_come_last() {
-        let mut r = req();
-        r.extra_args = vec!["--model".to_string(), "anthropic/claude-sonnet".to_string()];
-        let args = build_session_args(None, None, &r);
+        let mut options = session_options();
+        options.extra_args = vec!["--model".to_string(), "anthropic/claude-sonnet".to_string()];
+        let args = build_session_args(None, None, &options);
         assert_eq!(
             args,
             vec!["--agent", "ace", "--model", "anthropic/claude-sonnet"]
@@ -385,10 +385,10 @@ mod tests {
 
     #[test]
     fn run_model_and_variant_precede_passthrough_args() {
-        let mut request = one_shot(super::super::PromptInput::Inline("hi".into()));
-        request.extra_args = vec!["--model".into(), "override".into()];
+        let mut options = one_shot(super::super::PromptInput::Inline("hi".into()));
+        options.extra_args = vec!["--model".into(), "override".into()];
 
-        let args = build_one_shot_args(Some("anthropic/claude-sonnet"), Some("max"), &request);
+        let args = build_one_shot_args(Some("anthropic/claude-sonnet"), Some("max"), &options);
 
         assert_eq!(
             args,
