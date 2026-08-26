@@ -20,15 +20,11 @@ third-party lookup → `vendor/`; a how-to → `guides/`; our own design/surface
 
 This repo IS the ACE tool, so the full `ace*` family applies (`ace`, `ace-afk`,
 `ace-audit`, `ace-connect`, `ace-docs`, `ace-init`, `ace-realign`, `ace-save`,
-`ace-school`) — those come from the user-level config, not `ace.toml`.
-
-Project-level additions live in `ace.toml`: `general-coding`, `rust-coding`,
-`skill-creator`, `skill-reviewer`.
+`ace-school`). Project-level skill selection lives in `ace.toml`.
 
 ## Coding Style
 
-- Load `simplify`, `general-coding`, `rust-coding` before proposing changes.
-  Simplification that violates a coding principle is a regression.
+- Load `architect`, `code`, and `rust-coding` before proposing changes.
 - **Formatting**: the toolchain is pinned (`rust-toolchain.toml`, stable 1.96),
   so `cargo fmt` is deterministic and idempotent across the tree — just run it.
   No per-file `rustfmt`, no `--edition`/`--style-edition` flags (those were a
