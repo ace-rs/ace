@@ -13,7 +13,7 @@ pub mod setup;
 pub mod update_gitignore;
 
 pub use link::{Link, SCHOOL_FOLDERS};
-pub use prepare::{Prepare, PrepareError, PrepareResult};
+pub use prepare::{Prepare, PrepareError};
 pub use pull::{ChangeKind, Pull, PullOutcome, SkillChange};
 pub use register_mcp::{RegisterMcp, RegisterMcpError, register_missing as register_missing_mcp};
 pub use remove_mcp::RemoveMcp;

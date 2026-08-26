@@ -63,15 +63,15 @@ Each backend must provide:
   none). Before launching a session, ACE checks this and announces an unsupported
   level to the user — the backend runs with its own default permissions; the level is
   never dropped silently.
-- **`exec_session(req)`** — launch an interactive backend session via exec-replace. Builds
-  its Command from `SessionRequest` (trust, session prompt, project dir, env, extra args,
-  resume). Returns `io::Error` on spawn failure; never returns on success (terminal hands
-  off to the child). When `resume = true`, some backends may fail if no prior session
-  exists (Claude) while others handle it gracefully (Codex). ACE prints a hint before exec
-  so the user knows to run `ace new` on failure. See
+- **`exec_session(options)`** — launch an interactive backend session via exec-replace.
+  Builds its Command from `SessionOptions` (trust, session prompt, project dir, env,
+  extra args, resume, backend mode). Returns `io::Error` on spawn failure; never returns
+  on success (terminal hands off to the child). When `resume = true`, some backends may
+  fail if no prior session exists (Claude) while others handle it gracefully (Codex).
+  ACE prints a hint before exec so the user knows to run `ace new` on failure. See
   [backends/claude.md → Session Resume](backends/claude.md#session-resume).
-- **`exec_one_shot(req)`** — spawn the backend non-interactively and capture
-  stdout/stderr. Builds its Command from `OneShotRequest` (prompt source, project dir,
+- **`exec_one_shot(options)`** — spawn the backend non-interactively and capture
+  stdout/stderr. Builds its Command from `OneShotOptions` (prompt source, project dir,
   env, extra args; no resume, trust, or session prompt — the non-interactive entry point
   doesn't take approval modes or system-prompt injection). Returns
   `io::Result<std::process::Output>` — caller inspects `status.success()` and `stderr` for
@@ -91,19 +91,16 @@ See per-backend specs for implementation details.
 
 ### Designed managed-session contract
 
-`exec_session` remains the implemented simple-session transport. Managed sessions replace
-its command-only output with a backend-owned component graph:
-
-```text
-materialize(InstancePlan) -> ComponentGraph
-```
+`exec_session` remains the implemented simple-session transport. `Ace::start` supplies a
+`BackendMode`; managed sessions later replace the command-only output with a backend-owned
+component graph.
 
 The graph contains named process roles, dependencies, environment, working directories,
 and the handles a backend can expose for its native session and primary thread. The local
 executor may preserve exec-replace for a one-component foreground graph; mux executes a
 multi-component graph without learning backend names.
 
-Connect adds an inbound-message requirement to `InstancePlan` before materialization.
+Connect selects `BackendMode::WithServer` before materialization.
 Each backend either produces a sanctioned receive component and primary-session target or
 reports the requirement unsupported. No caller branches on `Kind` to construct Codex or
 OpenCode process topology.
@@ -139,10 +136,13 @@ OneShot is non-interactive — approval modes don't apply.
 
 ### Prompt Source
 
-`OneShotRequest.prompt: PromptInput` is `Inline(String)` for argv-passed prompts, `Stdin`
+`OneShotOptions.prompt: PromptInput` is `Inline(String)` for argv-passed prompts, `Stdin`
 for piped stdin. Backends translate per the table above. When `Stdin`, the spawned child
 inherits the parent's stdin (`Stdio::inherit()`); the caller must arrange the piped data
 themselves.
+
+Launch-domain values use `Mode` or `Options`; `Request` is network-protocol terminology
+and is not used for in-process launch configuration.
 
 ## MCP Server Registration
 

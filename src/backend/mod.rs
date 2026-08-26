@@ -42,13 +42,14 @@ use crate::school::toml::McpDecl;
 /// backend instance, not session input. Per-backend `exec_session` takes
 /// it as a separate parameter, populated by `Backend::exec_session` from
 /// `self.cmd`.
-pub struct SessionRequest {
+pub struct SessionOptions {
     pub trust: Trust,
     pub session_prompt: String,
     pub project_dir: PathBuf,
     pub env: HashMap<String, String>,
     pub extra_args: Vec<String>,
     pub resume: bool,
+    pub backend_mode: BackendMode,
 }
 
 /// Inputs to a one-shot (non-interactive) launch — spawn-and-capture transport.
@@ -56,7 +57,7 @@ pub struct SessionRequest {
 /// No `trust`, `session_prompt`, or `resume` — the non-interactive entry point
 /// doesn't need approval modes or system-prompt injection. See
 /// `docs/spec/backend.md § Intent Mapping`.
-pub struct OneShotRequest {
+pub struct OneShotOptions {
     pub prompt: PromptInput,
     pub project_dir: PathBuf,
     pub env: HashMap<String, String>,
@@ -69,6 +70,21 @@ pub struct OneShotRequest {
 pub enum PromptInput {
     Inline(String),
     Stdin,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BackendMode {
+    Normal,
+    WithServer,
+}
+
+impl BackendMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Normal => "normal",
+            Self::WithServer => "with-server",
+        }
+    }
 }
 
 /// Health check result for a single MCP server.
@@ -183,9 +199,9 @@ impl Kind {
         cmd: &[String],
         model: Option<&str>,
         effort: Option<&str>,
-        req: SessionRequest,
+        options: SessionOptions,
     ) -> Result<(), std::io::Error> {
-        dispatch!(self, exec_session, cmd, model, effort, req)
+        dispatch!(self, exec_session, cmd, model, effort, options)
     }
 
     pub fn exec_one_shot(
@@ -193,9 +209,9 @@ impl Kind {
         cmd: &[String],
         model: Option<&str>,
         effort: Option<&str>,
-        req: OneShotRequest,
+        options: OneShotOptions,
     ) -> Result<Output, std::io::Error> {
-        dispatch!(self, exec_one_shot, cmd, model, effort, req)
+        dispatch!(self, exec_one_shot, cmd, model, effort, options)
     }
 
     #[allow(dead_code)]
@@ -285,28 +301,28 @@ impl Backend {
         self.kind.instructions_file()
     }
 
-    pub fn exec_session(&self, mut req: SessionRequest) -> Result<(), std::io::Error> {
+    pub fn exec_session(&self, mut options: SessionOptions) -> Result<(), std::io::Error> {
         // per-backend env merges over global env (later wins on collision).
         for (k, v) in &self.env {
-            req.env.insert(k.clone(), v.clone());
+            options.env.insert(k.clone(), v.clone());
         }
         self.kind.exec_session(
             &self.cmd,
             self.model.as_deref(),
             self.effort.as_deref(),
-            req,
+            options,
         )
     }
 
-    pub fn exec_one_shot(&self, mut req: OneShotRequest) -> Result<Output, std::io::Error> {
+    pub fn exec_one_shot(&self, mut options: OneShotOptions) -> Result<Output, std::io::Error> {
         for (k, v) in &self.env {
-            req.env.insert(k.clone(), v.clone());
+            options.env.insert(k.clone(), v.clone());
         }
         self.kind.exec_one_shot(
             &self.cmd,
             self.model.as_deref(),
             self.effort.as_deref(),
-            req,
+            options,
         )
     }
 

@@ -1,5 +1,5 @@
 use crate::ace::Ace;
-use crate::actions::project::Setup;
+use crate::actions::project::{Prepare, Setup};
 use crate::config::index_toml;
 use crate::git;
 use crate::templates;
@@ -27,7 +27,10 @@ fn run_inner(ace: &mut Ace, specifier: Option<&str>) -> Result<(), CmdError> {
 
     // Prepare school (install/update/link + MCP).
     ace.require_config()?;
-    super::main::prepare_school(ace, &resolved)?;
+    (Prepare {
+        specifier: &resolved,
+    })
+    .run(ace)?;
 
     // Post-prepare setup: instructions file. Gitignore refresh runs inside Prepare.
     let backend = ace.backend()?.clone();

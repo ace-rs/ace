@@ -76,8 +76,9 @@ relationship to projects.
     hint and spawn background upgrade if newer version available. Skipped for `ace upgrade`,
     `ace --version`, `--porcelain`, `skip_update`, `ACE_SKIP_UPDATE=1`. See
     [upgrade.md](upgrade.md).
-12. **Plan session** — build one typed ACE-instance plan; workspace mode may expand it
-    into several independently resolved plans, and connect may decorate each plan.
+12. **Configure instances** — construct one `Ace` per project, apply its resolved
+    configuration, and choose a structurally valid `StartMode`; workspace mode may
+    produce several independently configured instances.
 13. **Materialize backend components** — translate each instance into its backend's
     sanctioned process graph and primary-session handle.
 14. **Execute** — exec-replace for a simple foreground session or use tmux for a managed

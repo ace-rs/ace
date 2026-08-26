@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::process::Output;
 
-use super::{McpDecl, McpStatus, OneShotRequest, PromptInput, SessionRequest};
+use super::{McpDecl, McpStatus, OneShotOptions, PromptInput, SessionOptions};
 use crate::config::ace_toml::Trust;
 
 pub(super) fn is_ready() -> bool {
@@ -19,7 +19,7 @@ pub(super) fn exec_session(
     launch: &[String],
     model: Option<&str>,
     effort: Option<&str>,
-    req: SessionRequest,
+    req: SessionOptions,
 ) -> Result<(), std::io::Error> {
     let Some(path) = exec_record_path() else {
         return Ok(());
@@ -31,6 +31,7 @@ pub(super) fn exec_session(
         "action": "exec_session",
         "trust": req.trust,
         "resume": req.resume,
+        "backend_mode": req.backend_mode.label(),
         "session_prompt": req.session_prompt,
         "project_dir": req.project_dir.to_string_lossy(),
         "extra_args": req.extra_args,
@@ -53,7 +54,7 @@ pub(super) fn exec_one_shot(
     launch: &[String],
     model: Option<&str>,
     effort: Option<&str>,
-    req: OneShotRequest,
+    req: OneShotOptions,
 ) -> Result<Output, std::io::Error> {
     use std::io::Write;
 

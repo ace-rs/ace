@@ -1,4 +1,5 @@
 pub mod io;
+mod start;
 
 use std::path::{Path, PathBuf};
 
@@ -19,6 +20,7 @@ use crate::school::{School, SchoolError, toml as school_toml};
 use crate::skills::{Decided, SkillError, Skills};
 
 pub use io::{Io, IoError, WordmarkStyle, partition_picked};
+pub use start::{StartError, StartMode};
 
 /// Lazy-cached session view. All read accessors take `&self` and populate
 /// their cell on first call via `OnceCell`. Mutations (overrides, reload)
@@ -40,6 +42,7 @@ pub struct Ace {
     skills: OnceCell<Skills<Decided>>,
     overrides: AceToml,
     scope_override: Option<Scope>,
+    backend_args: Vec<String>,
     io: Io,
 }
 
@@ -60,6 +63,7 @@ impl Ace {
             skills: OnceCell::new(),
             overrides: AceToml::default(),
             scope_override: None,
+            backend_args: Vec::new(),
             io,
         }
     }
@@ -115,6 +119,10 @@ impl Ace {
 
     pub fn set_scope_override(&mut self, scope: Option<Scope>) {
         self.scope_override = scope;
+    }
+
+    pub fn set_backend_args(&mut self, backend_args: Vec<String>) {
+        self.backend_args = backend_args;
     }
 
     pub fn scope_override(&self) -> Option<Scope> {

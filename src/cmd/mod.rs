@@ -18,13 +18,14 @@ use std::collections::HashMap;
 
 use clap::{Parser, Subcommand};
 
-use crate::ace::{Ace, IoError, WordmarkStyle};
+use crate::ace::{Ace, IoError, StartError, StartMode, WordmarkStyle};
 use crate::actions::migrate::MigrateError;
 use crate::actions::project::PrepareError;
 use crate::actions::project::RegisterMcpError;
 use crate::actions::project::SetupError;
 use crate::actions::school::InitError;
 use crate::actions::school::{AddImportError, PullImportsError};
+use crate::backend::BackendMode;
 use crate::config::ace_toml::{AceToml, Trust};
 use crate::config::{ConfigError, Scope};
 use crate::git::GitError;
@@ -323,6 +324,8 @@ impl ExitCode {
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum CmdError {
     #[error("{0}")]
+    Start(#[from] StartError),
+    #[error("{0}")]
     Io(#[from] std::io::Error),
     #[error("{0}")]
     Config(#[from] ConfigError),
@@ -414,6 +417,7 @@ impl CmdError {
     /// action for this variant; callers should not synthesize one.
     pub fn hints(&self) -> Vec<String> {
         match self {
+            Self::Start(error) => error.hint().map(str::to_string).into_iter().collect(),
             Self::School(e) => e.hint().map(str::to_string).into_iter().collect(),
             Self::Migrate(e) => e.hint().map(str::to_string).into_iter().collect(),
             Self::Prepare(e) => e.hint().map(str::to_string).into_iter().collect(),
@@ -428,6 +432,7 @@ impl CmdError {
     pub fn exit_code(&self) -> ExitCode {
         match self {
             Self::Adhoc { code, .. } => *code,
+            Self::Start(error) => start_exit_code(error),
             Self::Prompt(e) => io_exit_code(e),
             Self::Io(_) | Self::Git(_) => ExitCode::Operational,
             Self::Config(e) => config_exit_code(e),
@@ -442,6 +447,18 @@ impl CmdError {
             Self::PullImports(e) => pull_imports_exit_code(e),
             Self::Migrate(e) => migrate_exit_code(e),
         }
+    }
+}
+
+fn start_exit_code(error: &StartError) -> ExitCode {
+    match error {
+        StartError::Io(_) => ExitCode::Operational,
+        StartError::Config(error) => config_exit_code(error),
+        StartError::Backend(error) => backend_exit_code(error),
+        StartError::School(error) => school_exit_code(error),
+        StartError::Prepare(error) => prepare_exit_code(error),
+        StartError::Prompt(error) => io_exit_code(error),
+        StartError::InvalidStartMode => ExitCode::Usage,
     }
 }
 
@@ -522,6 +539,8 @@ fn setup_exit_code(e: &SetupError) -> ExitCode {
 fn prepare_exit_code(e: &PrepareError) -> ExitCode {
     match e {
         PrepareError::Config(c) => config_exit_code(c),
+        PrepareError::Backend(error) => backend_exit_code(error),
+        PrepareError::School(error) => school_exit_code(error),
         PrepareError::Clone(_) | PrepareError::Write(_) => ExitCode::Operational,
         // The tree is intact; it is waiting on a decision only the user can make.
         PrepareError::BlockedLinks(_) => ExitCode::Unavailable,
@@ -603,7 +622,8 @@ pub fn run(ace: &mut Ace, cli: Cli) {
     }
 
     let Some(command) = cli.command else {
-        return main::run(ace, cli.backend_args, true, cli.one_shot_prompt);
+        let mode = start_mode(cli.one_shot_prompt, true);
+        return main::run(ace, cli.backend_args, mode);
     };
 
     match command {
@@ -641,7 +661,10 @@ pub fn run(ace: &mut Ace, cli: Cli) {
         Command::Explain { name } => explain::run(ace, &name),
         Command::Pull => pull::run(ace),
         Command::Link { force } => link::run(ace, force),
-        Command::New { backend_args } => main::run(ace, backend_args, false, cli.one_shot_prompt),
+        Command::New { backend_args } => {
+            let mode = start_mode(cli.one_shot_prompt, false);
+            main::run(ace, backend_args, mode)
+        }
         Command::Auto => yolo::run(ace, crate::config::ace_toml::Trust::Auto),
         Command::Yolo => yolo::run(ace, crate::config::ace_toml::Trust::Yolo),
         Command::Upgrade {
@@ -652,6 +675,16 @@ pub fn run(ace: &mut Ace, cli: Cli) {
         Command::Version => {
             println!("ace {BUILD_IDENTITY}");
         }
+    }
+}
+
+fn start_mode(one_shot_prompt: Option<String>, resume: bool) -> StartMode {
+    match one_shot_prompt {
+        Some(prompt) => StartMode::OneShot { prompt },
+        None => StartMode::Session {
+            resume,
+            backend: BackendMode::Normal,
+        },
     }
 }
 
@@ -799,6 +832,27 @@ mod tests {
         assert_eq!(
             parses(&["ace", "--prompt", "answer"]).wordmark(),
             WordmarkStyle::None
+        );
+    }
+
+    #[test]
+    fn prompt_selects_one_shot_mode() {
+        assert_eq!(
+            start_mode(Some("answer".to_string()), true),
+            StartMode::OneShot {
+                prompt: "answer".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn session_mode_carries_resume_and_backend_mode() {
+        assert_eq!(
+            start_mode(None, false),
+            StartMode::Session {
+                resume: false,
+                backend: BackendMode::Normal,
+            }
         );
     }
 

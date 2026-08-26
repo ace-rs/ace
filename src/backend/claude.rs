@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::process::{Command, Output, Stdio};
 
-use super::{McpDecl, McpStatus, OneShotRequest, PromptInput, SessionRequest};
+use super::{McpDecl, McpStatus, OneShotOptions, PromptInput, SessionOptions};
 use crate::config::ace_toml::Trust;
 
 pub(super) fn is_ready() -> bool {
@@ -15,7 +15,7 @@ pub(super) fn exec_session(
     launch: &[String],
     model: Option<&str>,
     effort: Option<&str>,
-    req: SessionRequest,
+    req: SessionOptions,
 ) -> Result<(), std::io::Error> {
     let (program, prefix) = launch
         .split_first()
@@ -38,7 +38,7 @@ pub(super) fn exec_one_shot(
     launch: &[String],
     model: Option<&str>,
     effort: Option<&str>,
-    req: OneShotRequest,
+    req: OneShotOptions,
 ) -> Result<Output, std::io::Error> {
     let (program, prefix) = launch
         .split_first()
@@ -74,12 +74,12 @@ fn trust_args(trust: Trust) -> &'static [&'static str] {
     }
 }
 
-/// Translate `SessionRequest` into Claude's CLI argv (post-binary). Pure
+/// Translate `SessionOptions` into Claude's CLI argv (post-binary). Pure
 /// function — no I/O, no `Command`. Tested below.
 fn build_session_args(
     model: Option<&str>,
     effort: Option<&str>,
-    req: &SessionRequest,
+    req: &SessionOptions,
 ) -> Vec<String> {
     let mut args = Vec::new();
 
@@ -102,13 +102,13 @@ fn build_session_args(
     args
 }
 
-/// Translate `OneShotRequest` into Claude's `-p` argv. Inline prompts pass
+/// Translate `OneShotOptions` into Claude's `-p` argv. Inline prompts pass
 /// the text as the `-p` value; Stdin omits the value and the child reads
 /// from inherited stdin.
 fn build_one_shot_args(
     model: Option<&str>,
     effort: Option<&str>,
-    req: &OneShotRequest,
+    req: &OneShotOptions,
 ) -> Vec<String> {
     let mut args = vec!["-p".to_string()];
     if let PromptInput::Inline(text) = &req.prompt {
@@ -290,19 +290,20 @@ mod tests {
     use std::collections::HashMap;
     use std::path::PathBuf;
 
-    fn req() -> SessionRequest {
-        SessionRequest {
+    fn req() -> SessionOptions {
+        SessionOptions {
             trust: Trust::Default,
             session_prompt: "SP".to_string(),
             project_dir: PathBuf::from("/tmp"),
             env: HashMap::new(),
             extra_args: Vec::new(),
             resume: false,
+            backend_mode: super::super::BackendMode::Normal,
         }
     }
 
-    fn one_shot(prompt: PromptInput) -> OneShotRequest {
-        OneShotRequest {
+    fn one_shot(prompt: PromptInput) -> OneShotOptions {
+        OneShotOptions {
             prompt,
             project_dir: PathBuf::from("/tmp"),
             env: HashMap::new(),

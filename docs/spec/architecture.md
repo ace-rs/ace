@@ -20,8 +20,8 @@ bindings are built only when a command reaches for them. Cache invalidation is e
 Session launch adds a second demand-driven pipeline after preparation:
 
 ```text
-ProjectPlan → workspace expansion → instance decoration
-            → backend component graph → local or mux execution
+workspace expansion → configured Ace instances → instance decoration
+                    → backend component graph → local or mux execution
 ```
 
 ACE always owns this pipeline. Workspace, connect, and mux begin as built-in modules,
@@ -31,7 +31,7 @@ chosen executor realizes components. See [session.md](session.md).
 ## Dependency law
 
 ```
-config ← { backend, school, skills } ← ace ← actions, cmd
+config ← { backend, school, skills } ← { ace, actions } ← cmd
 ```
 
 - `config` imports nothing from the project, with one type-only exception: the merge
@@ -42,8 +42,9 @@ config ← { backend, school, skills } ← ace ← actions, cmd
 - Bindings (`backend`, `school`, `skills`) import `config` only. They do not import `ace`.
 - `skills/resolve/` imports `Source` from `config/resolve/` — a leftward import
   (binding → config), the correct direction.
-- `ace` imports the bindings and threads them through accessors; `actions` and `cmd` consume
-  `ace`.
+- `ace` imports the bindings and owns aggregate workflows such as `start`; those workflows
+  may compose the existing narrow mutation actions. Actions receive `Ace` as their shared
+  project and I/O context. `cmd` configures `Ace` and invokes its workflows.
 - **No standalone resolver.** Resolution lives with the typed data it stamps — config merge
   in `config/resolve/`, skill resolution in `skills/resolve/`. No layer imports a layer to
   its right.
@@ -113,19 +114,19 @@ recovery picker).
 Never create new `Ace` instances inside commands — extend the single instance with lazy
 loading.
 
-The managed-session design does not change that rule. One command-level `Ace` builds
-separate immutable `InstancePlan` values for workspace members; it does not recursively
-construct command orchestrators. Each member plan resolves from its own project context
-through an explicit planning boundary.
+The managed-session design makes `Ace` itself the per-project instance. A workspace
+constructs one independently configured `Ace` per member; there is no second instance or
+plan type. Callers finish configuration through the existing mutation surface, then call
+`ace.start(StartMode)`.
 
 ### Session composition — `session/`, `connect/`, `workspace/`, `mux/`
 
 These modules are designed but not yet implemented:
 
-- `session/` owns `InstancePlan`, component graphs, runtime identity, thread handles, and
-  lifecycle operations.
+- `session/` owns component graphs, runtime identity, thread handles, and lifecycle
+  operations.
 - `connect/` decorates an instance with relay identity and inbound-message requirements.
-- `workspace/` parses a root manifest and expands it into independent instance plans.
+- `workspace/` parses a root manifest and constructs independent `Ace` instances.
 - `mux/` realizes component graphs in tmux and exposes their runtime mapping.
 
 Dependency direction is:

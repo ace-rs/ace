@@ -72,17 +72,26 @@ project discovery
   -> local or mux execution
 ```
 
-The stages operate on data, not callbacks that replace `start`:
+`Ace` is the instance and `StartMode` makes launch intent structurally valid:
 
-```text
-ProjectPlan    -> [InstancePlan]  workspace expansion
-InstancePlan   -> InstancePlan    connect and later decorators
-InstancePlan   -> ComponentGraph  backend materialization
-ComponentGraph -> Runtime         local or mux execution
+```rust
+enum StartMode {
+    OneShot { prompt: String },
+    Session { resume: bool, backend: BackendMode },
+}
+
+enum BackendMode {
+    Normal,
+    WithServer,
+}
 ```
 
+Callers construct and configure `Ace`, then call `ace.start(mode)`. `Normal` requests the
+backend's standard native chat harness. `WithServer` requires a server-capable launch;
+the controlled component path lands in the next implementation phase.
+
 Only one workspace expander and one executor may be active. Decorators compose in a
-declared order and add typed requirements. The completed plan is validated for duplicate
+declared order and add typed requirements. Workspace composition validates duplicate
 instance names, incompatible requirements, missing backend capabilities, and component
 cycles before any process starts.
 
@@ -112,7 +121,7 @@ ace session component <role> --instance <name>
 
 It exists so the mux executor and maintainers can run one planned component in one pane.
 It is not a second configuration language: component argv and environment always come
-from the resolved instance plan.
+from the configured `Ace` instance.
 
 ## Thread model
 
@@ -162,9 +171,8 @@ be used when the user starts a session, as specified in [backend.md](backend.md)
 
 ## Implementation sequence
 
-1. Replace direct `exec_session` construction with a typed `InstancePlan`, primary-thread
-   identity, and optional native-child-thread inventory while preserving the current
-   single-component exec behavior.
+1. Move the existing preparation and launch sequence behind `Ace::start(StartMode)` while
+   preserving the current single-process behavior.
 2. Add controlled component graphs for Codex app-server and OpenCode serve, using only
    their sanctioned control surfaces.
 3. Add the tmux executor and `ace session` inspection, attachment, and lifecycle commands.

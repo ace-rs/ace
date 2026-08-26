@@ -14,6 +14,7 @@ pub struct FlaudeRecord {
     // exec_session
     pub trust: String,
     pub resume: bool,
+    pub backend_mode: String,
     pub session_prompt: String,
 
     // exec (shared)
@@ -67,6 +68,7 @@ fn parse_flaude_records(path: &Path) -> Vec<FlaudeRecord> {
 
                 trust: v["trust"].as_str().unwrap_or_default().to_string(),
                 resume: v["resume"].as_bool().unwrap_or_default(),
+                backend_mode: v["backend_mode"].as_str().unwrap_or_default().to_string(),
                 session_prompt: v["session_prompt"].as_str().unwrap_or_default().to_string(),
 
                 env: json_str_map(&v["env"]),

@@ -45,6 +45,11 @@ fn bare_ace_routes_to_exec_session() {
     env.ace().assert().success();
 
     assert_eq!(env.read_flaude_exec_records().len(), 1);
+    assert_eq!(
+        env.read_flaude_exec_records()[0].backend_mode,
+        "normal",
+        "bare ace should select the backend's normal harness",
+    );
     assert!(
         env.read_flaude_one_shot_records().is_empty(),
         "bare ace must not trigger one-shot path",
@@ -227,7 +232,7 @@ fn exec_new_does_not_resume() {
 
 #[test]
 fn one_shot_omits_trust_and_resume() {
-    // One-shot uses OneShotRequest which has no trust/resume fields.
+    // One-shot options have no trust/resume fields.
     // Verify the recorded JSON has no trust or resume keys.
     let env = TestEnv::new();
     env.setup_flaude_school("name = \"test-school\"\n");

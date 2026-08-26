@@ -24,8 +24,8 @@ enabled = true
 ```
 
 Bare `ace` resolves this setting before launch. The built-in connect decorator adds a
-relay identity and inbound-message requirement to the instance plan. The selected backend
-then materializes a connect-compatible component graph; there is no separate
+relay identity and selects `BackendMode::WithServer`. The selected backend then
+materializes a connect-compatible component graph; there is no separate
 `ace connect start` path.
 
 Connected startup cannot generally be retrofitted onto an arbitrary backend process.
@@ -85,7 +85,7 @@ history, and structured artifacts are outside this contract.
 
 ### Codex
 
-Connected Codex uses its documented app-server surface. The instance plan starts the
+Connected Codex uses its documented app-server surface. The configured `Ace` starts the
 server, establishes the primary thread, attaches the native client UI, and starts the
 relay adapter. Incoming messages target the primary thread through the sanctioned
 thread/turn API.

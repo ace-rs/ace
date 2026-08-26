@@ -64,9 +64,9 @@ and silently start the parent workspace.
 
 ## Expansion
 
-The built-in workspace stage transforms one root plan into one `InstancePlan` per enabled
-member. Each instance is resolved independently from its own working directory and config
-cascade. Workspace validation completes for every member before any process starts.
+The built-in workspace stage constructs one `Ace` per enabled member. Each instance is
+resolved independently from its own working directory and config cascade. Workspace
+validation completes for every member before any process starts.
 
 The workspace stage supplies only:
 
@@ -104,7 +104,7 @@ ACE does not create SSH tunnels or manage remote hosts.
 
 ## Lifecycle
 
-Starting a workspace prepares every enabled project, builds every instance plan, validates
+Starting a workspace prepares every enabled project, configures every `Ace`, validates
 the combined process graph, then starts it through mux. A partial startup reports exactly
 which components are live and which failed; it never labels the whole workspace healthy.
 
@@ -131,7 +131,7 @@ thread or session. No task tracking or child-thread routing is introduced.
 
 1. Parse and validate `workspace.toml` into a pure root plan.
 2. Resolve each member through the existing project configuration pipeline.
-3. Expand members into the `InstancePlan` model from [session.md](session.md).
+3. Construct and configure one `Ace` per member as specified in [session.md](session.md).
 4. Validate names, paths, backend capabilities, and the combined component graph.
 5. Execute the graph through mux and expose list, status, attach, and stop.
 6. Enable connect decoration for every member and verify peer discovery across windows.

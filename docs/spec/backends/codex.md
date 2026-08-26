@@ -78,8 +78,8 @@ and loaded native threads may be exposed by `ace session inspect`, but ACE does 
 Codex subagent orchestration or route peer messages to child threads.
 
 Plain interactive Codex remains valid for an ordinary unmanaged launch. It cannot be
-retrofitted with the external receive handle required by connected mode; that requirement
-must be present when the instance plan is materialized.
+retrofitted with the external receive handle required by connected mode; callers must
+select `BackendMode::WithServer` when starting the instance.
 
 ## MCP Registration
 
