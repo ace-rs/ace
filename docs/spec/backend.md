@@ -89,6 +89,30 @@ Each backend must provide:
 
 See per-backend specs for implementation details.
 
+### Designed managed-session contract
+
+`exec_session` remains the implemented simple-session transport. Managed sessions replace
+its command-only output with a backend-owned component graph:
+
+```text
+materialize(InstancePlan) -> ComponentGraph
+```
+
+The graph contains named process roles, dependencies, environment, working directories,
+and the handles a backend can expose for its native session and primary thread. The local
+executor may preserve exec-replace for a one-component foreground graph; mux executes a
+multi-component graph without learning backend names.
+
+Connect adds an inbound-message requirement to `InstancePlan` before materialization.
+Each backend either produces a sanctioned receive component and primary-session target or
+reports the requirement unsupported. No caller branches on `Kind` to construct Codex or
+OpenCode process topology.
+
+Backend capabilities describe facts, including controlled startup, primary-session
+input, thread listing, and native resume. They do not promise task tracking, generic
+wake-idle behavior, or a shared subagent model. See [session.md](session.md) and
+[connect.md](connect.md).
+
 ## Intent Mapping
 
 `exec_session` and `exec_one_shot` are the two transport methods — deliberately two, not

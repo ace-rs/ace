@@ -27,7 +27,10 @@ is `../scratch/`.
 - [`ux.md`](ux.md) — terminal interaction and output contracts.
 - [`exit-codes.md`](exit-codes.md) — process exit-code contract.
 - [`upgrade.md`](upgrade.md) — version checks and self-update.
+- [`session.md`](session.md) — managed ACE instances, launch planning, threads, and
+  tmux.
 - [`connect.md`](connect.md) — local agent bridge.
+- [`workspace.md`](workspace.md) — multi-repository session composition.
 - [`prompt-templating.md`](prompt-templating.md) — session prompt composition.
 - [`mcp.md`](mcp.md) — MCP server configuration and lifecycle.
 

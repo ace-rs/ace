@@ -57,10 +57,12 @@ relationship to projects.
 
 ## Lifecycle
 
-1. **Discover config files** — find user-global, project-local, project-committed
-2. **Setup check** — if no config found, error and tell the user to run `ace setup` (see
-   [setup.md](setup.md))
-3. **Parse and merge** — layer configs together
+1. **Discover entry** — check the current directory for `workspace.toml`; otherwise find
+   user-global, project-local, and project-committed ACE config.
+2. **Setup check** — if neither a workspace manifest nor ACE config resolves, error and
+   tell the user to run `ace setup` (see [setup.md](setup.md)).
+3. **Parse and merge** — expand workspace members when present, then resolve each
+   instance's configuration independently.
 4. **Register MCP servers** — register `[[mcp]]` entries into the backend
 5. **Fetch school** — `git fetch` the linked school's repo (clone on first run)
 6. **Sync school folders** — pull latest and link the linked school's folders (skills,
@@ -74,4 +76,13 @@ relationship to projects.
     hint and spawn background upgrade if newer version available. Skipped for `ace upgrade`,
     `ace --version`, `--porcelain`, `skip_update`, `ACE_SKIP_UPDATE=1`. See
     [upgrade.md](upgrade.md).
-12. **Exec** — replace process with the chosen tool
+12. **Plan session** — build one typed ACE-instance plan; workspace mode may expand it
+    into several independently resolved plans, and connect may decorate each plan.
+13. **Materialize backend components** — translate each instance into its backend's
+    sanctioned process graph and primary-session handle.
+14. **Execute** — exec-replace for a simple foreground session or use tmux for a managed
+    session/workspace, then attach the backend's own terminal UI.
+
+The implemented path currently goes directly from backend selection to exec-replace.
+[Managed sessions](session.md), [connect](connect.md), and
+[workspaces](workspace.md) specify the designed replacement in implementation order.

@@ -66,6 +66,17 @@ message).
 - `--file/-f <path>` — attach file(s).
 - `--model/-m <provider/model>` — e.g. `anthropic/claude-3-5-sonnet`.
 
+## Managed and connected sessions
+
+OpenCode advertises controlled startup, primary-session input, and native resume through
+its documented server/session API. A connect-compatible component graph starts
+`opencode serve`, creates or resumes the primary session, attaches the native client, and
+runs the local relay adapter.
+
+ACE-connect delivers only to that primary session. Backend-native subagents remain
+OpenCode-owned and are not relay addresses. An ordinary interactive process without its
+server/session handle cannot be assumed attachable after launch.
+
 ## Yolo Mode
 
 `--dangerously-skip-permissions` — auto-approves all permission requests.

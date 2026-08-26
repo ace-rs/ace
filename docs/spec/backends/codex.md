@@ -66,6 +66,21 @@ vs new session (unlike Claude where `--continue` is just a flag on the same comm
 empty picker. Pressing ESC creates a new session. This means resume-by-default is safe — no
 error or crash on first run.
 
+## Managed and connected sessions
+
+Codex advertises controlled startup, primary-thread input, native resume, and thread
+listing through its documented app-server surface. A connect-compatible component graph
+starts app-server on its sanctioned Unix-socket transport, establishes or resumes the
+primary thread, attaches the native client UI, and runs the local relay adapter.
+
+The primary thread is the only ACE-connect delivery target. Parent/child relationships
+and loaded native threads may be exposed by `ace session inspect`, but ACE does not own
+Codex subagent orchestration or route peer messages to child threads.
+
+Plain interactive Codex remains valid for an ordinary unmanaged launch. It cannot be
+retrofitted with the external receive handle required by connected mode; that requirement
+must be present when the instance plan is materialized.
+
 ## MCP Registration
 
 **Method: CLI-first.** Prefer `codex mcp add` for registration.

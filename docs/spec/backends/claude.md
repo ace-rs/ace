@@ -49,6 +49,17 @@ run `ace new` if resume fails. No automatic retry, deliberately: any retry wrapp
 crashes behind a fresh session — a visible error beats a silent wrong recovery. ACE
 `exec()`s into the backend, so it cannot catch the failure itself.
 
+## Managed and connected sessions
+
+Claude supports ordinary managed terminal hosting without claiming Codex-style server or
+thread semantics. ACE uses the strongest sanctioned receive surface available to the
+installed client; the current ACE-connect prototype uses a monitor process alongside the
+interactive session.
+
+`ace connect monitor` is the receive and debugging surface. If the installed Claude
+client cannot inject into an idle session, `ace connect status` reports that limitation.
+ACE does not emulate wake-up or structured thread control with tmux keystrokes.
+
 ## MCP Registration
 
 **Method: CLI** — non-interactive, user-scoped, handles merging.

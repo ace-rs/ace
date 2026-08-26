@@ -1,65 +1,133 @@
-# `ace connect` — Cross-Backend Agent Bridge
+# `ace connect` — local agent relay
 
-**Designed, not yet implemented.** No `connect` subcommand exists in `src/cmd/`; the
-`ace-connect` skill and its shell scripts (`scripts/*.sh` in the skill) carry the
-behavior until the binary lands, at which point the skill collapses to a thin pointer.
-Work is tracked in the Outline ACE collection.
+**Designed, not yet implemented.** The `ace-connect` skill and its shell scripts remain
+the working prototype until this contract lands in the binary.
 
-The bridge is part of the `ace` binary — not a separate binary or repo. The hard part
-is the inbound **listen → inject → wake** path, which diverges per backend, and ace
-already owns exactly that abstraction: the `Kind` registry and `dispatch!` macro in
-`src/backend/mod.rs`, the capability-mask pattern (`Kind::features()` — wake-idle
-becomes a new `FEATURE_WAKE_IDLE` bit; branch on feature bits, never backend name),
-`exec_session`/`exec_one_shot` launch wrapping, and the authoritative slug computation
-(`project_dir` + `Kind` + school). A separate repo would rebuild the backend registry
-and guarantee drift — the worst outcome for a backend-uniformity feature.
+## Purpose
 
-## North star
+ACE-connect is a local message relay between independently running ACE instances. It
+provides peer identity, discovery, send, receive, and backend-specific injection. The
+receiving model applies repository policy and authority; transport identity never grants
+permission.
 
-Let local (later remote) agents talk quickly, token-efficiently, with minimal extras —
-"solo senior engineer in front of a tmux with 100s of panes." Machinery lives in the
-binary, not in agent context: the model sees a message only when it must act.
+ACE-connect is not a task system. It does not own tasks, artifacts, acknowledgements,
+retries, transcripts, durable workflow state, process supervision, or workspace
+membership.
 
-## Architecture: shared core + per-backend adapter
+## Activation
 
-- **Shared core** (port of the proven shell implementation): socket dir
-  `${XDG_RUNTIME_DIR:-$HOME/.ace/run}/messages/` mode 0700; slug
-  `<parent>.<workdir>.<backend>`; `<slug>.sock`+`.pid`; discover (sweep dead pids);
-  send (one line, strip tab/CR/LF, single attempt); listen.
-- **Sync, no tokio** (matches ace): listener = blocking
-  `std::os::unix::net::UnixListener` accept loop; REST inject = `ureq`; codex bridge =
-  blocking `tungstenite` (not tokio-tungstenite) JSON-RPC. Threads if concurrency is
-  ever needed.
+A project opts into connected startup through its existing configuration:
 
-## Per-backend adapter contracts
+```toml
+[connect]
+enabled = true
+```
 
-| Backend  | Wake-idle | Mechanism |
-| -------- | --------- | --------- |
-| Claude   | always    | Monitor surface — the ONLY way to push into an idle session. MCP/hooks are pull-only, can't wake. So integration is NOT an MCP server. Agent runs `ace connect listen` under Monitor; binary owns parse/log/filter/dispatch; SKILL.md collapses to ~1 line. Preserve control/autonomous + `.inbox.log`. |
-| OpenCode | always    | Server holds session. Inject via `POST /session/<sid>/message` (`ureq`, verify path vs `GET /doc`, honor `OPENCODE_SERVER_PASSWORD`). In-process variant is a TS plugin ace emits during `ace setup` (can't live in the Rust binary). Start sidecar+REST; promote to plugin only if needed. |
-| Codex    | mode-dependent | Dual-mode, user picks at launch. Plain `codex` CANNOT be woken mid-idle (only surfaces on next `write_stdin` poll). Mode 1 `ace connect codex`: orchestrate `codex app-server` + JSON-RPC bridge + exec into `codex --remote`; wake via `turn/start`/`turn/steer`, `ThreadStatusChangedNotification` = idle. Mode 2 plain: next-turn delivery, native TUI, re-armed each turn. |
+Bare `ace` resolves this setting before launch. The built-in connect decorator adds a
+relay identity and inbound-message requirement to the instance plan. The selected backend
+then materializes a connect-compatible component graph; there is no separate
+`ace connect start` path.
 
-## Wire format
+Connected startup cannot generally be retrofitted onto an arbitrary backend process.
+Codex and OpenCode must be born through their server/control surfaces so ACE has the
+primary-session handle required for injection. An already-running session is attachable
+only when its backend exposes a sanctioned attachment surface.
 
-`from=<slug>\tto=<slug>\tbody=<text>`, one line, <~500 chars (Claude truncates;
-larger → tmp file path in body). Verbs: ACK WAIT DONE ASK STUCK FILE CTX NACK
-(extensible). Caveman rules; report bodies = dash steps ≤5 words. Control-mode inbox:
-append `<ISO8601-UTC>\tfrom=<slug>\t<body>` to gitignored `.inbox.log`.
+## Commands
 
-## Out of scope
+```text
+ace connect discover
+ace connect send <target> <message>
+ace connect monitor
+ace connect status
+```
 
-Auth, encryption, cross-machine (design the wire so it stays *possible* later),
-persistence, threading, acks/retries/delivery guarantees. Single-user trust,
-fire-and-forget.
+`discover` lists live peers. `send` performs one delivery attempt. `monitor` runs the
+receive surface used by Claude-style integrations and is also the human debugging view.
+`status` explains the current instance's relay identity, endpoint, backend receive mode,
+and capability gaps.
 
-## Open questions (implementer)
+## Identity and discovery
 
-1. Shared backend crate? Fold-in reuses `src/backend/` directly; extraction would need
-   a workspace crate — bigger refactor.
-2. Codex wake-idle modeling: runtime field on launch request vs mode enum.
-3. Codex app-server: identify the attached TUI thread among many; TUI+bridge
-   co-injection safety; `turn/steer` vs `turn/start`.
-4. Autonomy mode (control/autonomous) config home: ace.toml? per-invoke flag? default
-   control.
-5. `ace connect` subcommand tree shape vs `src/cmd/` conventions
-   (`listen`/`send`/`discover`/`codex`).
+One relay identity names one running ACE instance. Its default is derived from the
+project directory and resolved backend instance; workspace configuration supplies an
+explicit stable member name.
+
+The local runtime directory is:
+
+```text
+${XDG_RUNTIME_DIR:-$HOME/.ace/run}/messages/
+```
+
+It is mode `0700`. Each live identity publishes a Unix socket and process marker.
+Discovery sweeps dead markers before returning peers. Runtime paths and process IDs are
+ephemeral and never committed to a repository.
+
+## Delivery
+
+The first implementation preserves the prototype's fire-and-forget semantics:
+
+- local Unix-domain sockets;
+- one message per delivery;
+- one delivery attempt;
+- a small plain-text envelope carrying sender, recipient, and body;
+- explicit socket-write success, unavailable-recipient, or local transport failure at
+  the CLI.
+
+The envelope is transport data, not an agent-task protocol. Message bodies may retain the
+prototype's terse conventions, but ACE does not parse verbs such as `ACK`, `DONE`, or
+`STUCK` into state transitions.
+
+Cross-machine transport, authentication, encryption, retry, acknowledgement, message
+history, and structured artifacts are outside this contract.
+
+## Backend receive adapters
+
+### Codex
+
+Connected Codex uses its documented app-server surface. The instance plan starts the
+server, establishes the primary thread, attaches the native client UI, and starts the
+relay adapter. Incoming messages target the primary thread through the sanctioned
+thread/turn API.
+
+ACE may list backend-native child threads for inspection, but the relay does not address
+them. Plain interactive Codex has no external receive endpoint and is therefore not a
+connected session.
+
+### OpenCode
+
+Connected OpenCode uses `opencode serve` and its documented session API. The instance
+plan owns the server and primary session before starting the client and relay adapter.
+Incoming messages target that primary session.
+
+### Claude
+
+Claude uses the strongest sanctioned receive surface available to the installed client.
+The current prototype uses a monitor process. `ace connect monitor` preserves the visible
+control/autonomous behavior and debugging log without pretending Claude exposes Codex-
+style thread control.
+
+If Claude cannot inject into an idle session through a sanctioned surface, `status`
+reports that capability gap. ACE does not emulate a control API with terminal keystrokes.
+
+## Process relationship
+
+Connect decorates a session plan; it does not execute the plan. The local or mux executor
+places the backend and relay components. Their lifecycles are coordinated because they
+belong to one ACE instance, not because the relay became a supervisor.
+
+Workspace mode enables the same decorator for every member and supplies their peer names.
+The transport itself remains unaware of workspace configuration.
+
+## Prototype migration
+
+The Rust implementation ports the proven shell behavior in narrow slices:
+
+1. local identity, discovery, send, and monitor;
+2. connect configuration and instance-plan decoration;
+3. Codex primary-thread injection;
+4. OpenCode primary-session injection;
+5. Claude monitor integration.
+
+The skill collapses to usage guidance only after the binary implements each documented
+backend adapter and reports capability gaps honestly.

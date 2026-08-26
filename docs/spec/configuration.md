@@ -40,6 +40,8 @@ Each layer can set:
 - `exclude_mcp` — MCP server names to skip registering. **Union across all scopes**, same
   exception as the skill patterns. Written by answering "no" to a registration prompt;
   cleared by `ace mcp register <name>`. See [mcp.md](mcp.md).
+- `[connect]` — connected-session settings. `enabled` is last-wins across user, project,
+  and local layers; default `false`. See [connect.md](connect.md).
 
 ### Personal-only fields
 
@@ -54,6 +56,21 @@ project-committed `ace.toml` or `school.toml`. They are personal workflow prefer
 
 Resolution for personal-only fields: local wins over user. Project layer is skipped
 entirely.
+
+## Connected sessions
+
+```toml
+[connect]
+enabled = true
+```
+
+`enabled` requests connect-compatible startup through bare `ace`; it does not select a
+different command. Local wins over project, which wins over user. Workspace mode may add
+the same requirement to its member plans at runtime without writing the child configs.
+
+The table is intentionally narrow. Relay identity defaults from the ACE instance and is
+supplied by workspace membership when applicable; transport paths, backend session IDs,
+tmux names, and process IDs are runtime state rather than user configuration.
 
 ## Custom backends
 
@@ -222,8 +239,8 @@ which layer to write to:
 When no scope flag is given, the default is inferred from the key:
 
 - Personal-only fields (`trust`, `resume`) → `--local`
-- Shared fields (`school`, `backend`, `session_prompt`, `env.*`, `skip_update`) →
-  `--project`
+- Shared fields (`school`, `backend`, `session_prompt`, `env.*`, `skip_update`,
+  `connect.enabled`) → `--project`
 
 An explicit scope flag always overrides inference.
 
@@ -237,7 +254,8 @@ Bare `ace config` prints the effective resolved configuration (all layers merged
 
 Print the effective resolved value for a single key. Outputs the raw value, one line.
 
-Keys: `school`, `backend`, `trust`, `resume`, `session_prompt`, `skip_update`, `env.KEY`.
+Keys: `school`, `backend`, `trust`, `resume`, `session_prompt`, `skip_update`,
+`connect.enabled`, `env.KEY`.
 
 ### `ace config explain [key]`
 
@@ -271,6 +289,7 @@ saves back. Other fields in that file are preserved.
 
 Key syntax:
 - Simple fields: `backend`, `school`, `trust`, `resume`, `session_prompt`, `skip_update`
+- Connected-session field: `connect.enabled`
 - Env map entries: `env.KEY` — dot-path into the `[env]` table (e.g.
   `ace config set env.ANTHROPIC_API_KEY sk-...`)
 - Backend instance fields: `backends.<instance>.model` and

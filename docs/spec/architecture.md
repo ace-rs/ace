@@ -17,6 +17,17 @@ bindings are built only when a command reaches for them. Cache invalidation is e
 [configuration.md](configuration.md); package placement in
 [2026-06-05-resolver-dissolution.md](../decisions/2026-06-05-resolver-dissolution.md).
 
+Session launch adds a second demand-driven pipeline after preparation:
+
+```text
+ProjectPlan → workspace expansion → instance decoration
+            → backend component graph → local or mux execution
+```
+
+ACE always owns this pipeline. Workspace, connect, and mux begin as built-in modules,
+not installable plugins: workspace expands plans, connect decorates instances, and the
+chosen executor realizes components. See [session.md](session.md).
+
 ## Dependency law
 
 ```
@@ -78,7 +89,7 @@ tree-load failures bubble without double-handling.
   stamps the decided set with diagnostics. `SkillError` wraps discovery I/O plus upstream
   `ConfigError` / `SchoolError`.
 
-### `ace/` — session orchestrator
+### `ace/` — command orchestrator
 
 A single `Ace` instance is created in `main()` and threaded through every command. It owns
 the project dir, output sink, runtime overrides, and a lazy cache cell per stage. Commands
@@ -101,6 +112,31 @@ recovery picker).
 
 Never create new `Ace` instances inside commands — extend the single instance with lazy
 loading.
+
+The managed-session design does not change that rule. One command-level `Ace` builds
+separate immutable `InstancePlan` values for workspace members; it does not recursively
+construct command orchestrators. Each member plan resolves from its own project context
+through an explicit planning boundary.
+
+### Session composition — `session/`, `connect/`, `workspace/`, `mux/`
+
+These modules are designed but not yet implemented:
+
+- `session/` owns `InstancePlan`, component graphs, runtime identity, thread handles, and
+  lifecycle operations.
+- `connect/` decorates an instance with relay identity and inbound-message requirements.
+- `workspace/` parses a root manifest and expands it into independent instance plans.
+- `mux/` realizes component graphs in tmux and exposes their runtime mapping.
+
+Dependency direction is:
+
+```text
+config ← backend ← session ← {connect, mux} ← workspace ← cmd
+```
+
+`mux` knows commands, panes, and process roles, never backend or relay semantics.
+`connect` knows relay semantics, never workspace membership or process placement.
+`workspace` composes session, connect, and mux through their public in-process boundaries.
 
 ### `actions/` — operations on `Ace` and the filesystem
 

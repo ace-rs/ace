@@ -33,10 +33,26 @@ without reading source.
 - `ace config show` displays the resolved view with source layer per value
   (user / project / local / school / override).
 - `ace diff` shows what `ace` would change before changing it.
+- `ace session inspect` maps an ACE instance to its backend, native session, primary
+  thread, tmux runtime, components, and relay identity.
+- `ace connect status` explains relay identity, endpoint, receive mode, and capability
+  gaps.
+- `ace workspace status` lists every member and its session, tmux window, and relay state.
 - Diagnostics name the responsible layer or file when something is wrong.
 
 Adding a new `ace` capability without a corresponding read surface is
 incomplete work. A feature the user can't inspect is a trust hole.
+
+### tmux is the managed-session UI
+
+ACE uses tmux for persistent terminals, panes, windows, detach, attachment, and switching.
+It does not render backend transcripts or introduce an agent-screen switcher. The backend
+terminal remains the product, preserving the first UX law above.
+
+Bare `ace` starts or attaches the configured project or root workspace. Explicit
+`session`, `connect`, and `workspace` commands exist for lifecycle and inspection, not as
+required alternate startup paths. The same attachment command works locally and through
+an SSH terminal.
 
 ## 3. Errors come with hints when recovery is possible
 
@@ -120,17 +136,21 @@ override — a user or local school also wins when the project declares none.
 ACE has two locked terminal wordmarks. Session entry uses the big wordmark, ACE-owned
 mutations use the compact wordmark, and read surfaces stay undecorated:
 
-| presentation | commands                                                     |
-|--------------|--------------------------------------------------------------|
-| big          | bare `ace`; `ace new`                                        |
-| compact      | `setup`; `fmt` / `format`; `import`; `config set`             |
-| compact      | `mcp reset` / `register` / `unregister`                       |
+| presentation | commands                                                       |
+|--------------|----------------------------------------------------------------|
+| big          | bare `ace`; `ace new`; `session start`; `workspace start`      |
+| compact      | `setup`; `fmt` / `format`; `import`; `config set`              |
+| compact      | `mcp reset` / `register` / `unregister`                        |
 | compact      | `school init` / `pull`; `skills include` / `exclude` / `reset` |
-| compact      | `pull`; `link`; `auto`; `yolo`; interactive `upgrade`         |
+| compact      | `pull`; `link`; `auto`; `yolo`; `session stop`                 |
+| compact      | `workspace init` / `stop`; interactive `upgrade`               |
 | none         | one-shot `--prompt`; `diff`; bare `config`; `config get`       |
-| none         | `config explain`; `paths`; bare `mcp`; `mcp check`            |
-| none         | `school skills` / `validate`; bare `skills`; `explain`        |
-| none         | silent `upgrade`; `version`; help output                      |
+| none         | `config explain`; `paths`; bare `mcp`; `mcp check`             |
+| none         | `school skills` / `validate`; bare `skills`; `explain`         |
+| none         | `session list` / `inspect` / `attach` / `component`            |
+| none         | `workspace list` / `status` / `attach`                         |
+| none         | `connect discover` / `send` / `monitor` / `status`             |
+| none         | silent `upgrade`; `version`; help output                       |
 
 Aliases inherit their canonical command's presentation. The wordmark is followed by a
 regular `info` item identifying the build as `version X (commit)`, where `X` is the
