@@ -11,6 +11,7 @@ mod glob;
 mod paths;
 mod platform;
 mod school;
+mod session;
 mod skills;
 mod templates;
 mod upgrade;

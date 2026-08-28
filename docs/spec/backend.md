@@ -64,11 +64,11 @@ Each backend must provide:
   level to the user — the backend runs with its own default permissions; the level is
   never dropped silently.
 - **`exec_session(options)`** — launch an interactive backend session via exec-replace.
-  Builds its Command from `SessionOptions` (trust, session prompt, project dir, env,
-  extra args, typed resume mode, backend mode). Returns `io::Error` on spawn failure;
-  never returns on success (terminal hands off to the child). In `Latest` mode, some
-  backends may fail if no prior session exists (Claude) while others handle it gracefully
-  (Codex).
+  Builds one typed `Component` from `SessionOptions` (trust, session prompt, project dir,
+  env, extra args, typed resume mode, backend mode), then converts that component to a
+  process command at the execution edge. Returns `io::Error` on spawn failure; never
+  returns on success (terminal hands off to the child). In `Latest` mode, some backends
+  may fail if no prior session exists (Claude) while others handle it gracefully (Codex).
   ACE prints a hint before exec so the user knows to run `ace new` on failure. See
   [backends/claude.md → Session Resume](backends/claude.md#session-resume).
 - **`exec_one_shot(options)`** — spawn the backend non-interactively and capture
@@ -90,11 +90,11 @@ Each backend must provide:
 
 See per-backend specs for implementation details.
 
-### Designed managed-session contract
+### Managed-session contract
 
-`exec_session` remains the implemented simple-session transport. `Ace::start` supplies a
-`BackendMode`; managed sessions later replace the command-only output with a backend-owned
-component graph.
+`exec_session` is the implemented single-component transport. `Ace::start` supplies a
+`BackendMode`; managed sessions compose the same component type into a backend-owned
+graph.
 
 The graph contains named process roles, dependencies, environment, working directories,
 and the handles a backend can expose for its native session and primary thread. The local
@@ -116,8 +116,9 @@ wake-idle behavior, or a shared subagent model. See [session.md](session.md) and
 `exec_session` and `exec_one_shot` are the two transport methods — deliberately two, not
 one `exec(Intent)`: the return types differ fundamentally (never-returns vs captured
 `Output`), and a unified signature would lie about that at the type level. Each backend
-builds its argv from the matching request type. The argv builder is the polymorphic core;
-transport just decides whether to exec-replace or spawn-and-capture.
+builds its argv from the matching options type. The argv builder is the polymorphic core;
+the session path carries it in a component before exec-replace, while one-shot builds and
+captures its subprocess directly.
 
 `ace -p` routes through `exec_one_shot`, which captures then prints after the child
 exits. That buffering belongs to the user-requested one-shot surface only. Model-driven

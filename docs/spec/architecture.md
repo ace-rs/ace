@@ -121,10 +121,10 @@ plan type. Callers finish configuration through the existing mutation surface, t
 
 ### Session composition — `session/`, `connect/`, `workspace/`, `mux/`
 
-These modules are designed but not yet implemented:
+The `session/` foundation is implemented; the composition modules remain designed:
 
-- `session/` owns component graphs, runtime identity, thread handles, and lifecycle
-  operations.
+- `session/` owns typed process components. Component graphs, runtime identity, thread
+  handles, and lifecycle operations extend that boundary.
 - `connect/` decorates an instance with relay identity and inbound-message requirements.
 - `workspace/` parses a root manifest and constructs independent `Ace` instances.
 - `mux/` realizes component graphs in tmux and exposes their runtime mapping.
@@ -132,7 +132,8 @@ These modules are designed but not yet implemented:
 Dependency direction is:
 
 ```text
-config ← backend ← session ← {connect, mux} ← workspace ← cmd
+{config, session} ← backend ← ace ← cmd
+session ← {connect, mux} ← workspace ← cmd
 ```
 
 `mux` knows commands, panes, and process roles, never backend or relay semantics.

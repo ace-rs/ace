@@ -1,8 +1,8 @@
 # Managed sessions
 
-**Designed, not yet implemented.** ACE currently prepares one project and exec-replaces
-itself with one backend. This specification defines the compositional session boundary
-that replaces that launch path.
+**Partially implemented.** ACE prepares one project and launches its backend through a
+typed single-process component. This specification defines the component graphs and
+managed runtime that extend that working boundary.
 
 ## Primitive
 
@@ -109,6 +109,15 @@ justified only when an independently shipped extension needs the same boundary.
 
 ## Components
 
+A `Component` is the executable process boundary. It owns a typed role, program and
+arguments, environment, and working directory. Only its execution edge converts that
+data into `std::process::Command`; graph construction can compose process data before
+execution.
+
+Normal Claude, Codex, and OpenCode sessions each construct one `session` component and
+exec-replace ACE with it. This preserves the existing foreground behavior while giving
+multi-process planning a real node type to compose.
+
 A backend materializes an instance into a graph of named process roles. Roles describe
 purpose rather than backend-specific executable names:
 
@@ -179,15 +188,16 @@ be used when the user starts a session, as specified in [backend.md](backend.md)
 
 ## Implementation sequence
 
-1. Move the existing preparation and launch sequence behind `Ace::start(StartMode)` while
-   preserving the current single-process behavior.
-2. Add controlled component graphs for Codex app-server and OpenCode serve, using only
+1. Route preparation and launch through `Ace::start(StartMode)`.
+2. Represent each normal backend launch as one typed process component while preserving
+   exec-replace behavior.
+3. Add controlled component graphs for Codex app-server and OpenCode serve, using only
    their sanctioned control surfaces.
-3. Add the tmux executor and `ace session` inspection, attachment, and lifecycle commands.
-4. Add the connect decorator and backend receive adapters described in
+4. Add the tmux executor and `ace session` inspection, attachment, and lifecycle commands.
+5. Add the connect decorator and backend receive adapters described in
    [connect.md](connect.md).
-5. Add workspace expansion and group lifecycle from [workspace.md](workspace.md).
-6. Add suspend, wake, reconnect, or richer status only when a concrete workflow requires
+6. Add workspace expansion and group lifecycle from [workspace.md](workspace.md).
+7. Add suspend, wake, reconnect, or richer status only when a concrete workflow requires
    each capability.
 
 Every phase preserves bare `ace` as the common entry point and ships with a corresponding

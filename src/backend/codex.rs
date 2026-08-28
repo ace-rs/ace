@@ -4,6 +4,7 @@ use std::process::{Command, Output, Stdio};
 
 use super::{McpDecl, McpStatus, OneShotOptions, PromptInput, SessionOptions};
 use crate::config::ace_toml::Trust;
+use crate::session::{Component, Role};
 
 pub(super) fn is_ready() -> bool {
     std::env::var("CODEX_API_KEY").is_ok()
@@ -19,21 +20,30 @@ pub(super) fn exec_session(
     effort: Option<&str>,
     options: SessionOptions,
 ) -> Result<(), std::io::Error> {
+    let component = build_session_component(launch, model, effort, &options);
+
+    Err(component.exec_replace())
+}
+
+fn build_session_component(
+    launch: &[String],
+    model: Option<&str>,
+    effort: Option<&str>,
+    options: &SessionOptions,
+) -> Component {
     let (program, prefix) = launch
         .split_first()
         .map(|(p, rest)| (p.as_str(), rest))
         .unwrap_or(("codex", &[][..]));
-    let mut cmd = Command::new(program);
-    cmd.args(prefix);
-    cmd.current_dir(&options.project_dir);
-
-    for (key, val) in &options.env {
-        cmd.env(key, val);
-    }
-
-    cmd.args(build_session_args(model, effort, &options));
-
-    Err(crate::platform::exec_replace(cmd))
+    let mut args = prefix.to_vec();
+    args.extend(build_session_args(model, effort, options));
+    Component::new(
+        Role::Session,
+        program.to_string(),
+        args,
+        options.env.clone(),
+        options.project_dir.clone(),
+    )
 }
 
 pub(super) fn exec_one_shot(
@@ -531,6 +541,25 @@ mod tests {
         assert!(
             args.iter()
                 .any(|a| a.starts_with("developer_instructions="))
+        );
+    }
+
+    #[test]
+    fn session_component_carries_launch_context() {
+        let mut options = session_options();
+        options.env.insert("TOKEN".into(), "secret".into());
+        let launch = ["wrapper".to_string(), "codex".to_string()];
+
+        let component = build_session_component(&launch, None, None, &options);
+
+        assert_eq!(component.role(), crate::session::Role::Session);
+        assert_eq!(component.program(), "wrapper");
+        assert_eq!(component.args().first().map(String::as_str), Some("codex"));
+        assert!(component.args().iter().any(|arg| arg == "-c"));
+        assert_eq!(component.working_dir(), Path::new("/tmp"));
+        assert_eq!(
+            component.env().get("TOKEN").map(String::as_str),
+            Some("secret")
         );
     }
 
