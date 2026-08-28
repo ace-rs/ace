@@ -3,7 +3,7 @@ use std::process::{Command, Output, Stdio};
 
 use super::{McpDecl, McpStatus, OneShotOptions, PromptInput, SessionOptions};
 use crate::config::ace_toml::Trust;
-use crate::session::{Component, Role};
+use crate::session::{Component, Graph, Node, Role};
 
 pub(super) fn is_ready() -> bool {
     let Some(home) = crate::paths::home_dir() else {
@@ -18,9 +18,26 @@ pub(super) fn exec_session(
     effort: Option<&str>,
     options: SessionOptions,
 ) -> Result<(), std::io::Error> {
-    let component = build_session_component(launch, model, effort, &options);
+    let graph = materialize_session_graph(launch, model, effort, &options, None)
+        .map_err(std::io::Error::other)?;
 
-    Err(component.exec_replace())
+    Err(graph.exec_replace())
+}
+
+pub(super) fn materialize_session_graph(
+    launch: &[String],
+    model: Option<&str>,
+    effort: Option<&str>,
+    options: &SessionOptions,
+    _endpoint: Option<&crate::session::ControlEndpoint>,
+) -> Result<Graph, super::MaterializeError> {
+    if matches!(options.backend_mode, super::BackendMode::WithServer) {
+        return Err(super::MaterializeError::UnsupportedMode { backend: "claude" });
+    }
+    Ok(Graph::try_new(vec![Node::new(
+        build_session_component(launch, model, effort, options),
+        Vec::new(),
+    )])?)
 }
 
 fn build_session_component(
@@ -29,18 +46,13 @@ fn build_session_component(
     effort: Option<&str>,
     options: &SessionOptions,
 ) -> Component {
-    let (program, prefix) = launch
-        .split_first()
-        .map(|(p, rest)| (p.as_str(), rest))
-        .unwrap_or(("claude", &[][..]));
-    let mut args = prefix.to_vec();
-    args.extend(build_session_args(model, effort, options));
-    Component::new(
+    Component::from_launch(
         Role::Session,
-        program.to_string(),
-        args,
-        options.env.clone(),
-        options.project_dir.clone(),
+        launch,
+        "claude",
+        build_session_args(model, effort, options),
+        &options.env,
+        &options.project_dir,
     )
 }
 

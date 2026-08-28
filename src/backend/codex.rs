@@ -2,9 +2,9 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
-use super::{McpDecl, McpStatus, OneShotOptions, PromptInput, SessionOptions};
+use super::{MaterializeError, McpDecl, McpStatus, OneShotOptions, PromptInput, SessionOptions};
 use crate::config::ace_toml::Trust;
-use crate::session::{Component, Role};
+use crate::session::{Component, Graph, Node, Role};
 
 pub(super) fn is_ready() -> bool {
     std::env::var("CODEX_API_KEY").is_ok()
@@ -20,9 +20,59 @@ pub(super) fn exec_session(
     effort: Option<&str>,
     options: SessionOptions,
 ) -> Result<(), std::io::Error> {
-    let component = build_session_component(launch, model, effort, &options);
+    let graph = materialize_session_graph(launch, model, effort, &options, None)
+        .map_err(std::io::Error::other)?;
 
-    Err(component.exec_replace())
+    Err(graph.exec_replace())
+}
+
+pub(super) fn materialize_session_graph(
+    launch: &[String],
+    model: Option<&str>,
+    effort: Option<&str>,
+    options: &SessionOptions,
+    endpoint: Option<&crate::session::ControlEndpoint>,
+) -> Result<Graph, MaterializeError> {
+    let session = build_session_component(launch, model, effort, options);
+    if matches!(options.backend_mode, super::BackendMode::Normal) {
+        return Ok(Graph::try_new(vec![Node::new(session, Vec::new())])?);
+    }
+    let endpoint = endpoint.ok_or(MaterializeError::MissingControlEndpoint { backend: "codex" })?;
+    let Some(endpoint_url) = endpoint.unix_url() else {
+        return Err(MaterializeError::ControlEndpoint {
+            backend: "codex",
+            expected: "Unix-socket",
+        });
+    };
+
+    let server = Component::from_launch(
+        Role::Server,
+        launch,
+        "codex",
+        vec![
+            "app-server".to_string(),
+            "--listen".to_string(),
+            endpoint_url.clone(),
+        ],
+        &options.env,
+        &options.project_dir,
+    );
+    let mut args = Vec::new();
+    args.extend(["--remote".to_string(), endpoint_url]);
+    args.extend(build_session_args(model, effort, options));
+    let session = Component::from_launch(
+        Role::Session,
+        launch,
+        "codex",
+        args,
+        &options.env,
+        &options.project_dir,
+    );
+
+    Ok(Graph::try_new(vec![
+        Node::new(server, Vec::new()),
+        Node::new(session, vec![Role::Server]),
+    ])?)
 }
 
 fn build_session_component(
@@ -31,18 +81,13 @@ fn build_session_component(
     effort: Option<&str>,
     options: &SessionOptions,
 ) -> Component {
-    let (program, prefix) = launch
-        .split_first()
-        .map(|(p, rest)| (p.as_str(), rest))
-        .unwrap_or(("codex", &[][..]));
-    let mut args = prefix.to_vec();
-    args.extend(build_session_args(model, effort, options));
-    Component::new(
+    Component::from_launch(
         Role::Session,
-        program.to_string(),
-        args,
-        options.env.clone(),
-        options.project_dir.clone(),
+        launch,
+        "codex",
+        build_session_args(model, effort, options),
+        &options.env,
+        &options.project_dir,
     )
 }
 
@@ -560,6 +605,64 @@ mod tests {
         assert_eq!(
             component.env().get("TOKEN").map(String::as_str),
             Some("secret")
+        );
+    }
+
+    #[test]
+    fn server_backed_graph_uses_app_server_and_remote_session() {
+        let mut options = session_options();
+        options.env.insert("TOKEN".into(), "secret".into());
+        options.backend_mode = super::super::BackendMode::WithServer;
+        let endpoint = crate::session::ControlEndpoint::Unix(PathBuf::from("/tmp/codex.sock"));
+        let launch = ["wrapper".to_string(), "codex".to_string()];
+
+        let graph = materialize_session_graph(&launch, None, None, &options, Some(&endpoint))
+            .expect("valid graph");
+        let server = &graph.nodes()[0];
+        let session = &graph.nodes()[1];
+
+        assert_eq!(
+            server.component().args(),
+            ["codex", "app-server", "--listen", "unix:///tmp/codex.sock"]
+        );
+        assert_eq!(session.dependencies(), [Role::Server]);
+        assert_eq!(
+            &session.component().args()[..3],
+            ["codex", "--remote", "unix:///tmp/codex.sock"]
+        );
+        assert_eq!(
+            server.component().env().get("TOKEN").map(String::as_str),
+            Some("secret")
+        );
+    }
+
+    #[test]
+    fn server_backed_graph_requires_an_allocated_unix_endpoint() {
+        let mut options = session_options();
+        options.backend_mode = super::super::BackendMode::WithServer;
+
+        let missing = materialize_session_graph(&[], None, None, &options, None)
+            .expect_err("server-backed graph requires an endpoint");
+        assert_eq!(
+            missing,
+            MaterializeError::MissingControlEndpoint { backend: "codex" }
+        );
+
+        let port = std::num::NonZeroU16::new(
+            u16::try_from(std::process::id() % u32::from(u16::MAX - 1) + 1)
+                .expect("bounded test port"),
+        )
+        .expect("non-zero test port");
+        let endpoint = crate::session::ControlEndpoint::LoopbackHttp(port);
+
+        let wrong = materialize_session_graph(&[], None, None, &options, Some(&endpoint))
+            .expect_err("Codex requires a Unix endpoint");
+        assert_eq!(
+            wrong,
+            MaterializeError::ControlEndpoint {
+                backend: "codex",
+                expected: "Unix-socket",
+            }
         );
     }
 

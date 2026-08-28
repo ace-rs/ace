@@ -73,6 +73,11 @@ listing through its documented app-server surface. A connect-compatible componen
 starts app-server on its sanctioned Unix-socket transport, establishes or resumes the
 primary thread, attaches the native client UI, and runs the local relay adapter.
 
+The implemented graph boundary materializes the first two process roles as
+`codex app-server --listen unix://...` followed by a dependent
+`codex --remote unix://...` session. Runtime endpoint allocation and primary-thread
+establishment remain part of the later controller/executor boundary.
+
 The primary thread is the only ACE-connect delivery target. Parent/child relationships
 and loaded native threads may be exposed by `ace session inspect`, but ACE does not own
 Codex subagent orchestration or route peer messages to child threads.

@@ -73,6 +73,10 @@ its documented server/session API. A connect-compatible component graph starts
 `opencode serve`, creates or resumes the primary session, attaches the native client, and
 runs the local relay adapter.
 
+The implemented graph boundary materializes `opencode serve` on a supplied loopback HTTP
+endpoint followed by a dependent `opencode attach` session. Runtime endpoint allocation
+and primary-session establishment remain part of the later controller/executor boundary.
+
 ACE-connect delivers only to that primary session. Backend-native subagents remain
 OpenCode-owned and are not relay addresses. An ordinary interactive process without its
 server/session handle cannot be assumed attachable after launch.

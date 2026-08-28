@@ -71,6 +71,10 @@ Each backend must provide:
   may fail if no prior session exists (Claude) while others handle it gracefully (Codex).
   ACE prints a hint before exec so the user knows to run `ace new` on failure. See
   [backends/claude.md → Session Resume](backends/claude.md#session-resume).
+- **`materialize_session_graph(options, endpoint)`** — construct the validated process
+  graph through the resolved `Backend` boundary. The endpoint is absent for normal mode
+  and must already be allocated for server-backed mode; backends validate the transport
+  they support. This method does not execute components or establish protocol handles.
 - **`exec_one_shot(options)`** — spawn the backend non-interactively and capture
   stdout/stderr. Builds its Command from `OneShotOptions` (prompt source, project dir,
   env, extra args; no resume, trust, or session prompt — the non-interactive entry point
@@ -93,15 +97,18 @@ See per-backend specs for implementation details.
 ### Managed-session contract
 
 `exec_session` is the implemented single-component transport. `Ace::start` supplies a
-`BackendMode`; managed sessions compose the same component type into a backend-owned
-graph.
+`BackendMode`; every normal launch now passes through a validated graph before the local
+execution edge exec-replaces ACE.
 
-The graph contains named process roles, dependencies, environment, working directories,
-and the handles a backend can expose for its native session and primary thread. The local
-executor may preserve exec-replace for a one-component foreground graph; mux executes a
-multi-component graph without learning backend names.
+`session` owns graph structure, validation, process roles, and typed control endpoints.
+Each backend materializes its topology into that graph while preserving environment,
+working directory, configured launch wrappers, and backend arguments. Codex requires a
+concrete Unix-socket endpoint; OpenCode requires a concrete loopback HTTP endpoint. The
+local execution edge preserves exec-replace for a one-component foreground graph;
+multi-component execution is not implemented.
 
-Connect selects `BackendMode::WithServer` before materialization.
+Connect selects `BackendMode::WithServer` before materialization. The runtime supplies
+the allocated endpoint separately from that launch intent.
 Each backend either produces a sanctioned receive component and primary-session target or
 reports the requirement unsupported. No caller branches on `Kind` to construct Codex or
 OpenCode process topology.

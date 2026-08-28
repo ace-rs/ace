@@ -4,6 +4,7 @@ use std::process::Output;
 
 use super::{McpDecl, McpStatus, OneShotOptions, PromptInput, SessionOptions};
 use crate::config::ace_toml::Trust;
+use crate::session::{Component, Graph, Node, Role};
 
 pub(super) fn is_ready() -> bool {
     true
@@ -13,6 +14,29 @@ pub(super) fn is_ready() -> bool {
 /// to flags, so every level round-trips.
 pub(super) fn supports_trust(_trust: Trust) -> bool {
     true
+}
+
+pub(super) fn materialize_session_graph(
+    launch: &[String],
+    _model: Option<&str>,
+    _effort: Option<&str>,
+    options: &SessionOptions,
+    _endpoint: Option<&crate::session::ControlEndpoint>,
+) -> Result<Graph, super::MaterializeError> {
+    if matches!(options.backend_mode, super::BackendMode::WithServer) {
+        return Err(super::MaterializeError::UnsupportedMode { backend: "flaude" });
+    }
+    Ok(Graph::try_new(vec![Node::new(
+        Component::from_launch(
+            Role::Session,
+            launch,
+            "flaude",
+            options.extra_args.clone(),
+            &options.env,
+            &options.project_dir,
+        ),
+        Vec::new(),
+    )])?)
 }
 
 pub(super) fn exec_session(

@@ -5,6 +5,7 @@ mod opencode;
 pub mod registry;
 
 use crate::config::ConfigError;
+use crate::session::{ControlEndpoint, Graph, GraphError};
 
 /// Errors that can occur while binding a `Resolved` view to a concrete
 /// `Backend` — including pre-binding tree/merge failures bubbled through
@@ -25,6 +26,21 @@ pub enum BackendError {
         declared: String,
         actual: String,
     },
+}
+
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum MaterializeError {
+    #[error(transparent)]
+    Graph(#[from] GraphError),
+    #[error("{backend} server-backed sessions require a control endpoint")]
+    MissingControlEndpoint { backend: &'static str },
+    #[error("{backend} server-backed sessions require a {expected} control endpoint")]
+    ControlEndpoint {
+        backend: &'static str,
+        expected: &'static str,
+    },
+    #[error("{backend} does not support server-backed sessions")]
+    UnsupportedMode { backend: &'static str },
 }
 
 use std::collections::{HashMap, HashSet};
@@ -210,6 +226,25 @@ impl Kind {
         dispatch!(self, exec_session, cmd, model, effort, options)
     }
 
+    pub fn materialize_session_graph(
+        &self,
+        cmd: &[String],
+        model: Option<&str>,
+        effort: Option<&str>,
+        options: &SessionOptions,
+        endpoint: Option<&ControlEndpoint>,
+    ) -> Result<Graph, MaterializeError> {
+        dispatch!(
+            self,
+            materialize_session_graph,
+            cmd,
+            model,
+            effort,
+            options,
+            endpoint
+        )
+    }
+
     pub fn exec_one_shot(
         &self,
         cmd: &[String],
@@ -320,6 +355,26 @@ impl Backend {
         )
     }
 
+    /// Materialize backend topology after runtime allocation of any required endpoint.
+    /// The graph executor is the first production consumer of this boundary.
+    #[allow(dead_code)]
+    pub fn materialize_session_graph(
+        &self,
+        mut options: SessionOptions,
+        endpoint: Option<&ControlEndpoint>,
+    ) -> Result<Graph, MaterializeError> {
+        for (key, value) in &self.env {
+            options.env.insert(key.clone(), value.clone());
+        }
+        self.kind.materialize_session_graph(
+            &self.cmd,
+            self.model.as_deref(),
+            self.effort.as_deref(),
+            &options,
+            endpoint,
+        )
+    }
+
     pub fn exec_one_shot(&self, mut options: OneShotOptions) -> Result<Output, std::io::Error> {
         for (k, v) in &self.env {
             options.env.insert(k.clone(), v.clone());
@@ -408,8 +463,13 @@ pub(super) fn parse_status_array(json: &str) -> Vec<McpStatus> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Backend, FEATURE_NESTED_SKILLS, Kind, Registry};
+    use super::{
+        Backend, BackendMode, FEATURE_NESTED_SKILLS, Kind, Registry, ResumeMode, SessionOptions,
+    };
+    use crate::config::ace_toml::Trust;
+    use crate::session::{ControlEndpoint, Role};
     use std::collections::HashMap;
+    use std::path::{Path, PathBuf};
 
     #[test]
     fn features_per_kind() {
@@ -464,5 +524,42 @@ mod tests {
             effort: None,
         };
         assert_eq!(custom_flat.features(), 0);
+    }
+
+    #[test]
+    fn backend_materializes_graph_through_its_sanctioned_surface() {
+        let backend = Backend {
+            name: "my-codex".to_string(),
+            kind: Kind::Codex,
+            cmd: vec!["wrapper".to_string(), "codex".to_string()],
+            env: HashMap::from([("BACKEND".to_string(), "configured".to_string())]),
+            model: None,
+            effort: None,
+        };
+        let options = SessionOptions {
+            trust: Trust::Default,
+            session_prompt: "prompt".to_string(),
+            project_dir: PathBuf::from("/project"),
+            env: HashMap::new(),
+            extra_args: Vec::new(),
+            resume: ResumeMode::Fresh,
+            backend_mode: BackendMode::WithServer,
+        };
+        let endpoint = ControlEndpoint::Unix(PathBuf::from("/tmp/codex.sock"));
+
+        let graph = backend
+            .materialize_session_graph(options, Some(&endpoint))
+            .expect("valid graph");
+        let server = &graph.nodes()[0];
+        let session = &graph.nodes()[1];
+
+        assert_eq!(server.component().role(), Role::Server);
+        assert_eq!(session.dependencies(), [Role::Server]);
+        assert_eq!(server.component().program(), "wrapper");
+        assert_eq!(server.component().working_dir(), Path::new("/project"));
+        assert_eq!(
+            server.component().env().get("BACKEND").map(String::as_str),
+            Some("configured")
+        );
     }
 }

@@ -2,9 +2,9 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::process::Output;
 
-use super::{McpDecl, McpStatus, OneShotOptions, SessionOptions};
+use super::{MaterializeError, McpDecl, McpStatus, OneShotOptions, SessionOptions};
 use crate::config::ace_toml::Trust;
-use crate::session::{Component, Role};
+use crate::session::{Component, Graph, Node, Role};
 
 pub(super) fn is_ready() -> bool {
     let auth = auth_path();
@@ -22,9 +22,71 @@ pub(super) fn exec_session(
 ) -> Result<(), std::io::Error> {
     write_agent_file(&options.project_dir, &options.session_prompt, model, effort)?;
 
-    let component = build_session_component(launch, model, effort, &options);
+    let graph = materialize_session_graph(launch, model, effort, &options, None)
+        .map_err(std::io::Error::other)?;
 
-    Err(component.exec_replace())
+    Err(graph.exec_replace())
+}
+
+pub(super) fn materialize_session_graph(
+    launch: &[String],
+    model: Option<&str>,
+    effort: Option<&str>,
+    options: &SessionOptions,
+    endpoint: Option<&crate::session::ControlEndpoint>,
+) -> Result<Graph, MaterializeError> {
+    let session = build_session_component(launch, model, effort, options);
+    if matches!(options.backend_mode, super::BackendMode::Normal) {
+        return Ok(Graph::try_new(vec![Node::new(session, Vec::new())])?);
+    }
+    let endpoint = endpoint.ok_or(MaterializeError::MissingControlEndpoint {
+        backend: "opencode",
+    })?;
+    let Some((hostname, port, endpoint_url)) = endpoint.loopback_http() else {
+        return Err(MaterializeError::ControlEndpoint {
+            backend: "opencode",
+            expected: "loopback HTTP",
+        });
+    };
+
+    let server = Component::from_launch(
+        Role::Server,
+        launch,
+        "opencode",
+        vec![
+            "serve".to_string(),
+            "--hostname".to_string(),
+            hostname.to_string(),
+            "--port".to_string(),
+            port.to_string(),
+        ],
+        &options.env,
+        &options.project_dir,
+    );
+    let mut args = Vec::new();
+    args.extend([
+        "attach".to_string(),
+        endpoint_url,
+        "--dir".to_string(),
+        options.project_dir.to_string_lossy().into_owned(),
+    ]);
+    if matches!(options.resume, super::ResumeMode::Latest) {
+        args.push("--continue".to_string());
+    }
+    args.extend(options.extra_args.iter().cloned());
+    let session = Component::from_launch(
+        Role::Session,
+        launch,
+        "opencode",
+        args,
+        &options.env,
+        &options.project_dir,
+    );
+
+    Ok(Graph::try_new(vec![
+        Node::new(server, Vec::new()),
+        Node::new(session, vec![Role::Server]),
+    ])?)
 }
 
 fn build_session_component(
@@ -33,18 +95,13 @@ fn build_session_component(
     effort: Option<&str>,
     options: &SessionOptions,
 ) -> Component {
-    let (program, prefix) = launch
-        .split_first()
-        .map(|(p, rest)| (p.as_str(), rest))
-        .unwrap_or(("opencode", &[][..]));
-    let mut args = prefix.to_vec();
-    args.extend(build_session_args(model, effort, options));
-    Component::new(
+    Component::from_launch(
         Role::Session,
-        program.to_string(),
-        args,
-        options.env.clone(),
-        options.project_dir.clone(),
+        launch,
+        "opencode",
+        build_session_args(model, effort, options),
+        &options.env,
+        &options.project_dir,
     )
 }
 
@@ -334,6 +391,74 @@ mod tests {
         assert_eq!(
             component.env().get("TOKEN").map(String::as_str),
             Some("secret")
+        );
+    }
+
+    #[test]
+    fn server_backed_graph_uses_serve_and_attach() {
+        let mut options = session_options();
+        options.resume = super::super::ResumeMode::Latest;
+        options.env.insert("TOKEN".into(), "secret".into());
+        options.extra_args.push("--mini".to_string());
+        let port = std::num::NonZeroU16::new(
+            u16::try_from(std::process::id() % u32::from(u16::MAX - 1) + 1)
+                .expect("bounded test port"),
+        )
+        .expect("non-zero test port");
+        options.backend_mode = super::super::BackendMode::WithServer;
+        let endpoint = crate::session::ControlEndpoint::LoopbackHttp(port);
+        let launch = ["wrapper".to_string(), "opencode".to_string()];
+
+        let graph = materialize_session_graph(&launch, None, None, &options, Some(&endpoint))
+            .expect("valid graph");
+        let server = &graph.nodes()[0];
+        let session = &graph.nodes()[1];
+        let port = port.get().to_string();
+        let url = format!("http://127.0.0.1:{port}");
+
+        assert_eq!(server.component().role(), crate::session::Role::Server);
+        assert_eq!(
+            server.component().args(),
+            [
+                "opencode",
+                "serve",
+                "--hostname",
+                "127.0.0.1",
+                "--port",
+                &port
+            ]
+        );
+        assert_eq!(session.dependencies(), [crate::session::Role::Server]);
+        assert_eq!(session.component().role(), crate::session::Role::Session);
+        assert_eq!(
+            &session.component().args()[..5],
+            ["opencode", "attach", &url, "--dir", "/tmp"]
+        );
+        assert_eq!(&session.component().args()[5..], ["--continue", "--mini"]);
+        for node in graph.nodes() {
+            assert_eq!(node.component().working_dir(), Path::new("/tmp"));
+            assert_eq!(
+                node.component().env().get("TOKEN").map(String::as_str),
+                Some("secret")
+            );
+        }
+    }
+
+    #[test]
+    fn server_backed_graph_rejects_non_http_endpoint() {
+        let mut options = session_options();
+        options.backend_mode = super::super::BackendMode::WithServer;
+        let endpoint = crate::session::ControlEndpoint::Unix(PathBuf::from("/tmp/opencode.sock"));
+
+        let error = materialize_session_graph(&[], None, None, &options, Some(&endpoint))
+            .expect_err("OpenCode requires a loopback HTTP endpoint");
+
+        assert_eq!(
+            error,
+            MaterializeError::ControlEndpoint {
+                backend: "opencode",
+                expected: "loopback HTTP",
+            }
         );
     }
 

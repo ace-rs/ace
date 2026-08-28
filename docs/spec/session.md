@@ -1,8 +1,8 @@
 # Managed sessions
 
-**Partially implemented.** ACE prepares one project and launches its backend through a
-typed single-process component. This specification defines the component graphs and
-managed runtime that extend that working boundary.
+**Partially implemented.** ACE prepares one project and materializes its backend launch
+as a validated component graph. Normal sessions execute their single graph component;
+server-backed graphs await endpoint allocation, protocol control, and graph execution.
 
 ## Primitive
 
@@ -118,17 +118,27 @@ Normal Claude, Codex, and OpenCode sessions each construct one `session` compone
 exec-replace ACE with it. This preserves the existing foreground behavior while giving
 multi-process planning a real node type to compose.
 
-A backend materializes an instance into a graph of named process roles. Roles describe
-purpose rather than backend-specific executable names:
+`session` owns graph structure, dependency validation, deterministic startup order, and
+typed control endpoints. A backend constructs the graph because only the backend knows
+its process topology. Roles describe purpose rather than backend-specific executable
+names:
 
 - `server` — optional backend control server;
 - `session` — the primary backend session or client;
 - `terminal` — optional attached backend UI;
 - feature components added by decorators, such as `relay`.
 
-The default executor may exec-replace ACE when the graph contains one foreground
-component. The mux executor starts graph nodes in tmux panes in dependency order and
-keeps their stdout and stderr directly inspectable.
+The local execution edge exec-replaces ACE only when the graph contains one foreground
+component. A multi-component graph returns an explicit unsupported error until the graph
+executor lands. The mux executor will start graph nodes in dependency order and keep
+their stdout and stderr directly inspectable.
+
+Codex materializes `server -> session` with a concrete Unix-socket endpoint:
+`codex app-server --listen unix://...` followed by `codex --remote unix://...`.
+OpenCode materializes the same roles with a concrete loopback HTTP endpoint:
+`opencode serve --hostname 127.0.0.1 --port ...` followed by `opencode attach ...`.
+Endpoint allocation is a runtime responsibility and is not performed during graph
+construction.
 
 The diagnostic component surface is:
 
@@ -191,9 +201,10 @@ be used when the user starts a session, as specified in [backend.md](backend.md)
 1. Route preparation and launch through `Ace::start(StartMode)`.
 2. Represent each normal backend launch as one typed process component while preserving
    exec-replace behavior.
-3. Add controlled component graphs for Codex app-server and OpenCode serve, using only
-   their sanctioned control surfaces.
-4. Add the tmux executor and `ace session` inspection, attachment, and lifecycle commands.
+3. Materialize controlled component graphs for Codex app-server and OpenCode serve,
+   using only their sanctioned control surfaces.
+4. Allocate runtime endpoints, establish primary backend handles, and add the graph
+   executor plus `ace session` inspection, attachment, and lifecycle commands.
 5. Add the connect decorator and backend receive adapters described in
    [connect.md](connect.md).
 6. Add workspace expansion and group lifecycle from [workspace.md](workspace.md).

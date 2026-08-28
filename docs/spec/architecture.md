@@ -123,8 +123,9 @@ plan type. Callers finish configuration through the existing mutation surface, t
 
 The `session/` foundation is implemented; the composition modules remain designed:
 
-- `session/` owns typed process components. Component graphs, runtime identity, thread
-  handles, and lifecycle operations extend that boundary.
+- `session/` owns typed process components, validated component graphs, dependency order,
+  and control-endpoint values. Runtime identity, thread handles, and lifecycle operations
+  extend that boundary.
 - `connect/` decorates an instance with relay identity and inbound-message requirements.
 - `workspace/` parses a root manifest and constructs independent `Ace` instances.
 - `mux/` realizes component graphs in tmux and exposes their runtime mapping.
