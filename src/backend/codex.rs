@@ -4,7 +4,7 @@ use std::process::{Command, Output, Stdio};
 
 use super::{MaterializeError, McpDecl, McpStatus, OneShotOptions, PromptInput, SessionOptions};
 use crate::config::ace_toml::Trust;
-use crate::session::{Component, Graph, Node, Role};
+use crate::session::{Component, Components, Role};
 
 pub(super) fn is_ready() -> bool {
     std::env::var("CODEX_API_KEY").is_ok()
@@ -20,22 +20,22 @@ pub(super) fn exec_session(
     effort: Option<&str>,
     options: SessionOptions,
 ) -> Result<(), std::io::Error> {
-    let graph = materialize_session_graph(launch, model, effort, &options, None)
+    let components = materialize_session_components(launch, model, effort, &options, None)
         .map_err(std::io::Error::other)?;
 
-    Err(graph.exec_replace())
+    Err(components.exec_replace())
 }
 
-pub(super) fn materialize_session_graph(
+pub(super) fn materialize_session_components(
     launch: &[String],
     model: Option<&str>,
     effort: Option<&str>,
     options: &SessionOptions,
     endpoint: Option<&crate::session::ControlEndpoint>,
-) -> Result<Graph, MaterializeError> {
+) -> Result<Components, MaterializeError> {
     let session = build_session_component(launch, model, effort, options);
     if matches!(options.backend_mode, super::BackendMode::Normal) {
-        return Ok(Graph::try_new(vec![Node::new(session, Vec::new())])?);
+        return Ok(Components::try_new(vec![session])?);
     }
     let endpoint = endpoint.ok_or(MaterializeError::MissingControlEndpoint { backend: "codex" })?;
     let Some(endpoint_url) = endpoint.unix_url() else {
@@ -69,10 +69,7 @@ pub(super) fn materialize_session_graph(
         &options.project_dir,
     );
 
-    Ok(Graph::try_new(vec![
-        Node::new(server, Vec::new()),
-        Node::new(session, vec![Role::Server]),
-    ])?)
+    Ok(Components::try_new(vec![server, session])?)
 }
 
 fn build_session_component(
@@ -609,40 +606,41 @@ mod tests {
     }
 
     #[test]
-    fn server_backed_graph_uses_app_server_and_remote_session() {
+    fn server_backed_components_use_app_server_and_remote_session() {
         let mut options = session_options();
         options.env.insert("TOKEN".into(), "secret".into());
         options.backend_mode = super::super::BackendMode::WithServer;
         let endpoint = crate::session::ControlEndpoint::Unix(PathBuf::from("/tmp/codex.sock"));
         let launch = ["wrapper".to_string(), "codex".to_string()];
 
-        let graph = materialize_session_graph(&launch, None, None, &options, Some(&endpoint))
-            .expect("valid graph");
-        let server = &graph.nodes()[0];
-        let session = &graph.nodes()[1];
+        let components =
+            materialize_session_components(&launch, None, None, &options, Some(&endpoint))
+                .expect("valid components");
+        let server = &components.items()[0];
+        let session = &components.items()[1];
 
         assert_eq!(
-            server.component().args(),
+            server.args(),
             ["codex", "app-server", "--listen", "unix:///tmp/codex.sock"]
         );
-        assert_eq!(session.dependencies(), [Role::Server]);
+        assert_eq!(session.role(), Role::Session);
         assert_eq!(
-            &session.component().args()[..3],
+            &session.args()[..3],
             ["codex", "--remote", "unix:///tmp/codex.sock"]
         );
         assert_eq!(
-            server.component().env().get("TOKEN").map(String::as_str),
+            server.env().get("TOKEN").map(String::as_str),
             Some("secret")
         );
     }
 
     #[test]
-    fn server_backed_graph_requires_an_allocated_unix_endpoint() {
+    fn server_backed_components_require_an_allocated_unix_endpoint() {
         let mut options = session_options();
         options.backend_mode = super::super::BackendMode::WithServer;
 
-        let missing = materialize_session_graph(&[], None, None, &options, None)
-            .expect_err("server-backed graph requires an endpoint");
+        let missing = materialize_session_components(&[], None, None, &options, None)
+            .expect_err("server-backed components require an endpoint");
         assert_eq!(
             missing,
             MaterializeError::MissingControlEndpoint { backend: "codex" }
@@ -655,7 +653,7 @@ mod tests {
         .expect("non-zero test port");
         let endpoint = crate::session::ControlEndpoint::LoopbackHttp(port);
 
-        let wrong = materialize_session_graph(&[], None, None, &options, Some(&endpoint))
+        let wrong = materialize_session_components(&[], None, None, &options, Some(&endpoint))
             .expect_err("Codex requires a Unix endpoint");
         assert_eq!(
             wrong,

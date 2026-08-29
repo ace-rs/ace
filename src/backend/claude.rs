@@ -3,7 +3,7 @@ use std::process::{Command, Output, Stdio};
 
 use super::{McpDecl, McpStatus, OneShotOptions, PromptInput, SessionOptions};
 use crate::config::ace_toml::Trust;
-use crate::session::{Component, Graph, Node, Role};
+use crate::session::{Component, Components, Role};
 
 pub(super) fn is_ready() -> bool {
     let Some(home) = crate::paths::home_dir() else {
@@ -18,25 +18,24 @@ pub(super) fn exec_session(
     effort: Option<&str>,
     options: SessionOptions,
 ) -> Result<(), std::io::Error> {
-    let graph = materialize_session_graph(launch, model, effort, &options, None)
+    let components = materialize_session_components(launch, model, effort, &options, None)
         .map_err(std::io::Error::other)?;
 
-    Err(graph.exec_replace())
+    Err(components.exec_replace())
 }
 
-pub(super) fn materialize_session_graph(
+pub(super) fn materialize_session_components(
     launch: &[String],
     model: Option<&str>,
     effort: Option<&str>,
     options: &SessionOptions,
     _endpoint: Option<&crate::session::ControlEndpoint>,
-) -> Result<Graph, super::MaterializeError> {
+) -> Result<Components, super::MaterializeError> {
     if matches!(options.backend_mode, super::BackendMode::WithServer) {
         return Err(super::MaterializeError::UnsupportedMode { backend: "claude" });
     }
-    Ok(Graph::try_new(vec![Node::new(
-        build_session_component(launch, model, effort, options),
-        Vec::new(),
+    Ok(Components::try_new(vec![build_session_component(
+        launch, model, effort, options,
     )])?)
 }
 

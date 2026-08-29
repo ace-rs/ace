@@ -5,7 +5,7 @@ mod opencode;
 pub mod registry;
 
 use crate::config::ConfigError;
-use crate::session::{ControlEndpoint, Graph, GraphError};
+use crate::session::{Components, ComponentsError, ControlEndpoint};
 
 /// Errors that can occur while binding a `Resolved` view to a concrete
 /// `Backend` — including pre-binding tree/merge failures bubbled through
@@ -31,7 +31,7 @@ pub enum BackendError {
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum MaterializeError {
     #[error(transparent)]
-    Graph(#[from] GraphError),
+    Components(#[from] ComponentsError),
     #[error("{backend} server-backed sessions require a control endpoint")]
     MissingControlEndpoint { backend: &'static str },
     #[error("{backend} server-backed sessions require a {expected} control endpoint")]
@@ -226,17 +226,17 @@ impl Kind {
         dispatch!(self, exec_session, cmd, model, effort, options)
     }
 
-    pub fn materialize_session_graph(
+    pub fn materialize_session_components(
         &self,
         cmd: &[String],
         model: Option<&str>,
         effort: Option<&str>,
         options: &SessionOptions,
         endpoint: Option<&ControlEndpoint>,
-    ) -> Result<Graph, MaterializeError> {
+    ) -> Result<Components, MaterializeError> {
         dispatch!(
             self,
-            materialize_session_graph,
+            materialize_session_components,
             cmd,
             model,
             effort,
@@ -355,18 +355,18 @@ impl Backend {
         )
     }
 
-    /// Materialize backend topology after runtime allocation of any required endpoint.
-    /// The graph executor is the first production consumer of this boundary.
+    /// Materialize backend components after runtime allocation of any required endpoint.
+    /// The component executor is the first production consumer of this boundary.
     #[allow(dead_code)]
-    pub fn materialize_session_graph(
+    pub fn materialize_session_components(
         &self,
         mut options: SessionOptions,
         endpoint: Option<&ControlEndpoint>,
-    ) -> Result<Graph, MaterializeError> {
+    ) -> Result<Components, MaterializeError> {
         for (key, value) in &self.env {
             options.env.insert(key.clone(), value.clone());
         }
-        self.kind.materialize_session_graph(
+        self.kind.materialize_session_components(
             &self.cmd,
             self.model.as_deref(),
             self.effort.as_deref(),
@@ -527,7 +527,7 @@ mod tests {
     }
 
     #[test]
-    fn backend_materializes_graph_through_its_sanctioned_surface() {
+    fn backend_materializes_components_through_its_sanctioned_surface() {
         let backend = Backend {
             name: "my-codex".to_string(),
             kind: Kind::Codex,
@@ -547,18 +547,18 @@ mod tests {
         };
         let endpoint = ControlEndpoint::Unix(PathBuf::from("/tmp/codex.sock"));
 
-        let graph = backend
-            .materialize_session_graph(options, Some(&endpoint))
-            .expect("valid graph");
-        let server = &graph.nodes()[0];
-        let session = &graph.nodes()[1];
+        let components = backend
+            .materialize_session_components(options, Some(&endpoint))
+            .expect("valid components");
+        let server = &components.items()[0];
+        let session = &components.items()[1];
 
-        assert_eq!(server.component().role(), Role::Server);
-        assert_eq!(session.dependencies(), [Role::Server]);
-        assert_eq!(server.component().program(), "wrapper");
-        assert_eq!(server.component().working_dir(), Path::new("/project"));
+        assert_eq!(server.role(), Role::Server);
+        assert_eq!(session.role(), Role::Session);
+        assert_eq!(server.program(), "wrapper");
+        assert_eq!(server.working_dir(), Path::new("/project"));
         assert_eq!(
-            server.component().env().get("BACKEND").map(String::as_str),
+            server.env().get("BACKEND").map(String::as_str),
             Some("configured")
         );
     }

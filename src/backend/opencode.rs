@@ -4,7 +4,7 @@ use std::process::Output;
 
 use super::{MaterializeError, McpDecl, McpStatus, OneShotOptions, SessionOptions};
 use crate::config::ace_toml::Trust;
-use crate::session::{Component, Graph, Node, Role};
+use crate::session::{Component, Components, Role};
 
 pub(super) fn is_ready() -> bool {
     let auth = auth_path();
@@ -22,22 +22,22 @@ pub(super) fn exec_session(
 ) -> Result<(), std::io::Error> {
     write_agent_file(&options.project_dir, &options.session_prompt, model, effort)?;
 
-    let graph = materialize_session_graph(launch, model, effort, &options, None)
+    let components = materialize_session_components(launch, model, effort, &options, None)
         .map_err(std::io::Error::other)?;
 
-    Err(graph.exec_replace())
+    Err(components.exec_replace())
 }
 
-pub(super) fn materialize_session_graph(
+pub(super) fn materialize_session_components(
     launch: &[String],
     model: Option<&str>,
     effort: Option<&str>,
     options: &SessionOptions,
     endpoint: Option<&crate::session::ControlEndpoint>,
-) -> Result<Graph, MaterializeError> {
+) -> Result<Components, MaterializeError> {
     let session = build_session_component(launch, model, effort, options);
     if matches!(options.backend_mode, super::BackendMode::Normal) {
-        return Ok(Graph::try_new(vec![Node::new(session, Vec::new())])?);
+        return Ok(Components::try_new(vec![session])?);
     }
     let endpoint = endpoint.ok_or(MaterializeError::MissingControlEndpoint {
         backend: "opencode",
@@ -83,10 +83,7 @@ pub(super) fn materialize_session_graph(
         &options.project_dir,
     );
 
-    Ok(Graph::try_new(vec![
-        Node::new(server, Vec::new()),
-        Node::new(session, vec![Role::Server]),
-    ])?)
+    Ok(Components::try_new(vec![server, session])?)
 }
 
 fn build_session_component(
@@ -395,7 +392,7 @@ mod tests {
     }
 
     #[test]
-    fn server_backed_graph_uses_serve_and_attach() {
+    fn server_backed_components_use_serve_and_attach() {
         let mut options = session_options();
         options.resume = super::super::ResumeMode::Latest;
         options.env.insert("TOKEN".into(), "secret".into());
@@ -409,16 +406,17 @@ mod tests {
         let endpoint = crate::session::ControlEndpoint::LoopbackHttp(port);
         let launch = ["wrapper".to_string(), "opencode".to_string()];
 
-        let graph = materialize_session_graph(&launch, None, None, &options, Some(&endpoint))
-            .expect("valid graph");
-        let server = &graph.nodes()[0];
-        let session = &graph.nodes()[1];
+        let components =
+            materialize_session_components(&launch, None, None, &options, Some(&endpoint))
+                .expect("valid components");
+        let server = &components.items()[0];
+        let session = &components.items()[1];
         let port = port.get().to_string();
         let url = format!("http://127.0.0.1:{port}");
 
-        assert_eq!(server.component().role(), crate::session::Role::Server);
+        assert_eq!(server.role(), crate::session::Role::Server);
         assert_eq!(
-            server.component().args(),
+            server.args(),
             [
                 "opencode",
                 "serve",
@@ -428,29 +426,28 @@ mod tests {
                 &port
             ]
         );
-        assert_eq!(session.dependencies(), [crate::session::Role::Server]);
-        assert_eq!(session.component().role(), crate::session::Role::Session);
+        assert_eq!(session.role(), crate::session::Role::Session);
         assert_eq!(
-            &session.component().args()[..5],
+            &session.args()[..5],
             ["opencode", "attach", &url, "--dir", "/tmp"]
         );
-        assert_eq!(&session.component().args()[5..], ["--continue", "--mini"]);
-        for node in graph.nodes() {
-            assert_eq!(node.component().working_dir(), Path::new("/tmp"));
+        assert_eq!(&session.args()[5..], ["--continue", "--mini"]);
+        for component in components.items() {
+            assert_eq!(component.working_dir(), Path::new("/tmp"));
             assert_eq!(
-                node.component().env().get("TOKEN").map(String::as_str),
+                component.env().get("TOKEN").map(String::as_str),
                 Some("secret")
             );
         }
     }
 
     #[test]
-    fn server_backed_graph_rejects_non_http_endpoint() {
+    fn server_backed_components_reject_non_http_endpoint() {
         let mut options = session_options();
         options.backend_mode = super::super::BackendMode::WithServer;
         let endpoint = crate::session::ControlEndpoint::Unix(PathBuf::from("/tmp/opencode.sock"));
 
-        let error = materialize_session_graph(&[], None, None, &options, Some(&endpoint))
+        let error = materialize_session_components(&[], None, None, &options, Some(&endpoint))
             .expect_err("OpenCode requires a loopback HTTP endpoint");
 
         assert_eq!(

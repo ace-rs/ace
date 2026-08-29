@@ -64,17 +64,18 @@ Each backend must provide:
   level to the user — the backend runs with its own default permissions; the level is
   never dropped silently.
 - **`exec_session(options)`** — launch an interactive backend session via exec-replace.
-  Builds one typed `Component` from `SessionOptions` (trust, session prompt, project dir,
-  env, extra args, typed resume mode, backend mode), then converts that component to a
-  process command at the execution edge. Returns `io::Error` on spawn failure; never
-  returns on success (terminal hands off to the child). In `Latest` mode, some backends
-  may fail if no prior session exists (Claude) while others handle it gracefully (Codex).
-  ACE prints a hint before exec so the user knows to run `ace new` on failure. See
+  Materializes a validated one-component `Components` list from `SessionOptions`, then
+  converts its terminal session component to a process command at the execution edge.
+  Returns `io::Error` on spawn failure; never returns on success (terminal hands off to
+  the child). In `Latest` mode, some backends may fail if no prior session exists (Claude)
+  while others handle it gracefully (Codex). ACE prints a hint before exec so the user
+  knows to run `ace new` on failure. See
   [backends/claude.md → Session Resume](backends/claude.md#session-resume).
-- **`materialize_session_graph(options, endpoint)`** — construct the validated process
-  graph through the resolved `Backend` boundary. The endpoint is absent for normal mode
-  and must already be allocated for server-backed mode; backends validate the transport
-  they support. This method does not execute components or establish protocol handles.
+- **`materialize_session_components(options, endpoint)`** — construct the validated
+  ordered `session::Components` startup list through the resolved `Backend` boundary.
+  The endpoint is absent for normal mode and must already be allocated for server-backed
+  mode; backends validate the transport they support. This method does not execute
+  components or establish protocol handles.
 - **`exec_one_shot(options)`** — spawn the backend non-interactively and capture
   stdout/stderr. Builds its Command from `OneShotOptions` (prompt source, project dir,
   env, extra args; no resume, trust, or session prompt — the non-interactive entry point
@@ -97,21 +98,36 @@ See per-backend specs for implementation details.
 ### Managed-session contract
 
 `exec_session` is the implemented single-component transport. `Ace::start` supplies a
-`BackendMode`; every normal launch now passes through a validated graph before the local
-execution edge exec-replaces ACE.
+`BackendMode`; every normal launch now passes through validated `Components` before the
+local execution edge exec-replaces ACE.
 
-`session` owns graph structure, validation, process roles, and typed control endpoints.
-Each backend materializes its topology into that graph while preserving environment,
-working directory, configured launch wrappers, and backend arguments. Codex requires a
-concrete Unix-socket endpoint; OpenCode requires a concrete loopback HTTP endpoint. The
-local execution edge preserves exec-replace for a one-component foreground graph;
+`session` owns list validation, process roles, and typed control endpoints. Each backend
+materializes its topology into an ordered list while preserving environment, working
+directory, configured launch wrappers, and backend arguments. Every included component
+is essential, and exactly one terminal component has the `session` role. Codex requires
+a concrete Unix-socket endpoint; OpenCode requires a concrete loopback HTTP endpoint.
+The local execution edge preserves exec-replace for a one-component foreground list;
 multi-component execution is not implemented.
 
 Connect selects `BackendMode::WithServer` before materialization. The runtime supplies
-the allocated endpoint separately from that launch intent.
-Each backend either produces a sanctioned receive component and primary-session target or
-reports the requirement unsupported. No caller branches on `Kind` to construct Codex or
-OpenCode process topology.
+the allocated endpoint separately from that launch intent. Each backend produces its
+backend-owned control/session components and primary-session target or reports the
+requirement unsupported. The connect decorator then inserts its relay before the terminal
+session; no backend or executor owns relay semantics. No caller branches on `Kind` to
+construct Codex or OpenCode process topology.
+
+List order governs startup only. The executor waits for each component owner's readiness
+before starting the next. The backend controller establishes the primary handle before
+starting any client or relay that consumes it; connect owns relay readiness.
+
+The runtime reconciles the cohort with every component owner before classifying its
+outcome; the first observed exit never decides it. A successful terminal-session exit and
+every owner-classified cascade are normal completion. An abnormal terminal-session exit
+or unrelated component loss fails the managed session. Cleanup is idempotent and
+tolerates cascaded exits and already-dead processes. It may inspect remaining components
+in reverse startup order for determinism, but correctness never depends on shutdown order.
+Cleanup-induced exits never overwrite a recorded failure. Automatic restart is not part
+of this contract.
 
 Backend capabilities describe facts, including controlled startup, primary-session
 input, thread listing, and native resume. They do not promise task tracking, generic

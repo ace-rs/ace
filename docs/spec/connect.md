@@ -23,10 +23,10 @@ A project opts into connected startup through its existing configuration:
 enabled = true
 ```
 
-Bare `ace` resolves this setting before launch. The built-in connect decorator adds a
-relay identity and selects `BackendMode::WithServer`. The selected backend then
-materializes a connect-compatible component graph; there is no separate
-`ace connect start` path.
+Bare `ace` resolves this setting before launch. Connect selects
+`BackendMode::WithServer`, the backend materializes its control and terminal-session
+components, and the built-in connect decorator inserts its relay immediately before the
+terminal session. There is no separate `ace connect start` path.
 
 Connected startup cannot generally be retrofitted onto an arbitrary backend process.
 Codex and OpenCode must be born through their server/control surfaces so ACE has the
@@ -86,8 +86,8 @@ history, and structured artifacts are outside this contract.
 ### Codex
 
 Connected Codex uses its documented app-server surface. The configured `Ace` starts the
-server, establishes the primary thread, attaches the native client UI, and starts the
-relay adapter. Incoming messages target the primary thread through the sanctioned
+server, establishes the primary thread, starts the relay adapter, and finally attaches
+the native client UI. Incoming messages target the primary thread through the sanctioned
 thread/turn API.
 
 ACE may list backend-native child threads for inspection, but the relay does not address
@@ -97,8 +97,9 @@ connected session.
 ### OpenCode
 
 Connected OpenCode uses `opencode serve` and its documented session API. The instance
-plan owns the server and primary session before starting the client and relay adapter.
-Incoming messages target that primary session.
+component list starts the server first. Its backend controller waits for readiness and
+establishes the primary session before starting the relay adapter and, finally, the
+client. Incoming messages target that primary session.
 
 ### Claude
 
@@ -115,6 +116,12 @@ reports that capability gap. ACE does not emulate a control API with terminal ke
 Connect decorates a session plan; it does not execute the plan. The local or mux executor
 places the backend and relay components. Their lifecycles are coordinated because they
 belong to one ACE instance, not because the relay became a supervisor.
+
+Every decorated component is essential. Connect owns relay readiness and exit semantics;
+the backend owns its native cascade classification. The cohort is reconciled before its
+outcome is classified, so a successful user exit remains normal even when ACE observes a
+cascaded backend or relay exit first. Connect classifies whether a relay exit belongs to
+that normal cascade or represents independent component failure.
 
 Workspace mode enables the same decorator for every member and supplies their peer names.
 The transport itself remains unaware of workspace configuration.

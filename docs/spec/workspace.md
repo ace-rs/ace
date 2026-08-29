@@ -82,8 +82,8 @@ repository contents beyond validating its declared path and ACE configuration.
 ## Mux realization
 
 The mux executor creates one named tmux session for the workspace and one window per
-member. Each window runs that member's component graph in panes: backend control server,
-primary session or UI, and relay where required.
+member. Each window runs that member's ordered component list in panes: backend control
+server, relay where required, and the terminal primary session or UI.
 
 tmux is the viewing surface. Users inspect or switch agents with normal tmux window and
 pane commands; ACE does not implement a screen switcher, transcript renderer, or agent
@@ -105,13 +105,14 @@ ACE does not create SSH tunnels or manage remote hosts.
 ## Lifecycle
 
 Starting a workspace prepares every enabled project, configures every `Ace`, validates
-the combined process graph, then starts it through mux. A partial startup reports exactly
-which components are live and which failed; it never labels the whole workspace healthy.
+each member's component list, then starts it through mux. Each member starts in list order
+and gates the next component on readiness. A partial startup reports exactly which
+components are live and which failed; it never labels the whole workspace healthy.
 
 Stopping coordinates the owned member processes and tmux session. Detaching leaves every
-process running. The first release does not require suspend, automatic restart, durable
-event history, wake-idle policy, or reconnection beyond attaching to the live tmux
-session.
+process running. Cleanup is idempotent and tolerates already-dead processes. The first
+release does not include suspend, automatic restart, durable event history, wake-idle
+policy, or reconnection beyond attaching to the live tmux session.
 
 Backend-native resume remains a member-session behavior. Later suspend or wake support
 must enter as explicit backend capabilities and concrete lifecycle operations, not as a
@@ -132,8 +133,8 @@ thread or session. No task tracking or child-thread routing is introduced.
 1. Parse and validate `workspace.toml` into a pure root plan.
 2. Resolve each member through the existing project configuration pipeline.
 3. Construct and configure one `Ace` per member as specified in [session.md](session.md).
-4. Validate names, paths, backend capabilities, and the combined component graph.
-5. Execute the graph through mux and expose list, status, attach, and stop.
+4. Validate names, paths, backend capabilities, and each component list.
+5. Execute the component lists through mux and expose list, status, attach, and stop.
 6. Enable connect decoration for every member and verify peer discovery across windows.
 
 Workspace implementation starts only after one managed connected session works end to

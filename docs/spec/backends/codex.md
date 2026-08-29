@@ -69,14 +69,23 @@ error or crash on first run.
 ## Managed and connected sessions
 
 Codex advertises controlled startup, primary-thread input, native resume, and thread
-listing through its documented app-server surface. A connect-compatible component graph
-starts app-server on its sanctioned Unix-socket transport, establishes or resumes the
-primary thread, attaches the native client UI, and runs the local relay adapter.
+listing through its documented app-server surface. The backend materializes app-server
+on its sanctioned Unix-socket transport followed by the native client UI as the terminal
+`session` component. Connect inserts its relay between them. Every listed component is
+essential.
 
-The implemented graph boundary materializes the first two process roles as
-`codex app-server --listen unix://...` followed by a dependent
+The implemented component boundary materializes the first two process roles as
+`codex app-server --listen unix://...` followed by
 `codex --remote unix://...` session. Runtime endpoint allocation and primary-thread
 establishment remain part of the later controller/executor boundary.
+
+The controller waits for app-server readiness and establishes the primary-thread handle
+before starting its consumers. It also classifies Codex-native shutdown cascades so exit
+observation order does not decide the outcome. A successful user exit from the native
+client and its app-server cascade complete normally; unrelated app-server loss or an
+abnormal client exit fails the session. Connect classifies relay exits and may include
+them in the normal user-exit cascade. Cleanup is idempotent, and ACE does not restart the
+component list.
 
 The primary thread is the only ACE-connect delivery target. Parent/child relationships
 and loaded native threads may be exposed by `ace session inspect`, but ACE does not own

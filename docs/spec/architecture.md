@@ -20,13 +20,15 @@ bindings are built only when a command reaches for them. Cache invalidation is e
 Session launch adds a second demand-driven pipeline after preparation:
 
 ```text
-workspace expansion → configured Ace instances → instance decoration
-                    → backend component graph → local or mux execution
+workspace expansion → configured Ace instances → feature requirements
+                    → backend component lists → feature component decoration
+                    → local or mux execution
 ```
 
 ACE always owns this pipeline. Workspace, connect, and mux begin as built-in modules,
-not installable plugins: workspace expands plans, connect decorates instances, and the
-chosen executor realizes components. See [session.md](session.md).
+not installable plugins: workspace expands plans; connect first requests controlled
+startup, then inserts its relay after the backend supplies its components; and the chosen
+executor realizes the final list. See [session.md](session.md).
 
 ## Dependency law
 
@@ -123,12 +125,12 @@ plan type. Callers finish configuration through the existing mutation surface, t
 
 The `session/` foundation is implemented; the composition modules remain designed:
 
-- `session/` owns typed process components, validated component graphs, dependency order,
-  and control-endpoint values. Runtime identity, thread handles, and lifecycle operations
-  extend that boundary.
+- `session/` owns typed process components, the validated ordered `Components` startup
+  list, and control-endpoint values. Runtime identity, thread handles, and lifecycle
+  operations extend that boundary.
 - `connect/` decorates an instance with relay identity and inbound-message requirements.
 - `workspace/` parses a root manifest and constructs independent `Ace` instances.
-- `mux/` realizes component graphs in tmux and exposes their runtime mapping.
+- `mux/` realizes component lists in tmux and exposes their runtime mapping.
 
 Dependency direction is:
 

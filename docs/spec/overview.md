@@ -79,9 +79,14 @@ relationship to projects.
 12. **Configure instances** — construct one `Ace` per project, apply its resolved
     configuration, and choose a structurally valid `StartMode`; workspace mode may
     produce several independently configured instances.
-13. **Materialize backend components** — translate each instance into its backend's
-    sanctioned process graph and primary-session handle.
-14. **Execute** — exec-replace for a simple foreground session or use tmux for a managed
+13. **Resolve feature requirements** — let enabled features select launch requirements;
+    connect selects controlled backend mode before materialization.
+14. **Materialize backend components** — translate each instance into its backend's
+    ordered `session::Components` startup list. Every listed component is essential;
+    the backend controller establishes the primary-session handle during startup.
+15. **Decorate instances** — insert enabled feature components, such as the connect
+    relay, before the terminal session component.
+16. **Execute** — exec-replace for a simple foreground session or use tmux for a managed
     session/workspace, then attach the backend's own terminal UI.
 
 The implemented path currently goes directly from backend selection to exec-replace.

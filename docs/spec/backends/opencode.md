@@ -69,13 +69,22 @@ message).
 ## Managed and connected sessions
 
 OpenCode advertises controlled startup, primary-session input, and native resume through
-its documented server/session API. A connect-compatible component graph starts
-`opencode serve`, creates or resumes the primary session, attaches the native client, and
-runs the local relay adapter.
+its documented server/session API. The backend materializes `opencode serve` followed by
+the attached native client as the terminal `session` component. Connect inserts its relay
+between them. Every listed component is essential.
 
-The implemented graph boundary materializes `opencode serve` on a supplied loopback HTTP
-endpoint followed by a dependent `opencode attach` session. Runtime endpoint allocation
-and primary-session establishment remain part of the later controller/executor boundary.
+The implemented component boundary materializes `opencode serve` on a supplied loopback
+HTTP endpoint followed by an `opencode attach` session. Runtime endpoint
+allocation and primary-session establishment remain part of the later
+controller/executor boundary.
+
+The controller waits for the server health endpoint and establishes the primary-session
+handle before starting its consumers. It also classifies OpenCode-native shutdown
+cascades so exit observation order does not decide the outcome. A successful user exit
+from the attached client and its server cascade complete normally; unrelated server loss
+or an abnormal client exit fails the session. Connect classifies relay exits and may
+include them in the normal user-exit cascade. Cleanup is idempotent, and ACE does not
+restart the component list.
 
 ACE-connect delivers only to that primary session. Backend-native subagents remain
 OpenCode-owned and are not relay addresses. An ordinary interactive process without its

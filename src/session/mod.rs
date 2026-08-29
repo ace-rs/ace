@@ -10,8 +10,8 @@ pub enum Role {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-// The runtime allocator lands with the graph executor; backend materializers consume
-// these endpoint values now so their process topology is concrete and testable first.
+// The runtime allocator lands with the component executor; backend materializers consume
+// these endpoint values now so their process sequence is concrete and testable first.
 #[allow(dead_code)]
 pub enum ControlEndpoint {
     Unix(PathBuf),
@@ -37,15 +37,15 @@ impl ControlEndpoint {
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
-pub enum GraphError {
-    #[error("a component graph must contain at least one node")]
+pub enum ComponentsError {
+    #[error("a session component list must contain at least one component")]
     Empty,
     #[error("component role `{0:?}` occurs more than once")]
     DuplicateRole(Role),
-    #[error("component `{role:?}` depends on missing component `{dependency:?}`")]
-    MissingDependency { role: Role, dependency: Role },
-    #[error("component graph contains a dependency cycle")]
-    Cycle,
+    #[error("a session component list must contain a session component")]
+    MissingSession,
+    #[error("the session component must be last")]
+    SessionNotTerminal,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -135,7 +135,7 @@ impl Component {
         match self.role {
             Role::Server => std::io::Error::new(
                 std::io::ErrorKind::Unsupported,
-                "server components require a graph executor",
+                "server components require a component executor",
             ),
             Role::Session => crate::platform::exec_replace(self.command()),
         }
@@ -143,99 +143,50 @@ impl Component {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Node {
-    component: Component,
-    dependencies: Vec<Role>,
+pub struct Components {
+    items: Vec<Component>,
 }
 
-impl Node {
-    pub fn new(component: Component, dependencies: Vec<Role>) -> Self {
-        Self {
-            component,
-            dependencies,
-        }
-    }
-
-    #[cfg(test)]
-    pub fn component(&self) -> &Component {
-        &self.component
-    }
-
-    #[cfg(test)]
-    pub fn dependencies(&self) -> &[Role] {
-        &self.dependencies
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Graph {
-    nodes: Vec<Node>,
-}
-
-impl Graph {
-    pub fn try_new(nodes: Vec<Node>) -> Result<Self, GraphError> {
-        if nodes.is_empty() {
-            return Err(GraphError::Empty);
+impl Components {
+    pub fn try_new(items: Vec<Component>) -> Result<Self, ComponentsError> {
+        if items.is_empty() {
+            return Err(ComponentsError::Empty);
         }
 
-        let mut roles = HashSet::with_capacity(nodes.len());
-        for node in &nodes {
-            let role = node.component.role();
+        let mut roles = HashSet::with_capacity(items.len());
+        for component in &items {
+            let role = component.role();
             if !roles.insert(role) {
-                return Err(GraphError::DuplicateRole(role));
+                return Err(ComponentsError::DuplicateRole(role));
             }
         }
-        for node in &nodes {
-            let role = node.component.role();
-            for dependency in &node.dependencies {
-                if !roles.contains(dependency) {
-                    return Err(GraphError::MissingDependency {
-                        role,
-                        dependency: *dependency,
-                    });
-                }
-            }
+        let Some(session_index) = items
+            .iter()
+            .position(|component| component.role() == Role::Session)
+        else {
+            return Err(ComponentsError::MissingSession);
+        };
+        if session_index != items.len() - 1 {
+            return Err(ComponentsError::SessionNotTerminal);
         }
 
-        let mut remaining = nodes;
-        let mut ordered = Vec::with_capacity(remaining.len());
-        let mut satisfied = HashSet::with_capacity(remaining.len());
-        while !remaining.is_empty() {
-            let Some(index) = remaining.iter().position(|node| {
-                node.dependencies
-                    .iter()
-                    .all(|role| satisfied.contains(role))
-            }) else {
-                return Err(GraphError::Cycle);
-            };
-            let node = remaining.remove(index);
-            satisfied.insert(node.component.role());
-            ordered.push(node);
-        }
-
-        Ok(Self { nodes: ordered })
+        Ok(Self { items })
     }
 
     #[cfg(test)]
-    pub fn nodes(&self) -> &[Node] {
-        &self.nodes
+    pub fn items(&self) -> &[Component] {
+        &self.items
     }
 
-    pub fn exec_replace(self) -> std::io::Error {
-        let mut nodes = self.nodes.into_iter();
-        let Some(node) = nodes.next() else {
-            return std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "cannot execute an empty component graph",
-            );
-        };
-        if nodes.next().is_some() {
+    pub fn exec_replace(mut self) -> std::io::Error {
+        if self.items.len() != 1 {
             return std::io::Error::new(
                 std::io::ErrorKind::Unsupported,
-                "multi-component graphs require a graph executor",
+                "multi-component sessions require a component executor",
             );
         }
-        node.component.exec_replace()
+
+        self.items.remove(0).exec_replace()
     }
 }
 
@@ -289,80 +240,61 @@ mod tests {
     }
 
     #[test]
-    fn graph_orders_dependencies_before_dependants() {
-        let graph = Graph::try_new(vec![
-            Node::new(component(Role::Session), vec![Role::Server]),
-            Node::new(component(Role::Server), Vec::new()),
-        ])
-        .expect("valid graph");
+    fn components_require_a_terminal_session() {
+        assert_eq!(Components::try_new(Vec::new()), Err(ComponentsError::Empty));
 
-        let roles = graph
-            .nodes()
+        let duplicate = Components::try_new(vec![
+            component(Role::Server),
+            component(Role::Server),
+            component(Role::Session),
+        ])
+        .expect_err("duplicate roles must fail");
+        assert_eq!(duplicate, ComponentsError::DuplicateRole(Role::Server));
+
+        let missing = Components::try_new(vec![component(Role::Server)])
+            .expect_err("a session component is required");
+        assert_eq!(missing, ComponentsError::MissingSession);
+
+        let nonterminal =
+            Components::try_new(vec![component(Role::Session), component(Role::Server)])
+                .expect_err("the session component must be terminal");
+        assert_eq!(nonterminal, ComponentsError::SessionNotTerminal);
+    }
+
+    #[test]
+    fn components_preserve_startup_order() {
+        let components =
+            Components::try_new(vec![component(Role::Server), component(Role::Session)])
+                .expect("valid components");
+        let roles = components
+            .items()
             .iter()
-            .map(|node| node.component().role())
+            .map(Component::role)
             .collect::<Vec<_>>();
 
         assert_eq!(roles, [Role::Server, Role::Session]);
     }
 
     #[test]
-    fn graph_rejects_empty_input() {
-        assert_eq!(Graph::try_new(Vec::new()), Err(GraphError::Empty));
+    fn components_accept_a_single_terminal_session() {
+        let components = Components::try_new(vec![component(Role::Session)])
+            .expect("a normal session is a complete component list");
+
+        assert_eq!(components.items()[0].role(), Role::Session);
     }
 
     #[test]
-    fn graph_rejects_duplicate_roles() {
-        let error = Graph::try_new(vec![
-            Node::new(component(Role::Session), Vec::new()),
-            Node::new(component(Role::Session), Vec::new()),
-        ])
-        .expect_err("duplicate role must fail");
+    fn multi_component_session_requires_an_executor() {
+        let components =
+            Components::try_new(vec![component(Role::Server), component(Role::Session)])
+                .expect("valid components");
 
-        assert_eq!(error, GraphError::DuplicateRole(Role::Session));
-    }
-
-    #[test]
-    fn graph_rejects_missing_dependencies() {
-        let error = Graph::try_new(vec![Node::new(
-            component(Role::Session),
-            vec![Role::Server],
-        )])
-        .expect_err("missing dependency must fail");
-
-        assert_eq!(
-            error,
-            GraphError::MissingDependency {
-                role: Role::Session,
-                dependency: Role::Server,
-            }
-        );
-    }
-
-    #[test]
-    fn graph_rejects_cycles() {
-        let error = Graph::try_new(vec![
-            Node::new(component(Role::Server), vec![Role::Session]),
-            Node::new(component(Role::Session), vec![Role::Server]),
-        ])
-        .expect_err("cycle must fail");
-
-        assert_eq!(error, GraphError::Cycle);
-    }
-
-    #[test]
-    fn multi_component_graph_requires_an_executor() {
-        let graph = Graph::try_new(vec![
-            Node::new(component(Role::Server), Vec::new()),
-            Node::new(component(Role::Session), vec![Role::Server]),
-        ])
-        .expect("valid graph");
-
-        let error = graph.exec_replace();
+        let error = components.exec_replace();
 
         assert_eq!(error.kind(), std::io::ErrorKind::Unsupported);
         assert_eq!(
             error.to_string(),
-            "multi-component graphs require a graph executor"
+            "multi-component sessions require a component executor"
         );
     }
 }
