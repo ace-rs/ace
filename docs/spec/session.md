@@ -39,6 +39,10 @@ Bare `ace` remains the normal entry point. In a project it prepares the project,
 or resumes its default session, and attaches the terminal. The explicit commands expose
 the same primitive for composition and inspection.
 
+Unless `--name` is supplied, the instance name follows the ACE-connect slug convention:
+`<parent>.<workdir>.<backend>`. ACE prepends another ancestor segment when that slug
+collides with an existing instance from a same-named parent directory.
+
 ## Ownership
 
 ACE owns:
@@ -116,9 +120,9 @@ arguments, environment, and working directory. Only its execution edge converts 
 data into `std::process::Command`; component construction can compose process data before
 execution.
 
-Normal Claude, Codex, and OpenCode sessions each construct one `session` component and
-exec-replace ACE with it. This preserves the existing foreground behavior while giving
-multi-process planning a real component type to compose.
+Normal Claude, Codex, and OpenCode sessions each construct one `session` component. ACE
+spawns that component under the runtime and remains its owner until shutdown; it does not
+exec-replace itself with the backend process.
 
 `session::Components` is a non-empty ordered list with exactly one terminal `session`
 component. Every included component is essential by construction: ACE never starts an
@@ -135,10 +139,9 @@ rather than backend-specific executable names:
 List order governs startup only. The executor starts each component after the preceding
 component's owner reports it ready. A backend controller owns protocol readiness and
 establishes the primary backend-session handle before any consumer of that handle starts;
-connect owns relay readiness. The local execution edge exec-replaces ACE only when the
-list contains one foreground component. A multi-component list returns an explicit
-unsupported error until the component executor lands. The mux executor keeps each
-component's stdout and stderr directly inspectable.
+connect owns relay readiness. The local executor owns singleton and multi-component lists
+through the same runtime. The mux executor keeps each component's stdout and stderr
+directly inspectable.
 
 Codex materializes `server -> session` with a concrete Unix-socket endpoint:
 `codex app-server --listen unix://...` followed by `codex --remote unix://...`.
@@ -146,6 +149,21 @@ OpenCode materializes the same roles with a concrete loopback HTTP endpoint:
 `opencode serve --hostname 127.0.0.1 --port ...` followed by `opencode attach ...`.
 Endpoint allocation is a runtime responsibility and is not performed during component
 construction.
+
+TCP endpoint allocation is deterministic. ACE builds the occupied-port set in-process,
+without invoking `lsof` or another executable, then selects the first absent port in
+ascending numeric order from 50000.
+
+Unix control sockets live at:
+
+```text
+${XDG_RUNTIME_DIR:-$HOME/.ace/run}/sessions/<parent>.<workdir>.<backend>.sock
+```
+
+Each socket has a persistent sibling lock file at `sessions/<slug>.lock`. ACE opens the
+file, acquires an exclusive advisory kernel lock, and holds that lock for the instance
+lifetime. A held lock identifies a live owner. A crash releases the kernel lock; the next
+owner removes only the stale socket and reuses the lock file.
 
 The diagnostic component surface is:
 
@@ -173,6 +191,19 @@ Codex and OpenCode require controlled startup to obtain the server and primary-s
 handles. Claude may expose less structured identity; the backend advertises what it can
 provide instead of ACE manufacturing a false common model.
 
+## Runtime work model
+
+The runtime uses regular operating-system threads and channels, not an async runtime. It
+supports workload lifecycles that may coexist:
+
+- supervised components and background services are long-lived owned threads;
+- finite concurrent jobs use scoped-thread fan-out and must complete before ACE exits.
+
+The terminal `session` component is the main UI workload. When it exits, the runtime
+begins teardown of the remaining long-lived components and services. Finite background
+jobs continue draining; unfinished jobs render as spinners and completed jobs render as
+green checks until all have completed.
+
 ## Lifecycle
 
 The terminal `session` component is the main user-facing process. Exit observation order
@@ -190,6 +221,10 @@ traverse reverse startup order for deterministic behavior, but that order is not
 correctness requirement: a backend may cascade one process exit into others. Every stop
 operation is idempotent and treats an already-dead process as cleaned up.
 
+On Unix, coordinated teardown sends SIGTERM to every remaining component, displays the
+unfinished cohort during one five-second grace period, then sends SIGKILL to every
+survivor. The grace period applies to the cohort as a whole, not once per component.
+
 The managed-session contract has no automatic restart. A later start may use the
 backend's native resume behavior, but it creates a new managed session.
 
@@ -203,6 +238,10 @@ ACE records enough runtime metadata to map an instance name to its tmux socket, 
 window, panes, process roles, backend session, and relay identity. `ace session inspect`
 prints that mapping. Runtime metadata is operational identity, not a task store or
 transcript.
+
+Durable runtime metadata is a later capability. When it lands, it is centralized under
+the top-level ACE runtime root and uses an ACID store such as SQLite; per-instance TOML
+files are not the runtime record.
 
 Remote use requires no ACE network protocol:
 
@@ -231,12 +270,14 @@ still be used when the user starts a session, as specified in
    exec-replace behavior.
 3. Materialize controlled component lists for Codex app-server and OpenCode serve,
    using only their sanctioned control surfaces.
-4. Allocate runtime endpoints, establish primary backend handles, and add the component
-   executor plus `ace session` inspection, attachment, and lifecycle commands.
-5. Add the connect decorator and backend receive adapters described in
+4. Replace exec-replace with the thread-and-channel runtime and coordinated component
+   supervision.
+5. Allocate runtime endpoints, establish primary backend handles, and add `ace session`
+   inspection, attachment, and lifecycle commands.
+6. Add the connect decorator and backend receive adapters described in
    [connect.md](connect.md).
-6. Add workspace expansion and group lifecycle from [workspace.md](workspace.md).
-7. Add suspend, wake, reconnect, or richer status only when a concrete workflow requires
+7. Add workspace expansion and group lifecycle from [workspace.md](workspace.md).
+8. Add suspend, wake, reconnect, or richer status only when a concrete workflow requires
    each capability.
 
 Every phase preserves bare `ace` as the common entry point and ships with a corresponding
