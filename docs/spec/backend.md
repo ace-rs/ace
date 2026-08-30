@@ -54,7 +54,7 @@ backend-dependent commands generally, including bare `ace`, `ace mcp`, `ace conf
 
 Each backend must provide:
 
-- **`binary()`** — executable name on `$PATH`, used for exec.
+- **`binary()`** — executable name on `$PATH`, used for process launch.
 - **`backend_dir()`** — project directory where school folders are linked.
 - **`instructions_file()`** — markdown file generated per-project during setup.
 - **`is_ready()`** — heuristic check that the backend is authenticated/configured.
@@ -63,13 +63,14 @@ Each backend must provide:
   none). Before launching a session, ACE checks this and announces an unsupported
   level to the user — the backend runs with its own default permissions; the level is
   never dropped silently.
-- **`exec_session(options)`** — launch an interactive backend session via exec-replace.
+- **`exec_session(options)`** — launch an interactive backend session under ACE
+  supervision.
   Materializes a validated one-component `Components` list from `SessionOptions`, then
-  converts its terminal session component to a process command at the execution edge.
-  Returns `io::Error` on spawn failure; never returns on success (terminal hands off to
-  the child). In `Latest` mode, some backends may fail if no prior session exists (Claude)
-  while others handle it gracefully (Codex). ACE prints a hint before exec so the user
-  knows to run `ace new` on failure. See
+  spawns its terminal session component with inherited terminal streams and waits for it.
+  Returns `io::Error` on spawn or wait failure and propagates the child's exit status. In
+  `Latest` mode, some backends may fail if no prior session exists (Claude) while others
+  handle it gracefully (Codex). ACE prints a hint before launch so the user knows to run
+  `ace new` on failure. See
   [backends/claude.md → Session Resume](backends/claude.md#session-resume).
 - **`materialize_session_components(options, endpoint)`** — construct the validated
   ordered `session::Components` startup list through the resolved `Backend` boundary.
@@ -98,16 +99,16 @@ See per-backend specs for implementation details.
 ### Managed-session contract
 
 `exec_session` is the implemented single-component transport. `Ace::start` supplies a
-`BackendMode`; every normal launch now passes through validated `Components` before the
-local execution edge exec-replaces ACE.
+`BackendMode`; every normal launch passes through validated `Components` before the local
+execution edge spawns and waits for the terminal process.
 
 `session` owns list validation, process roles, and typed control endpoints. Each backend
 materializes its topology into an ordered list while preserving environment, working
 directory, configured launch wrappers, and backend arguments. Every included component
 is essential, and exactly one terminal component has the `session` role. Codex requires
 a concrete Unix-socket endpoint; OpenCode requires a concrete loopback HTTP endpoint.
-The local execution edge preserves exec-replace for a one-component foreground list;
-multi-component execution is not implemented.
+The local execution edge supervises a one-component foreground list. Multi-component
+execution remains unavailable until readiness and owner-classified exit handling land.
 
 Connect selects `BackendMode::WithServer` before materialization. The runtime supplies
 the allocated endpoint separately from that launch intent. Each backend produces its
@@ -137,11 +138,10 @@ wake-idle behavior, or a shared subagent model. See [session.md](session.md) and
 ## Intent Mapping
 
 `exec_session` and `exec_one_shot` are the two transport methods — deliberately two, not
-one `exec(Intent)`: the return types differ fundamentally (never-returns vs captured
-`Output`), and a unified signature would lie about that at the type level. Each backend
-builds its argv from the matching options type. The argv builder is the polymorphic core;
-the session path carries it in a component before exec-replace, while one-shot builds and
-captures its subprocess directly.
+one `exec(Intent)`: interactive execution inherits terminal streams and is supervised,
+while one-shot execution returns captured `Output`. Each backend builds its argv from the
+matching options type. The argv builder is the polymorphic core; the session path carries
+it in a component, while one-shot builds and captures its subprocess directly.
 
 `ace -p` routes through `exec_one_shot`, which captures then prints after the child
 exits. That buffering belongs to the user-requested one-shot surface only. Model-driven

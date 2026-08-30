@@ -39,6 +39,9 @@ fn alt_screen_flag() -> &'static Arc<AtomicBool> {
             let cleanup = cleanup_bytes_for(handler_flag.load(Ordering::Relaxed));
             let _ = std::io::stderr().write_all(cleanup);
             let _ = std::io::stderr().flush();
+            if crate::platform::child_supervision_active() {
+                return;
+            }
             std::process::exit(130);
         }) {
             eprintln!("warning: failed to register Ctrl+C handler: {e}");

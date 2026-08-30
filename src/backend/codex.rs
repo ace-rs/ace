@@ -23,7 +23,7 @@ pub(super) fn exec_session(
     let components = materialize_session_components(launch, model, effort, &options, None)
         .map_err(std::io::Error::other)?;
 
-    Err(components.exec_replace())
+    components.run()
 }
 
 pub(super) fn materialize_session_components(

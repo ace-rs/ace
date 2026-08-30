@@ -86,9 +86,9 @@ relationship to projects.
     the backend controller establishes the primary-session handle during startup.
 15. **Decorate instances** — insert enabled feature components, such as the connect
     relay, before the terminal session component.
-16. **Execute** — exec-replace for a simple foreground session or use tmux for a managed
+16. **Execute** — supervise a simple foreground session locally or use tmux for a managed
     session/workspace, then attach the backend's own terminal UI.
 
-The implemented path currently goes directly from backend selection to exec-replace.
-[Managed sessions](session.md), [connect](connect.md), and
-[workspaces](workspace.md) specify the designed replacement in implementation order.
+The implemented path materializes and supervises one terminal component. Controlled
+multi-component startup, [managed sessions](session.md), [connect](connect.md), and
+[workspaces](workspace.md) follow in implementation order.

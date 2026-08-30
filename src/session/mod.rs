@@ -2,6 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU16;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::mpsc;
+use std::thread;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Role {
@@ -10,7 +12,7 @@ pub enum Role {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-// The runtime allocator lands with the component executor; backend materializers consume
+// The runtime allocator lands with controlled execution; backend materializers consume
 // these endpoint values now so their process sequence is concrete and testable first.
 #[allow(dead_code)]
 pub enum ControlEndpoint {
@@ -131,14 +133,8 @@ impl Component {
         command
     }
 
-    pub fn exec_replace(self) -> std::io::Error {
-        match self.role {
-            Role::Server => std::io::Error::new(
-                std::io::ErrorKind::Unsupported,
-                "server components require a component executor",
-            ),
-            Role::Session => crate::platform::exec_replace(self.command()),
-        }
+    fn spawn(self) -> std::io::Result<std::process::Child> {
+        self.command().spawn()
     }
 }
 
@@ -178,15 +174,43 @@ impl Components {
         &self.items
     }
 
-    pub fn exec_replace(mut self) -> std::io::Error {
+    pub fn run(self) -> std::io::Result<()> {
+        let status = self.wait()?;
+        crate::platform::propagate_exit_status(status);
+        Ok(())
+    }
+
+    fn wait(mut self) -> std::io::Result<std::process::ExitStatus> {
         if self.items.len() != 1 {
-            return std::io::Error::new(
+            return Err(std::io::Error::new(
                 std::io::ErrorKind::Unsupported,
-                "multi-component sessions require a component executor",
-            );
+                "multi-component sessions require readiness-aware supervision",
+            ));
         }
 
-        self.items.remove(0).exec_replace()
+        let component = self.items.remove(0);
+        debug_assert_eq!(component.role(), Role::Session);
+        let mut child = component.spawn()?;
+        let _supervision = crate::platform::begin_child_supervision();
+
+        thread::scope(|scope| {
+            let (sender, receiver) = mpsc::sync_channel(1);
+            let waiter = scope.spawn(move || {
+                sender.send(child.wait()).map_err(|_| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::BrokenPipe,
+                        "component status receiver stopped",
+                    )
+                })
+            });
+            let received = receiver
+                .recv()
+                .map_err(|_| std::io::Error::other("component waiter stopped"));
+            waiter
+                .join()
+                .map_err(|_| std::io::Error::other("component waiter panicked"))??;
+            received?
+        })
     }
 }
 
@@ -283,18 +307,58 @@ mod tests {
         assert_eq!(components.items()[0].role(), Role::Session);
     }
 
+    #[cfg(unix)]
     #[test]
-    fn multi_component_session_requires_an_executor() {
+    fn supervised_session_returns_the_terminal_status() {
+        let temp = tempfile::tempdir().expect("create temp dir");
+        let session = Component::new(
+            Role::Session,
+            "sh".to_string(),
+            vec!["-c".to_string(), "exit 7".to_string()],
+            HashMap::new(),
+            temp.path().to_path_buf(),
+        );
+        let components = Components::try_new(vec![session]).expect("valid components");
+
+        let status = components.wait().expect("run supervised session");
+
+        assert_eq!(status.code(), Some(7));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn supervised_session_applies_process_contract() {
+        let temp = tempfile::tempdir().expect("create temp dir");
+        std::fs::write(temp.path().join("marker"), "present").expect("write marker");
+        let session = Component::new(
+            Role::Session,
+            "sh".to_string(),
+            vec![
+                "-c".to_string(),
+                "test \"$TOKEN\" = secret && test -f marker".to_string(),
+            ],
+            HashMap::from([("TOKEN".to_string(), "secret".to_string())]),
+            temp.path().to_path_buf(),
+        );
+        let components = Components::try_new(vec![session]).expect("valid components");
+
+        let status = components.wait().expect("run supervised session");
+
+        assert!(status.success());
+    }
+
+    #[test]
+    fn multi_component_session_requires_readiness_aware_supervision() {
         let components =
             Components::try_new(vec![component(Role::Server), component(Role::Session)])
                 .expect("valid components");
 
-        let error = components.exec_replace();
+        let error = components.run().expect_err("multi-component run must fail");
 
         assert_eq!(error.kind(), std::io::ErrorKind::Unsupported);
         assert_eq!(
             error.to_string(),
-            "multi-component sessions require a component executor"
+            "multi-component sessions require readiness-aware supervision"
         );
     }
 }

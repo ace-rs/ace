@@ -52,7 +52,7 @@ use serde::{Deserialize, Serialize};
 use crate::config::ace_toml::Trust;
 use crate::school::toml::McpDecl;
 
-/// Inputs to an interactive session launch — exec-replace transport.
+/// Inputs to an interactive session launch — supervised terminal transport.
 ///
 /// `cmd` (the launch argv) is *not* in here — it's a property of the
 /// backend instance, not session input. Per-backend `exec_session` takes
@@ -356,7 +356,7 @@ impl Backend {
     }
 
     /// Materialize backend components after runtime allocation of any required endpoint.
-    /// The component executor is the first production consumer of this boundary.
+    /// Controlled execution is the next production consumer of this boundary.
     #[allow(dead_code)]
     pub fn materialize_session_components(
         &self,
