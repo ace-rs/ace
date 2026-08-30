@@ -1,5 +1,8 @@
 # `ace connect` — local agent relay
 
+ACE-connect requires Unix-domain sockets and is unavailable on the limited Windows GNU
+target. See [platform support](platforms.md).
+
 **Designed, not yet implemented.** The `ace-connect` skill and its shell scripts remain
 the working prototype until this contract lands in the binary.
 

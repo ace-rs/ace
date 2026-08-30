@@ -1,5 +1,8 @@
 # Managed sessions
 
+Managed sessions require Unix process primitives and tmux and are unavailable on the
+limited Windows GNU target. See [platform support](platforms.md).
+
 **Partially implemented.** ACE prepares one project and materializes its backend launch
 as a validated ordered `session::Components` startup list. Normal sessions execute their
 single component; server-backed lists await endpoint allocation, protocol control, and

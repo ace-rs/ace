@@ -16,6 +16,7 @@ is `../scratch/`.
 
 - [`overview.md`](overview.md) — product philosophy, school concept, and lifecycle.
 - [`architecture.md`](architecture.md) — layers, data flow, and dependency direction.
+- [`platforms.md`](platforms.md) — supported compilation targets and platform limits.
 - [`configuration.md`](configuration.md) — config locations, layering, and format.
 - [`authentication.md`](authentication.md) — MCP OAuth and school repository access.
 - [`migrations.md`](migrations.md) — on-disk stores, layout versions, and migrations.

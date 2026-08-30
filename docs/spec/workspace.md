@@ -1,5 +1,8 @@
 # Workspaces
 
+Workspaces require managed sessions and tmux and are unavailable on the limited Windows
+GNU target. See [platform support](platforms.md).
+
 **Designed, not yet implemented.** Workspace mode composes managed ACE sessions and the
 local relay; it does not introduce another agent runtime.
 

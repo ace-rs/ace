@@ -1,5 +1,8 @@
 # Self-Update
 
+Platform availability follows [platform support](platforms.md). The Windows replacement
+path applies only to the limited `x86_64-pc-windows-gnu` target.
+
 ## Overview
 
 ACE checks for newer releases on startup and silently upgrades in the background.
