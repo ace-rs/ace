@@ -124,7 +124,7 @@ generic promise inferred from workspace mode.
 ## Relationship to connect
 
 Workspace mode depends on managed sessions, mux execution, and ACE-connect. It enables
-connect decoration for each member even when the child project's normal standalone launch
+connect decoration for each member even when the child project's normal standalone startup
 does not enable it; this is a workspace-owned runtime requirement, not a mutation of the
 child's `ace.toml`.
 

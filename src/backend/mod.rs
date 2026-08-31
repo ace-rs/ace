@@ -5,7 +5,7 @@ mod opencode;
 pub mod registry;
 
 use crate::config::ConfigError;
-use crate::session::{Components, ComponentsError, ControlEndpoint};
+use crate::session::ResumeMode;
 
 /// Errors that can occur while binding a `Resolved` view to a concrete
 /// `Backend` — including pre-binding tree/merge failures bubbled through
@@ -28,21 +28,6 @@ pub enum BackendError {
     },
 }
 
-#[derive(Debug, thiserror::Error, PartialEq, Eq)]
-pub enum MaterializeError {
-    #[error(transparent)]
-    Components(#[from] ComponentsError),
-    #[error("{backend} server-backed sessions require a control endpoint")]
-    MissingControlEndpoint { backend: &'static str },
-    #[error("{backend} server-backed sessions require a {expected} control endpoint")]
-    ControlEndpoint {
-        backend: &'static str,
-        expected: &'static str,
-    },
-    #[error("{backend} does not support server-backed sessions")]
-    UnsupportedMode { backend: &'static str },
-}
-
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Output;
@@ -52,28 +37,27 @@ use serde::{Deserialize, Serialize};
 use crate::config::ace_toml::Trust;
 use crate::school::toml::McpDecl;
 
-/// Inputs to an interactive session launch — supervised terminal transport.
+/// Request to start an interactive backend session under ACE supervision.
 ///
-/// `cmd` (the launch argv) is *not* in here — it's a property of the
+/// `cmd` (the configured command) is *not* in here — it's a property of the
 /// backend instance, not session input. Per-backend `exec_session` takes
 /// it as a separate parameter, populated by `Backend::exec_session` from
 /// `self.cmd`.
-pub struct SessionOptions {
+pub struct SessionRequest {
     pub trust: Trust,
     pub session_prompt: String,
     pub project_dir: PathBuf,
     pub env: HashMap<String, String>,
     pub extra_args: Vec<String>,
     pub resume: ResumeMode,
-    pub backend_mode: BackendMode,
 }
 
-/// Inputs to a one-shot (non-interactive) launch — spawn-and-capture transport.
+/// Request to run a one-shot backend command and capture its output.
 ///
 /// No `trust`, `session_prompt`, or `resume` — the non-interactive entry point
 /// doesn't need approval modes or system-prompt injection. See
 /// `docs/spec/backend.md § Intent Mapping`.
-pub struct OneShotOptions {
+pub struct OneShotRequest {
     pub prompt: PromptInput,
     pub project_dir: PathBuf,
     pub env: HashMap<String, String>,
@@ -86,27 +70,6 @@ pub struct OneShotOptions {
 pub enum PromptInput {
     Inline(String),
     Stdin,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BackendMode {
-    Normal,
-    WithServer,
-}
-
-impl BackendMode {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Normal => "normal",
-            Self::WithServer => "with-server",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ResumeMode {
-    Fresh,
-    Latest,
 }
 
 /// Health check result for a single MCP server.
@@ -218,41 +181,22 @@ impl Kind {
 
     pub fn exec_session(
         &self,
-        cmd: &[String],
+        command: &[String],
         model: Option<&str>,
         effort: Option<&str>,
-        options: SessionOptions,
+        request: SessionRequest,
     ) -> Result<(), std::io::Error> {
-        dispatch!(self, exec_session, cmd, model, effort, options)
-    }
-
-    pub fn materialize_session_components(
-        &self,
-        cmd: &[String],
-        model: Option<&str>,
-        effort: Option<&str>,
-        options: &SessionOptions,
-        endpoint: Option<&ControlEndpoint>,
-    ) -> Result<Components, MaterializeError> {
-        dispatch!(
-            self,
-            materialize_session_components,
-            cmd,
-            model,
-            effort,
-            options,
-            endpoint
-        )
+        dispatch!(self, exec_session, command, model, effort, request)
     }
 
     pub fn exec_one_shot(
         &self,
-        cmd: &[String],
+        command: &[String],
         model: Option<&str>,
         effort: Option<&str>,
-        options: OneShotOptions,
+        request: OneShotRequest,
     ) -> Result<Output, std::io::Error> {
-        dispatch!(self, exec_one_shot, cmd, model, effort, options)
+        dispatch!(self, exec_one_shot, command, model, effort, request)
     }
 
     #[allow(dead_code)]
@@ -321,7 +265,7 @@ impl Default for Backend {
 pub struct Backend {
     pub name: String,
     pub kind: Kind,
-    /// Argv for launching the binary. Built-ins seed `[kind.name()]`; custom
+    /// Configured command. Built-ins seed `[kind.name()]`; custom
     /// backends from `[backends.<name>]` override.
     pub cmd: Vec<String>,
     pub env: HashMap<String, String>,
@@ -342,48 +286,28 @@ impl Backend {
         self.kind.instructions_file()
     }
 
-    pub fn exec_session(&self, mut options: SessionOptions) -> Result<(), std::io::Error> {
+    pub fn exec_session(&self, mut request: SessionRequest) -> Result<(), std::io::Error> {
         // per-backend env merges over global env (later wins on collision).
         for (k, v) in &self.env {
-            options.env.insert(k.clone(), v.clone());
+            request.env.insert(k.clone(), v.clone());
         }
         self.kind.exec_session(
             &self.cmd,
             self.model.as_deref(),
             self.effort.as_deref(),
-            options,
+            request,
         )
     }
 
-    /// Materialize backend components after runtime allocation of any required endpoint.
-    /// Controlled execution is the next production consumer of this boundary.
-    #[allow(dead_code)]
-    pub fn materialize_session_components(
-        &self,
-        mut options: SessionOptions,
-        endpoint: Option<&ControlEndpoint>,
-    ) -> Result<Components, MaterializeError> {
-        for (key, value) in &self.env {
-            options.env.insert(key.clone(), value.clone());
-        }
-        self.kind.materialize_session_components(
-            &self.cmd,
-            self.model.as_deref(),
-            self.effort.as_deref(),
-            &options,
-            endpoint,
-        )
-    }
-
-    pub fn exec_one_shot(&self, mut options: OneShotOptions) -> Result<Output, std::io::Error> {
+    pub fn exec_one_shot(&self, mut request: OneShotRequest) -> Result<Output, std::io::Error> {
         for (k, v) in &self.env {
-            options.env.insert(k.clone(), v.clone());
+            request.env.insert(k.clone(), v.clone());
         }
         self.kind.exec_one_shot(
             &self.cmd,
             self.model.as_deref(),
             self.effort.as_deref(),
-            options,
+            request,
         )
     }
 
@@ -463,13 +387,8 @@ pub(super) fn parse_status_array(json: &str) -> Vec<McpStatus> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        Backend, BackendMode, FEATURE_NESTED_SKILLS, Kind, Registry, ResumeMode, SessionOptions,
-    };
-    use crate::config::ace_toml::Trust;
-    use crate::session::{ControlEndpoint, Role};
+    use super::{Backend, FEATURE_NESTED_SKILLS, Kind, Registry};
     use std::collections::HashMap;
-    use std::path::{Path, PathBuf};
 
     #[test]
     fn features_per_kind() {
@@ -524,42 +443,5 @@ mod tests {
             effort: None,
         };
         assert_eq!(custom_flat.features(), 0);
-    }
-
-    #[test]
-    fn backend_materializes_components_through_its_sanctioned_surface() {
-        let backend = Backend {
-            name: "my-codex".to_string(),
-            kind: Kind::Codex,
-            cmd: vec!["wrapper".to_string(), "codex".to_string()],
-            env: HashMap::from([("BACKEND".to_string(), "configured".to_string())]),
-            model: None,
-            effort: None,
-        };
-        let options = SessionOptions {
-            trust: Trust::Default,
-            session_prompt: "prompt".to_string(),
-            project_dir: PathBuf::from("/project"),
-            env: HashMap::new(),
-            extra_args: Vec::new(),
-            resume: ResumeMode::Fresh,
-            backend_mode: BackendMode::WithServer,
-        };
-        let endpoint = ControlEndpoint::Unix(PathBuf::from("/tmp/codex.sock"));
-
-        let components = backend
-            .materialize_session_components(options, Some(&endpoint))
-            .expect("valid components");
-        let server = &components.items()[0];
-        let session = &components.items()[1];
-
-        assert_eq!(server.role(), Role::Server);
-        assert_eq!(session.role(), Role::Session);
-        assert_eq!(server.program(), "wrapper");
-        assert_eq!(server.working_dir(), Path::new("/project"));
-        assert_eq!(
-            server.env().get("BACKEND").map(String::as_str),
-            Some("configured")
-        );
     }
 }

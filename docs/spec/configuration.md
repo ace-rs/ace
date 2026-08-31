@@ -49,10 +49,10 @@ These fields are resolved from the **user** and **local** layers only — never 
 project-committed `ace.toml` or `school.toml`. They are personal workflow preferences.
 
 - `trust` — permission mode: `"default"`, `"auto"`, or `"yolo"`. Default: `"default"`.
-- `resume` — auto-resume previous session on `ace` launch. Default: `true`. When `true`,
-  `ace` passes resume flags to the backend if a previous session exists for the current
-  project directory. The `ace new` subcommand forces a fresh session regardless. Backends
-  that don't support resume start fresh silently.
+- `resume` — auto-resume the previous session when `ace` starts. Default: `true`.
+  When `true`, `ace` passes resume flags to the backend if a previous session exists for
+  the current project directory. The `ace new` subcommand forces a fresh session
+  regardless. Backends that don't support resume start fresh silently.
 
 Resolution for personal-only fields: local wins over user. Project layer is skipped
 entirely.

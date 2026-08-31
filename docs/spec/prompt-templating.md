@@ -4,7 +4,7 @@ Covers session prompt composition, template rendering, and delivery to the backe
 
 ## Session Prompt
 
-The session prompt is the instruction text ACE passes to the backend at launch. It is
+The session prompt is the instruction text ACE passes to the backend during startup. It is
 distinct from the backend's own system prompt.
 
 ### Composition

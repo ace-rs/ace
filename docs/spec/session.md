@@ -3,10 +3,10 @@
 Managed sessions require Unix process primitives and tmux and are unavailable on the
 limited Windows GNU target. See [platform support](platforms.md).
 
-**Partially implemented.** ACE prepares one project and materializes its backend launch
-as a validated ordered `session::Components` startup list. Normal sessions run their
-single terminal component under ACE supervision; server-backed lists await endpoint
-allocation, protocol control, readiness, and multi-component execution.
+**Partially implemented.** ACE prepares one project, builds one `SessionProcess` from
+the resolved backend command, and supervises that process until it exits. Managed
+component cohorts begin only when endpoint allocation, protocol readiness, primary
+backend handles, and multi-process ownership can land together.
 
 ## Primitive
 
@@ -68,7 +68,7 @@ The backend owns its protocol, thread semantics, transcript, permissions, and in
 subagent orchestration. ACE does not render a replacement terminal UI or reconstruct a
 transcript from pane output.
 
-## Launch pipeline
+## Startup pipeline
 
 Startup is one typed pipeline inside the `ace` binary:
 
@@ -81,12 +81,12 @@ project discovery
   -> local or mux execution
 ```
 
-`Ace` is the instance and `StartMode` makes launch intent structurally valid:
+`Ace` is the instance and `StartMode` makes startup intent structurally valid:
 
 ```rust
 enum StartMode {
     OneShot { prompt: String },
-    Session { resume: ResumeMode, backend: BackendMode },
+    Session { resume: ResumeMode },
 }
 
 enum ResumeMode {
@@ -94,18 +94,14 @@ enum ResumeMode {
     Latest,
 }
 
-enum BackendMode {
-    Normal,
-    WithServer,
-}
 ```
 
 `Fresh` starts a new native session. `Latest` asks the backend to resume its most recent
 session for the project, subject to the resolved personal resume preference.
 
-Callers construct and configure `Ace`, then call `ace.start(mode)`. `Normal` requests the
-backend's standard native chat harness. `WithServer` requires a server-capable launch;
-the controlled component path lands in the next implementation phase.
+Callers construct and configure `Ace`, then call `ace.start(mode)`. A session starts
+the backend's standard native chat harness. Controlled startup enters only through the
+later managed-session boundary.
 
 Only one workspace expander and one executor may be active. Decorators compose in a
 declared order and add typed requirements. Workspace composition validates duplicate
@@ -116,24 +112,22 @@ The initial implementation is built-in and single-binary. The stage boundaries a
 internal Rust interfaces, not a public plugin ABI. An installable subprocess protocol is
 justified only when an independently shipped extension needs the same boundary.
 
-## Components
+## Process and components
 
-A `Component` is the executable process boundary. It owns a typed role, program and
-arguments, environment, and working directory. Only its execution edge converts that
-data into `std::process::Command`; component construction can compose process data before
-execution.
+A `SessionProcess` is the implemented executable boundary for a native interactive
+session. It owns the program, arguments, environment, and working directory. Only its
+execution edge converts that data into `std::process::Command`.
 
-Normal Claude, Codex, and OpenCode sessions each construct one `session` component. ACE
-spawns that component under the runtime and remains its owner until shutdown; it does not
-exec-replace itself with the backend process.
+Normal Claude, Codex, and OpenCode sessions each construct one `SessionProcess`. ACE
+spawns it and remains its owner until shutdown; it does not exec-replace itself with the
+backend process.
 
-`session::Components` is a non-empty ordered list with exactly one terminal `session`
-component. Every included component is essential by construction: ACE never starts an
+Managed startup introduces an ordered component cohort only when a second owned process
+exists. Every included component is essential by construction: ACE never starts an
 inessential process, and the session is useful only while every listed component is
 healthy. A backend constructs its portion because only the backend knows its process
-topology. Feature decorators then insert their own components before the terminal session;
-`session::Components` owns validation of the final neutral list. Roles describe purpose
-rather than backend-specific executable names:
+topology. Feature decorators then insert their own components before the terminal session.
+Roles describe purpose rather than backend-specific executable names:
 
 - `server` — backend control server, included only when another component requires it;
 - `relay` — connected-session message adapter, included only when connect is enabled;
@@ -146,9 +140,11 @@ connect owns relay readiness. The local executor owns singleton and multi-compon
 through the same runtime. The mux executor keeps each component's stdout and stderr
 directly inspectable.
 
-Codex materializes `server -> session` with a concrete Unix-socket endpoint:
+The controlled Codex path constructs `server -> session` with a concrete Unix-socket
+endpoint:
 `codex app-server --listen unix://...` followed by `codex --remote unix://...`.
-OpenCode materializes the same roles with a concrete loopback HTTP endpoint:
+The controlled OpenCode path constructs the same roles with a concrete loopback HTTP
+endpoint:
 `opencode serve --hostname 127.0.0.1 --port ...` followed by `opencode attach ...`.
 Endpoint allocation is a runtime responsibility and is not performed during component
 construction.
@@ -196,8 +192,9 @@ provide instead of ACE manufacturing a false common model.
 
 ## Runtime work model
 
-The runtime uses regular operating-system threads and channels, not an async runtime. It
-supports workload lifecycles that may coexist:
+The implemented singleton supervisor waits directly on its child. Managed startup uses
+regular operating-system threads and channels, not an async runtime, once workload
+lifecycles coexist:
 
 - supervised components and background services are long-lived owned threads;
 - finite concurrent jobs use scoped-thread fan-out and must complete before ACE exits.
@@ -268,19 +265,16 @@ still be used when the user starts a session, as specified in
 
 ## Implementation sequence
 
-1. Route preparation and launch through `Ace::start(StartMode)`.
-2. Represent each normal backend launch as one typed process component while preserving
-   exec-replace behavior.
-3. Materialize controlled component lists for Codex app-server and OpenCode serve,
-   using only their sanctioned control surfaces.
-4. Replace exec-replace with the thread-and-channel runtime and coordinated component
-   supervision.
-5. Allocate runtime endpoints, establish primary backend handles, and add `ace session`
-   inspection, attachment, and lifecycle commands.
-6. Add the connect decorator and backend receive adapters described in
+1. Route preparation and startup through `Ace::start(StartMode)`.
+2. Represent and supervise each native backend session as one `SessionProcess`.
+3. Introduce runtime endpoints, controlled backend components, protocol readiness, and
+   primary backend handles as one coherent boundary.
+4. Add readiness-aware cohort supervision and `ace session` inspection, attachment, and
+   lifecycle commands.
+5. Add the connect decorator and backend receive adapters described in
    [connect.md](connect.md).
-7. Add workspace expansion and group lifecycle from [workspace.md](workspace.md).
-8. Add suspend, wake, reconnect, or richer status only when a concrete workflow requires
+6. Add workspace expansion and group lifecycle from [workspace.md](workspace.md).
+7. Add suspend, wake, reconnect, or richer status only when a concrete workflow requires
    each capability.
 
 Every phase preserves bare `ace` as the common entry point and ships with a corresponding

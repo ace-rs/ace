@@ -1,9 +1,9 @@
 use std::collections::HashSet;
 use std::process::{Command, Output, Stdio};
 
-use super::{McpDecl, McpStatus, OneShotOptions, PromptInput, SessionOptions};
+use super::{McpDecl, McpStatus, OneShotRequest, PromptInput, SessionRequest};
 use crate::config::ace_toml::Trust;
-use crate::session::{Component, Components, Role};
+use crate::session::{ResumeMode, SessionProcess};
 
 pub(super) fn is_ready() -> bool {
     let Some(home) = crate::paths::home_dir() else {
@@ -13,69 +13,56 @@ pub(super) fn is_ready() -> bool {
 }
 
 pub(super) fn exec_session(
-    launch: &[String],
+    command: &[String],
     model: Option<&str>,
     effort: Option<&str>,
-    options: SessionOptions,
+    request: SessionRequest,
 ) -> Result<(), std::io::Error> {
-    let components = materialize_session_components(launch, model, effort, &options, None)
-        .map_err(std::io::Error::other)?;
-
-    components.run()
+    session_process(command, model, effort, &request).run()
 }
 
-pub(super) fn materialize_session_components(
-    launch: &[String],
+fn session_process(
+    command: &[String],
     model: Option<&str>,
     effort: Option<&str>,
-    options: &SessionOptions,
-    _endpoint: Option<&crate::session::ControlEndpoint>,
-) -> Result<Components, super::MaterializeError> {
-    if matches!(options.backend_mode, super::BackendMode::WithServer) {
-        return Err(super::MaterializeError::UnsupportedMode { backend: "claude" });
-    }
-    Ok(Components::try_new(vec![build_session_component(
-        launch, model, effort, options,
-    )])?)
-}
+    request: &SessionRequest,
+) -> SessionProcess {
+    let (program, prefix) = command
+        .split_first()
+        .map(|(program, rest)| (program.as_str(), rest))
+        .unwrap_or(("claude", &[][..]));
+    let mut args = prefix.to_vec();
+    args.extend(build_session_args(model, effort, request));
 
-fn build_session_component(
-    launch: &[String],
-    model: Option<&str>,
-    effort: Option<&str>,
-    options: &SessionOptions,
-) -> Component {
-    Component::from_launch(
-        Role::Session,
-        launch,
-        "claude",
-        build_session_args(model, effort, options),
-        &options.env,
-        &options.project_dir,
+    SessionProcess::new(
+        program.to_string(),
+        args,
+        request.env.clone(),
+        request.project_dir.clone(),
     )
 }
 
 pub(super) fn exec_one_shot(
-    launch: &[String],
+    command: &[String],
     model: Option<&str>,
     effort: Option<&str>,
-    options: OneShotOptions,
+    request: OneShotRequest,
 ) -> Result<Output, std::io::Error> {
-    let (program, prefix) = launch
+    let (program, prefix) = command
         .split_first()
         .map(|(p, rest)| (p.as_str(), rest))
         .unwrap_or(("claude", &[][..]));
     let mut cmd = Command::new(program);
     cmd.args(prefix);
-    cmd.current_dir(&options.project_dir);
+    cmd.current_dir(&request.project_dir);
 
-    for (key, val) in &options.env {
+    for (key, val) in &request.env {
         cmd.env(key, val);
     }
 
-    cmd.args(build_one_shot_args(model, effort, &options));
+    cmd.args(build_one_shot_args(model, effort, &request));
 
-    if matches!(options.prompt, PromptInput::Stdin) {
+    if matches!(request.prompt, PromptInput::Stdin) {
         cmd.stdin(Stdio::inherit());
     }
 
@@ -95,24 +82,24 @@ fn trust_args(trust: Trust) -> &'static [&'static str] {
     }
 }
 
-/// Translate `SessionOptions` into Claude's CLI argv (post-binary). Pure
+/// Translate `SessionRequest` into Claude's CLI argv (post-binary). Pure
 /// function — no I/O, no `Command`. Tested below.
 fn build_session_args(
     model: Option<&str>,
     effort: Option<&str>,
-    options: &SessionOptions,
+    request: &SessionRequest,
 ) -> Vec<String> {
     let mut args = Vec::new();
 
-    match options.resume {
-        super::ResumeMode::Fresh => {
+    match request.resume {
+        ResumeMode::Fresh => {
             args.push("--system-prompt".to_string());
-            args.push(options.session_prompt.clone());
+            args.push(request.session_prompt.clone());
         }
-        super::ResumeMode::Latest => args.push("--continue".to_string()),
+        ResumeMode::Latest => args.push("--continue".to_string()),
     }
 
-    args.extend(trust_args(options.trust).iter().map(|s| s.to_string()));
+    args.extend(trust_args(request.trust).iter().map(|s| s.to_string()));
     if let Some(value) = model {
         args.extend(["--model".to_string(), value.to_string()]);
     }
@@ -120,20 +107,20 @@ fn build_session_args(
         args.extend(["--effort".to_string(), value.to_string()]);
     }
 
-    args.extend(options.extra_args.iter().cloned());
+    args.extend(request.extra_args.iter().cloned());
     args
 }
 
-/// Translate `OneShotOptions` into Claude's `-p` argv. Inline prompts pass
+/// Translate `OneShotRequest` into Claude's `-p` argv. Inline prompts pass
 /// the text as the `-p` value; Stdin omits the value and the child reads
 /// from inherited stdin.
 fn build_one_shot_args(
     model: Option<&str>,
     effort: Option<&str>,
-    options: &OneShotOptions,
+    request: &OneShotRequest,
 ) -> Vec<String> {
     let mut args = vec!["-p".to_string()];
-    if let PromptInput::Inline(text) = &options.prompt {
+    if let PromptInput::Inline(text) = &request.prompt {
         args.push(text.clone());
     }
     if let Some(value) = model {
@@ -142,7 +129,7 @@ fn build_one_shot_args(
     if let Some(value) = effort {
         args.extend(["--effort".to_string(), value.to_string()]);
     }
-    args.extend(options.extra_args.iter().cloned());
+    args.extend(request.extra_args.iter().cloned());
     args
 }
 
@@ -310,22 +297,21 @@ fn parse_check_output(output: &str) -> Result<Vec<McpStatus>, String> {
 mod tests {
     use super::*;
     use std::collections::HashMap;
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
 
-    fn session_options() -> SessionOptions {
-        SessionOptions {
+    fn session_request() -> SessionRequest {
+        SessionRequest {
             trust: Trust::Default,
             session_prompt: "SP".to_string(),
             project_dir: PathBuf::from("/tmp"),
             env: HashMap::new(),
             extra_args: Vec::new(),
-            resume: super::super::ResumeMode::Fresh,
-            backend_mode: super::super::BackendMode::Normal,
+            resume: ResumeMode::Fresh,
         }
     }
 
-    fn one_shot(prompt: PromptInput) -> OneShotOptions {
-        OneShotOptions {
+    fn one_shot(prompt: PromptInput) -> OneShotRequest {
+        OneShotRequest {
             prompt,
             project_dir: PathBuf::from("/tmp"),
             env: HashMap::new(),
@@ -335,51 +321,33 @@ mod tests {
 
     #[test]
     fn session_args_default() {
-        let args = build_session_args(None, None, &session_options());
+        let args = build_session_args(None, None, &session_request());
         assert_eq!(args, vec!["--system-prompt".to_string(), "SP".to_string()]);
     }
 
     #[test]
-    fn session_component_carries_launch_context() {
-        let mut options = session_options();
-        options.env.insert("TOKEN".into(), "secret".into());
-        let launch = ["wrapper".to_string(), "claude".to_string()];
-
-        let component = build_session_component(&launch, None, None, &options);
-
-        assert_eq!(component.role(), crate::session::Role::Session);
-        assert_eq!(component.program(), "wrapper");
-        assert_eq!(component.args(), ["claude", "--system-prompt", "SP"]);
-        assert_eq!(component.working_dir(), Path::new("/tmp"));
-        assert_eq!(
-            component.env().get("TOKEN").map(String::as_str),
-            Some("secret")
-        );
-    }
-
-    #[test]
     fn session_args_resume_replaces_system_prompt() {
-        let mut options = session_options();
-        options.resume = super::super::ResumeMode::Latest;
-        let args = build_session_args(None, None, &options);
+        let mut request = session_request();
+        request.resume = ResumeMode::Latest;
+        let args = build_session_args(None, None, &request);
         assert_eq!(args, vec!["--continue".to_string()]);
     }
 
     #[test]
     fn session_args_extra_args_come_last() {
-        let mut options = session_options();
-        options.extra_args = vec!["--model".to_string(), "opus".to_string()];
-        let args = build_session_args(None, None, &options);
+        let mut request = session_request();
+        request.extra_args = vec!["--model".to_string(), "opus".to_string()];
+        let args = build_session_args(None, None, &request);
         let last_two = &args[args.len() - 2..];
         assert_eq!(last_two, ["--model", "opus"]);
     }
 
     #[test]
     fn session_configured_model_and_effort_precede_passthrough_args() {
-        let mut options = session_options();
-        options.extra_args = vec!["--effort".into(), "override".into()];
+        let mut request = session_request();
+        request.extra_args = vec!["--effort".into(), "override".into()];
 
-        let args = build_session_args(Some("opus"), Some("high"), &options);
+        let args = build_session_args(Some("opus"), Some("high"), &request);
         let configured = args
             .windows(6)
             .find(|window| window[0] == "--model")
@@ -415,10 +383,10 @@ mod tests {
 
     #[test]
     fn configured_model_and_effort_precede_passthrough_args() {
-        let mut options = one_shot(PromptInput::Inline("hi".into()));
-        options.extra_args = vec!["--model".into(), "override".into()];
+        let mut request = one_shot(PromptInput::Inline("hi".into()));
+        request.extra_args = vec!["--model".into(), "override".into()];
 
-        let args = build_one_shot_args(Some("opus"), Some("high"), &options);
+        let args = build_one_shot_args(Some("opus"), Some("high"), &request);
 
         assert_eq!(
             args,

@@ -7,8 +7,8 @@ use crate::school::linked::LinkedSchool;
 
 use super::link_skills;
 use super::{
-    Link, Pull, PullOutcome, SkillChange, UpdateGitignore, clone_school::CloneSchool,
-    register_missing_mcp,
+    Link, Pull, PullOutcome, RegisterMcpError, SkillChange, UpdateGitignore,
+    clone_school::CloneSchool, register_missing_mcp,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -19,6 +19,8 @@ pub enum PrepareError {
     Backend(#[from] BackendError),
     #[error("{0}")]
     School(#[from] SchoolError),
+    #[error("{0}")]
+    RegisterMcp(#[from] RegisterMcpError),
     #[error("clone failed: {0}")]
     Clone(String),
     #[error("write failed: {0}")]
@@ -35,6 +37,7 @@ impl PrepareError {
             Self::Config(_)
             | Self::Backend(_)
             | Self::School(_)
+            | Self::RegisterMcp(_)
             | Self::Clone(_)
             | Self::Write(_) => None,
         }
@@ -142,10 +145,7 @@ impl Prepare<'_> {
             .filter(|entry| !excluded.contains(&entry.name))
             .collect::<Vec<_>>();
         let local_path = ace.paths().local.clone();
-        if let Err(error) = register_missing_mcp(ace, &backend, &entries, &project_dir, &local_path)
-        {
-            ace.warn(&format!("MCP registration failed: {error}"));
-        }
+        register_missing_mcp(ace, &backend, &entries, &project_dir, &local_path)?;
 
         Ok(result)
     }

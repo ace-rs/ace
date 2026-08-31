@@ -25,8 +25,8 @@ instructions.
 
 ### Agent-based injection
 
-ACE writes `.opencode/agents/ace.md` at launch, just before exec — a markdown file with
-YAML frontmatter and the session prompt as the body:
+During startup, just before exec, ACE writes `.opencode/agents/ace.md` with YAML
+frontmatter and the session prompt as the body:
 
 ```markdown
 ---
@@ -69,14 +69,14 @@ message).
 ## Managed and connected sessions
 
 OpenCode advertises controlled startup, primary-session input, and native resume through
-its documented server/session API. The backend materializes `opencode serve` followed by
-the attached native client as the terminal `session` component. Connect inserts its relay
-between them. Every listed component is essential.
+its documented server/session API. The planned controlled-session boundary starts
+`opencode serve` on a supplied loopback HTTP endpoint followed by an `opencode attach`
+session, with the connect relay between them. Every listed process is essential.
 
-The implemented component boundary materializes `opencode serve` on a supplied loopback
-HTTP endpoint followed by an `opencode attach` session. Runtime endpoint
-allocation and primary-session establishment remain part of the later
-controller/executor boundary.
+The endpoint remains loopback-only because it is an unauthenticated, machine-local
+control surface; cross-machine access is not part of this transport. Runtime endpoint
+allocation and primary-session establishment belong to the later controller/executor
+boundary.
 
 The controller waits for the server health endpoint and establishes the primary-session
 handle before starting its consumers. It also classifies OpenCode-native shutdown
@@ -88,7 +88,7 @@ restart the component list.
 
 ACE-connect delivers only to that primary session. Backend-native subagents remain
 OpenCode-owned and are not relay addresses. An ordinary interactive process without its
-server/session handle cannot be assumed attachable after launch.
+server/session handle cannot be assumed attachable after startup.
 
 ## Yolo Mode
 

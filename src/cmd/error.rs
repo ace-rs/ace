@@ -164,7 +164,6 @@ fn start_exit_code(error: &StartError) -> ExitCode {
         StartError::School(error) => school_exit_code(error),
         StartError::Prepare(error) => prepare_exit_code(error),
         StartError::Prompt(error) => io_exit_code(error),
-        StartError::InvalidStartMode => ExitCode::Usage,
     }
 }
 
@@ -248,6 +247,7 @@ fn prepare_exit_code(error: &PrepareError) -> ExitCode {
         PrepareError::Config(config) => config_exit_code(config),
         PrepareError::Backend(error) => backend_exit_code(error),
         PrepareError::School(error) => school_exit_code(error),
+        PrepareError::RegisterMcp(error) => mcp_register_exit_code(error),
         PrepareError::Clone(_) | PrepareError::Write(_) => ExitCode::Operational,
         // The tree is intact; it is waiting on a decision only the user can make.
         PrepareError::BlockedLinks(_) => ExitCode::Unavailable,

@@ -136,8 +136,8 @@ override — a user or local school also wins when the project declares none.
 ACE has two locked terminal wordmarks. Session entry uses the big wordmark, ACE-owned
 mutations use the compact wordmark, and read surfaces stay undecorated:
 
-| presentation | commands                                                       |
-|--------------|----------------------------------------------------------------|
+| Presentation | Commands                                                       |
+| ------------ | -------------------------------------------------------------- |
 | big          | bare `ace`; `ace new`; `session start`; `workspace start`      |
 | compact      | `setup`; `fmt` / `format`; `import`; `config set`              |
 | compact      | `mcp reset` / `register` / `unregister`                        |
@@ -176,8 +176,8 @@ with the same per-letter colors:
 ```
 
 The version and hash above are illustrative. Rendering uses the current package version
-and build hash, keeps the logo and build information terminal-only, suppresses them for
-`--porcelain` and silenced output, and emits no leading or trailing blank row.
+and build hash, keeps the wordmark and build information terminal-only, suppresses them
+for `--porcelain` and silenced output, and emits no leading or trailing blank row.
 
 ## 7. Re-running is safe and informative
 

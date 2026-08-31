@@ -2,9 +2,9 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
-use super::{MaterializeError, McpDecl, McpStatus, OneShotOptions, PromptInput, SessionOptions};
+use super::{McpDecl, McpStatus, OneShotRequest, PromptInput, SessionRequest};
 use crate::config::ace_toml::Trust;
-use crate::session::{Component, Components, Role};
+use crate::session::{ResumeMode, SessionProcess};
 
 pub(super) fn is_ready() -> bool {
     std::env::var("CODEX_API_KEY").is_ok()
@@ -15,127 +15,83 @@ pub(super) fn is_ready() -> bool {
 }
 
 pub(super) fn exec_session(
-    launch: &[String],
+    command: &[String],
     model: Option<&str>,
     effort: Option<&str>,
-    options: SessionOptions,
+    request: SessionRequest,
 ) -> Result<(), std::io::Error> {
-    let components = materialize_session_components(launch, model, effort, &options, None)
-        .map_err(std::io::Error::other)?;
-
-    components.run()
+    session_process(command, model, effort, &request).run()
 }
 
-pub(super) fn materialize_session_components(
-    launch: &[String],
+fn session_process(
+    command: &[String],
     model: Option<&str>,
     effort: Option<&str>,
-    options: &SessionOptions,
-    endpoint: Option<&crate::session::ControlEndpoint>,
-) -> Result<Components, MaterializeError> {
-    let session = build_session_component(launch, model, effort, options);
-    if matches!(options.backend_mode, super::BackendMode::Normal) {
-        return Ok(Components::try_new(vec![session])?);
-    }
-    let endpoint = endpoint.ok_or(MaterializeError::MissingControlEndpoint { backend: "codex" })?;
-    let Some(endpoint_url) = endpoint.unix_url() else {
-        return Err(MaterializeError::ControlEndpoint {
-            backend: "codex",
-            expected: "Unix-socket",
-        });
-    };
+    request: &SessionRequest,
+) -> SessionProcess {
+    let (program, prefix) = command
+        .split_first()
+        .map(|(program, rest)| (program.as_str(), rest))
+        .unwrap_or(("codex", &[][..]));
+    let mut args = prefix.to_vec();
+    args.extend(build_session_args(model, effort, request));
 
-    let server = Component::from_launch(
-        Role::Server,
-        launch,
-        "codex",
-        vec![
-            "app-server".to_string(),
-            "--listen".to_string(),
-            endpoint_url.clone(),
-        ],
-        &options.env,
-        &options.project_dir,
-    );
-    let mut args = Vec::new();
-    args.extend(["--remote".to_string(), endpoint_url]);
-    args.extend(build_session_args(model, effort, options));
-    let session = Component::from_launch(
-        Role::Session,
-        launch,
-        "codex",
+    SessionProcess::new(
+        program.to_string(),
         args,
-        &options.env,
-        &options.project_dir,
-    );
-
-    Ok(Components::try_new(vec![server, session])?)
-}
-
-fn build_session_component(
-    launch: &[String],
-    model: Option<&str>,
-    effort: Option<&str>,
-    options: &SessionOptions,
-) -> Component {
-    Component::from_launch(
-        Role::Session,
-        launch,
-        "codex",
-        build_session_args(model, effort, options),
-        &options.env,
-        &options.project_dir,
+        request.env.clone(),
+        request.project_dir.clone(),
     )
 }
 
 pub(super) fn exec_one_shot(
-    launch: &[String],
+    command: &[String],
     model: Option<&str>,
     effort: Option<&str>,
-    options: OneShotOptions,
+    request: OneShotRequest,
 ) -> Result<Output, std::io::Error> {
-    let (program, prefix) = launch
+    let (program, prefix) = command
         .split_first()
         .map(|(p, rest)| (p.as_str(), rest))
         .unwrap_or(("codex", &[][..]));
     let mut cmd = Command::new(program);
     cmd.args(prefix);
-    cmd.current_dir(&options.project_dir);
+    cmd.current_dir(&request.project_dir);
 
-    for (key, val) in &options.env {
+    for (key, val) in &request.env {
         cmd.env(key, val);
     }
 
-    cmd.args(build_one_shot_args(model, effort, &options));
+    cmd.args(build_one_shot_args(model, effort, &request));
 
-    if matches!(options.prompt, PromptInput::Stdin) {
+    if matches!(request.prompt, PromptInput::Stdin) {
         cmd.stdin(Stdio::inherit());
     }
 
     cmd.output()
 }
 
-/// Translate `SessionOptions` into codex's CLI argv (post-binary). Pure function.
+/// Translate `SessionRequest` into codex's CLI argv (post-binary). Pure function.
 fn build_session_args(
     model: Option<&str>,
     effort: Option<&str>,
-    options: &SessionOptions,
+    request: &SessionRequest,
 ) -> Vec<String> {
     let mut args = Vec::new();
 
-    match options.resume {
-        super::ResumeMode::Fresh => {
+    match request.resume {
+        ResumeMode::Fresh => {
             args.push("-c".to_string());
             args.push(format!(
                 "developer_instructions={}",
-                toml::Value::String(options.session_prompt.clone()),
+                toml::Value::String(request.session_prompt.clone()),
             ));
         }
-        super::ResumeMode::Latest => args.extend(["resume", "--last"].map(String::from)),
+        ResumeMode::Latest => args.extend(["resume", "--last"].map(String::from)),
     }
 
     args.extend(
-        trust_args(options.trust)
+        trust_args(request.trust)
             .iter()
             .map(|value| (*value).to_string()),
     );
@@ -153,17 +109,17 @@ fn build_session_args(
         ]);
     }
 
-    args.extend(options.extra_args.iter().cloned());
+    args.extend(request.extra_args.iter().cloned());
     args
 }
 
-/// Translate `OneShotOptions` into codex's `exec` argv. Inline prompts are
+/// Translate `OneShotRequest` into codex's `exec` argv. Inline prompts are
 /// passed as the positional prompt argument; Stdin uses codex's `-` sentinel
 /// (verified against codex-rs/exec/src/cli.rs `StdinPromptBehavior::Forced`).
 fn build_one_shot_args(
     model: Option<&str>,
     effort: Option<&str>,
-    options: &OneShotOptions,
+    request: &OneShotRequest,
 ) -> Vec<String> {
     let mut args = vec!["exec".to_string()];
     if let Some(value) = model {
@@ -178,8 +134,8 @@ fn build_one_shot_args(
             ),
         ]);
     }
-    args.extend(options.extra_args.iter().cloned());
-    match &options.prompt {
+    args.extend(request.extra_args.iter().cloned());
+    match &request.prompt {
         PromptInput::Inline(text) => args.push(text.clone()),
         PromptInput::Stdin => args.push("-".to_string()),
     }
@@ -555,20 +511,19 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
 
-    fn session_options() -> SessionOptions {
-        SessionOptions {
+    fn session_request() -> SessionRequest {
+        SessionRequest {
             trust: Trust::Default,
             session_prompt: "SP".to_string(),
             project_dir: PathBuf::from("/tmp"),
             env: HashMap::new(),
             extra_args: Vec::new(),
-            resume: super::super::ResumeMode::Fresh,
-            backend_mode: super::super::BackendMode::Normal,
+            resume: ResumeMode::Fresh,
         }
     }
 
-    fn one_shot(prompt: PromptInput) -> OneShotOptions {
-        OneShotOptions {
+    fn one_shot(prompt: PromptInput) -> OneShotRequest {
+        OneShotRequest {
             prompt,
             project_dir: PathBuf::from("/tmp"),
             env: HashMap::new(),
@@ -578,7 +533,7 @@ mod tests {
 
     #[test]
     fn session_args_default_includes_developer_instructions() {
-        let args = build_session_args(None, None, &session_options());
+        let args = build_session_args(None, None, &session_request());
         assert!(args.iter().any(|a| a == "-c"));
         assert!(
             args.iter()
@@ -587,89 +542,11 @@ mod tests {
     }
 
     #[test]
-    fn session_component_carries_launch_context() {
-        let mut options = session_options();
-        options.env.insert("TOKEN".into(), "secret".into());
-        let launch = ["wrapper".to_string(), "codex".to_string()];
-
-        let component = build_session_component(&launch, None, None, &options);
-
-        assert_eq!(component.role(), crate::session::Role::Session);
-        assert_eq!(component.program(), "wrapper");
-        assert_eq!(component.args().first().map(String::as_str), Some("codex"));
-        assert!(component.args().iter().any(|arg| arg == "-c"));
-        assert_eq!(component.working_dir(), Path::new("/tmp"));
-        assert_eq!(
-            component.env().get("TOKEN").map(String::as_str),
-            Some("secret")
-        );
-    }
-
-    #[test]
-    fn server_backed_components_use_app_server_and_remote_session() {
-        let mut options = session_options();
-        options.env.insert("TOKEN".into(), "secret".into());
-        options.backend_mode = super::super::BackendMode::WithServer;
-        let endpoint = crate::session::ControlEndpoint::Unix(PathBuf::from("/tmp/codex.sock"));
-        let launch = ["wrapper".to_string(), "codex".to_string()];
-
-        let components =
-            materialize_session_components(&launch, None, None, &options, Some(&endpoint))
-                .expect("valid components");
-        let server = &components.items()[0];
-        let session = &components.items()[1];
-
-        assert_eq!(
-            server.args(),
-            ["codex", "app-server", "--listen", "unix:///tmp/codex.sock"]
-        );
-        assert_eq!(session.role(), Role::Session);
-        assert_eq!(
-            &session.args()[..3],
-            ["codex", "--remote", "unix:///tmp/codex.sock"]
-        );
-        assert_eq!(
-            server.env().get("TOKEN").map(String::as_str),
-            Some("secret")
-        );
-    }
-
-    #[test]
-    fn server_backed_components_require_an_allocated_unix_endpoint() {
-        let mut options = session_options();
-        options.backend_mode = super::super::BackendMode::WithServer;
-
-        let missing = materialize_session_components(&[], None, None, &options, None)
-            .expect_err("server-backed components require an endpoint");
-        assert_eq!(
-            missing,
-            MaterializeError::MissingControlEndpoint { backend: "codex" }
-        );
-
-        let port = std::num::NonZeroU16::new(
-            u16::try_from(std::process::id() % u32::from(u16::MAX - 1) + 1)
-                .expect("bounded test port"),
-        )
-        .expect("non-zero test port");
-        let endpoint = crate::session::ControlEndpoint::LoopbackHttp(port);
-
-        let wrong = materialize_session_components(&[], None, None, &options, Some(&endpoint))
-            .expect_err("Codex requires a Unix endpoint");
-        assert_eq!(
-            wrong,
-            MaterializeError::ControlEndpoint {
-                backend: "codex",
-                expected: "Unix-socket",
-            }
-        );
-    }
-
-    #[test]
     fn session_configured_values_are_native_and_precede_passthrough_args() {
-        let mut options = session_options();
-        options.extra_args = vec!["-c".into(), "model_reasoning_effort=\"override\"".into()];
+        let mut request = session_request();
+        request.extra_args = vec!["-c".into(), "model_reasoning_effort=\"override\"".into()];
 
-        let args = build_session_args(Some("gpt-5.3"), Some("x high"), &options);
+        let args = build_session_args(Some("gpt-5.3"), Some("x high"), &request);
         let model_position = args
             .iter()
             .position(|arg| arg == "--model")
@@ -717,10 +594,10 @@ mod tests {
 
     #[test]
     fn configured_model_and_effort_precede_passthrough_args() {
-        let mut options = one_shot(PromptInput::Inline("hi".into()));
-        options.extra_args = vec!["--model".into(), "override".into()];
+        let mut request = one_shot(PromptInput::Inline("hi".into()));
+        request.extra_args = vec!["--model".into(), "override".into()];
 
-        let args = build_one_shot_args(Some("gpt-5.3"), Some("xhigh"), &options);
+        let args = build_one_shot_args(Some("gpt-5.3"), Some("xhigh"), &request);
 
         assert_eq!(
             args,

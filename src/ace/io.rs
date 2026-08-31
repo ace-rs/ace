@@ -148,7 +148,7 @@ pub struct Io {
     guard: Option<TerminalGuard>,
 }
 
-const BIG_LOGO: &str = concat!(
+const BIG_WORDMARK: &str = concat!(
     "\x1b[1;38;2;55;225;225m╭──╮  ",
     "\x1b[38;2;30;205;230m╭───  ",
     "\x1b[38;2;40;175;225m╭───\x1b[0m\n",
@@ -160,14 +160,14 @@ const BIG_LOGO: &str = concat!(
     "\x1b[38;2;40;175;225m╰───\x1b[0m",
 );
 
-const COMPACT_LOGO: &str = concat!(
+const COMPACT_WORDMARK: &str = concat!(
     "\x1b[1;38;2;55;225;225mΠ",
     "\x1b[38;2;30;205;230mC",
     "\x1b[38;2;40;175;225mE\x1b[0m",
 );
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WordmarkStyle {
+pub enum Wordmark {
     Big,
     Compact,
     None,
@@ -198,7 +198,7 @@ impl Io {
 
     // -- what the caller actually wants to know --
 
-    /// Decoration, color, spinners, and the logo. Needs both a terminal to
+    /// Decoration, color, spinners, and the wordmark. Needs both a terminal to
     /// render into and the user's consent to spend it on presentation.
     pub fn should_colorize(&self) -> bool {
         !self.porcelain && self.is_terminal
@@ -223,15 +223,15 @@ impl Io {
         self.is_terminal && !self.porcelain && !self.yes && !self.ci
     }
 
-    pub fn logo(&self, wordmark: WordmarkStyle) -> &'static str {
+    pub fn wordmark(&self, wordmark: Wordmark) -> &'static str {
         if !self.should_colorize() || !self.should_emit() {
             return "";
         }
 
         match wordmark {
-            WordmarkStyle::Big => BIG_LOGO,
-            WordmarkStyle::Compact => COMPACT_LOGO,
-            WordmarkStyle::None => "",
+            Wordmark::Big => BIG_WORDMARK,
+            Wordmark::Compact => COMPACT_WORDMARK,
+            Wordmark::None => "",
         }
     }
 
@@ -504,7 +504,7 @@ mod tests {
     }
 
     #[test]
-    fn logo_uses_the_locked_big_wordmark() {
+    fn renders_the_locked_big_wordmark() {
         let expected = concat!(
             "\x1b[1;38;2;55;225;225m╭──╮  ",
             "\x1b[38;2;30;205;230m╭───  ",
@@ -517,30 +517,30 @@ mod tests {
             "\x1b[38;2;40;175;225m╰───\x1b[0m",
         );
 
-        assert_eq!(attended().logo(WordmarkStyle::Big), expected);
+        assert_eq!(attended().wordmark(Wordmark::Big), expected);
     }
 
     #[test]
-    fn logo_uses_the_locked_compact_wordmark() {
+    fn renders_the_locked_compact_wordmark() {
         let expected = concat!(
             "\x1b[1;38;2;55;225;225mΠ",
             "\x1b[38;2;30;205;230mC",
             "\x1b[38;2;40;175;225mE\x1b[0m",
         );
 
-        assert_eq!(attended().logo(WordmarkStyle::Compact), expected);
+        assert_eq!(attended().wordmark(Wordmark::Compact), expected);
     }
 
     #[test]
-    fn logo_suppresses_an_absent_wordmark() {
-        assert_eq!(attended().logo(WordmarkStyle::None), "");
+    fn suppresses_an_absent_wordmark() {
+        assert_eq!(attended().wordmark(Wordmark::None), "");
     }
 
     #[test]
-    fn logo_suppresses_all_wordmarks_without_presentation() {
-        assert_eq!(piped().logo(WordmarkStyle::Big), "");
+    fn suppresses_all_wordmarks_without_presentation() {
+        assert_eq!(piped().wordmark(Wordmark::Big), "");
         assert_eq!(
-            io_with(true, false, false, true).logo(WordmarkStyle::Compact),
+            io_with(true, false, false, true).wordmark(Wordmark::Compact),
             ""
         );
     }

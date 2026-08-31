@@ -45,11 +45,6 @@ fn bare_ace_routes_to_exec_session() {
     env.ace().assert().success();
 
     assert_eq!(env.read_flaude_exec_records().len(), 1);
-    assert_eq!(
-        env.read_flaude_exec_records()[0].backend_mode,
-        "normal",
-        "bare ace should select the backend's normal harness",
-    );
     assert!(
         env.read_flaude_one_shot_records().is_empty(),
         "bare ace must not trigger one-shot path",
@@ -194,7 +189,7 @@ fn configured_model_and_effort_precede_runtime_passthrough() {
     assert_eq!(
         record["extra_args"],
         serde_json::json!(["--model", "runtime-model", "--effort", "low"]),
-        "runtime arguments follow ACE-owned launch arguments",
+        "runtime arguments follow ACE-owned backend arguments",
     );
 }
 
@@ -245,7 +240,7 @@ fn exec_new_does_not_resume() {
 
 #[test]
 fn one_shot_omits_trust_and_resume() {
-    // One-shot options have no trust/resume fields.
+    // A one-shot request has no trust/resume fields.
     // Verify the recorded JSON has no trust or resume keys.
     let env = TestEnv::new();
     env.setup_flaude_school("name = \"test-school\"\n");

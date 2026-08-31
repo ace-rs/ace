@@ -2,9 +2,9 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::process::Output;
 
-use super::{MaterializeError, McpDecl, McpStatus, OneShotOptions, SessionOptions};
+use super::{McpDecl, McpStatus, OneShotRequest, SessionRequest};
 use crate::config::ace_toml::Trust;
-use crate::session::{Component, Components, Role};
+use crate::session::{ResumeMode, SessionProcess};
 
 pub(super) fn is_ready() -> bool {
     let auth = auth_path();
@@ -15,114 +15,58 @@ pub(super) fn is_ready() -> bool {
 }
 
 pub(super) fn exec_session(
-    launch: &[String],
+    command: &[String],
     model: Option<&str>,
     effort: Option<&str>,
-    options: SessionOptions,
+    request: SessionRequest,
 ) -> Result<(), std::io::Error> {
-    write_agent_file(&options.project_dir, &options.session_prompt, model, effort)?;
+    write_agent_file(&request.project_dir, &request.session_prompt, model, effort)?;
 
-    let components = materialize_session_components(launch, model, effort, &options, None)
-        .map_err(std::io::Error::other)?;
-
-    components.run()
+    session_process(command, model, effort, &request).run()
 }
 
-pub(super) fn materialize_session_components(
-    launch: &[String],
+fn session_process(
+    command: &[String],
     model: Option<&str>,
     effort: Option<&str>,
-    options: &SessionOptions,
-    endpoint: Option<&crate::session::ControlEndpoint>,
-) -> Result<Components, MaterializeError> {
-    let session = build_session_component(launch, model, effort, options);
-    if matches!(options.backend_mode, super::BackendMode::Normal) {
-        return Ok(Components::try_new(vec![session])?);
-    }
-    let endpoint = endpoint.ok_or(MaterializeError::MissingControlEndpoint {
-        backend: "opencode",
-    })?;
-    let Some((hostname, port, endpoint_url)) = endpoint.loopback_http() else {
-        return Err(MaterializeError::ControlEndpoint {
-            backend: "opencode",
-            expected: "loopback HTTP",
-        });
-    };
+    request: &SessionRequest,
+) -> SessionProcess {
+    let (program, prefix) = command
+        .split_first()
+        .map(|(program, rest)| (program.as_str(), rest))
+        .unwrap_or(("opencode", &[][..]));
+    let mut args = prefix.to_vec();
+    args.extend(build_session_args(model, effort, request));
 
-    let server = Component::from_launch(
-        Role::Server,
-        launch,
-        "opencode",
-        vec![
-            "serve".to_string(),
-            "--hostname".to_string(),
-            hostname.to_string(),
-            "--port".to_string(),
-            port.to_string(),
-        ],
-        &options.env,
-        &options.project_dir,
-    );
-    let mut args = Vec::new();
-    args.extend([
-        "attach".to_string(),
-        endpoint_url,
-        "--dir".to_string(),
-        options.project_dir.to_string_lossy().into_owned(),
-    ]);
-    if matches!(options.resume, super::ResumeMode::Latest) {
-        args.push("--continue".to_string());
-    }
-    args.extend(options.extra_args.iter().cloned());
-    let session = Component::from_launch(
-        Role::Session,
-        launch,
-        "opencode",
+    SessionProcess::new(
+        program.to_string(),
         args,
-        &options.env,
-        &options.project_dir,
-    );
-
-    Ok(Components::try_new(vec![server, session])?)
-}
-
-fn build_session_component(
-    launch: &[String],
-    model: Option<&str>,
-    effort: Option<&str>,
-    options: &SessionOptions,
-) -> Component {
-    Component::from_launch(
-        Role::Session,
-        launch,
-        "opencode",
-        build_session_args(model, effort, options),
-        &options.env,
-        &options.project_dir,
+        request.env.clone(),
+        request.project_dir.clone(),
     )
 }
 
 pub(super) fn exec_one_shot(
-    launch: &[String],
+    command: &[String],
     model: Option<&str>,
     effort: Option<&str>,
-    options: OneShotOptions,
+    request: OneShotRequest,
 ) -> Result<Output, std::io::Error> {
-    let (program, prefix) = launch
+    let (program, prefix) = command
         .split_first()
         .map(|(p, rest)| (p.as_str(), rest))
         .unwrap_or(("opencode", &[][..]));
     let mut cmd = std::process::Command::new(program);
     cmd.args(prefix);
-    cmd.current_dir(&options.project_dir);
+    cmd.current_dir(&request.project_dir);
 
-    for (key, val) in &options.env {
+    for (key, val) in &request.env {
         cmd.env(key, val);
     }
 
-    cmd.args(build_one_shot_args(model, effort, &options));
+    cmd.args(build_one_shot_args(model, effort, &request));
 
-    if matches!(options.prompt, super::PromptInput::Stdin) {
+    if matches!(request.prompt, super::PromptInput::Stdin) {
         cmd.stdin(std::process::Stdio::inherit());
     }
 
@@ -237,28 +181,28 @@ pub(super) fn supports_trust(trust: Trust) -> bool {
     matches!(trust, Trust::Default)
 }
 
-/// Translate `SessionOptions` into opencode's interactive argv.
+/// Translate `SessionRequest` into opencode's interactive argv.
 fn build_session_args(
     _model: Option<&str>,
     _effort: Option<&str>,
-    options: &SessionOptions,
+    request: &SessionRequest,
 ) -> Vec<String> {
     let mut args = Vec::new();
 
-    if matches!(options.resume, super::ResumeMode::Latest) {
+    if matches!(request.resume, ResumeMode::Latest) {
         args.push("--continue".to_string());
     }
 
     args.extend(["--agent", "ace"].map(String::from));
-    args.extend(options.extra_args.iter().cloned());
+    args.extend(request.extra_args.iter().cloned());
     args
 }
 
-/// Translate `OneShotOptions` into opencode's `run` argv.
+/// Translate `OneShotRequest` into opencode's `run` argv.
 fn build_one_shot_args(
     model: Option<&str>,
     effort: Option<&str>,
-    options: &OneShotOptions,
+    request: &OneShotRequest,
 ) -> Vec<String> {
     let mut args = vec!["run".to_string(), "--agent".to_string(), "ace".to_string()];
     if let Some(value) = model {
@@ -267,9 +211,9 @@ fn build_one_shot_args(
     if let Some(value) = effort {
         args.extend(["--variant".to_string(), value.to_string()]);
     }
-    args.extend(options.extra_args.iter().cloned());
+    args.extend(request.extra_args.iter().cloned());
 
-    match &options.prompt {
+    match &request.prompt {
         super::PromptInput::Inline(text) => args.push(text.clone()),
         super::PromptInput::Stdin => {} // opencode run reads stdin when no positional prompt
     }
@@ -344,20 +288,19 @@ mod tests {
     use std::collections::HashMap;
     use std::path::PathBuf;
 
-    fn session_options() -> SessionOptions {
-        SessionOptions {
+    fn session_request() -> SessionRequest {
+        SessionRequest {
             trust: crate::config::ace_toml::Trust::Default,
             session_prompt: "SP".to_string(),
             project_dir: PathBuf::from("/tmp"),
             env: HashMap::new(),
             extra_args: Vec::new(),
-            resume: super::super::ResumeMode::Fresh,
-            backend_mode: super::super::BackendMode::Normal,
+            resume: ResumeMode::Fresh,
         }
     }
 
-    fn one_shot(prompt: super::super::PromptInput) -> OneShotOptions {
-        OneShotOptions {
+    fn one_shot(prompt: super::super::PromptInput) -> OneShotRequest {
+        OneShotRequest {
             prompt,
             project_dir: PathBuf::from("/tmp"),
             env: HashMap::new(),
@@ -369,109 +312,23 @@ mod tests {
 
     #[test]
     fn session_args_default() {
-        let args = build_session_args(None, None, &session_options());
+        let args = build_session_args(None, None, &session_request());
         assert_eq!(args, vec!["--agent", "ace"]);
     }
 
     #[test]
-    fn session_component_carries_launch_context() {
-        let mut options = session_options();
-        options.env.insert("TOKEN".into(), "secret".into());
-        let launch = ["wrapper".to_string(), "opencode".to_string()];
-
-        let component = build_session_component(&launch, None, None, &options);
-
-        assert_eq!(component.role(), crate::session::Role::Session);
-        assert_eq!(component.program(), "wrapper");
-        assert_eq!(component.args(), ["opencode", "--agent", "ace"]);
-        assert_eq!(component.working_dir(), Path::new("/tmp"));
-        assert_eq!(
-            component.env().get("TOKEN").map(String::as_str),
-            Some("secret")
-        );
-    }
-
-    #[test]
-    fn server_backed_components_use_serve_and_attach() {
-        let mut options = session_options();
-        options.resume = super::super::ResumeMode::Latest;
-        options.env.insert("TOKEN".into(), "secret".into());
-        options.extra_args.push("--mini".to_string());
-        let port = std::num::NonZeroU16::new(
-            u16::try_from(std::process::id() % u32::from(u16::MAX - 1) + 1)
-                .expect("bounded test port"),
-        )
-        .expect("non-zero test port");
-        options.backend_mode = super::super::BackendMode::WithServer;
-        let endpoint = crate::session::ControlEndpoint::LoopbackHttp(port);
-        let launch = ["wrapper".to_string(), "opencode".to_string()];
-
-        let components =
-            materialize_session_components(&launch, None, None, &options, Some(&endpoint))
-                .expect("valid components");
-        let server = &components.items()[0];
-        let session = &components.items()[1];
-        let port = port.get().to_string();
-        let url = format!("http://127.0.0.1:{port}");
-
-        assert_eq!(server.role(), crate::session::Role::Server);
-        assert_eq!(
-            server.args(),
-            [
-                "opencode",
-                "serve",
-                "--hostname",
-                "127.0.0.1",
-                "--port",
-                &port
-            ]
-        );
-        assert_eq!(session.role(), crate::session::Role::Session);
-        assert_eq!(
-            &session.args()[..5],
-            ["opencode", "attach", &url, "--dir", "/tmp"]
-        );
-        assert_eq!(&session.args()[5..], ["--continue", "--mini"]);
-        for component in components.items() {
-            assert_eq!(component.working_dir(), Path::new("/tmp"));
-            assert_eq!(
-                component.env().get("TOKEN").map(String::as_str),
-                Some("secret")
-            );
-        }
-    }
-
-    #[test]
-    fn server_backed_components_reject_non_http_endpoint() {
-        let mut options = session_options();
-        options.backend_mode = super::super::BackendMode::WithServer;
-        let endpoint = crate::session::ControlEndpoint::Unix(PathBuf::from("/tmp/opencode.sock"));
-
-        let error = materialize_session_components(&[], None, None, &options, Some(&endpoint))
-            .expect_err("OpenCode requires a loopback HTTP endpoint");
-
-        assert_eq!(
-            error,
-            MaterializeError::ControlEndpoint {
-                backend: "opencode",
-                expected: "loopback HTTP",
-            }
-        );
-    }
-
-    #[test]
     fn session_args_resume() {
-        let mut options = session_options();
-        options.resume = super::super::ResumeMode::Latest;
-        let args = build_session_args(None, None, &options);
+        let mut request = session_request();
+        request.resume = ResumeMode::Latest;
+        let args = build_session_args(None, None, &request);
         assert_eq!(args, vec!["--continue", "--agent", "ace"]);
     }
 
     #[test]
     fn session_args_extra_args_come_last() {
-        let mut options = session_options();
-        options.extra_args = vec!["--model".to_string(), "anthropic/claude-sonnet".to_string()];
-        let args = build_session_args(None, None, &options);
+        let mut request = session_request();
+        request.extra_args = vec!["--model".to_string(), "anthropic/claude-sonnet".to_string()];
+        let args = build_session_args(None, None, &request);
         assert_eq!(
             args,
             vec!["--agent", "ace", "--model", "anthropic/claude-sonnet"]
@@ -535,10 +392,10 @@ mod tests {
 
     #[test]
     fn run_model_and_variant_precede_passthrough_args() {
-        let mut options = one_shot(super::super::PromptInput::Inline("hi".into()));
-        options.extra_args = vec!["--model".into(), "override".into()];
+        let mut request = one_shot(super::super::PromptInput::Inline("hi".into()));
+        request.extra_args = vec!["--model".into(), "override".into()];
 
-        let args = build_one_shot_args(Some("anthropic/claude-sonnet"), Some("max"), &options);
+        let args = build_one_shot_args(Some("anthropic/claude-sonnet"), Some("max"), &request);
 
         assert_eq!(
             args,

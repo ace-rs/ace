@@ -2,9 +2,9 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::process::Output;
 
-use super::{McpDecl, McpStatus, OneShotOptions, PromptInput, SessionOptions};
+use super::{McpDecl, McpStatus, OneShotRequest, PromptInput, SessionRequest};
 use crate::config::ace_toml::Trust;
-use crate::session::{Component, Components, Role};
+use crate::session::ResumeMode;
 
 pub(super) fn is_ready() -> bool {
     true
@@ -16,31 +16,11 @@ pub(super) fn supports_trust(_trust: Trust) -> bool {
     true
 }
 
-pub(super) fn materialize_session_components(
-    launch: &[String],
-    _model: Option<&str>,
-    _effort: Option<&str>,
-    options: &SessionOptions,
-    _endpoint: Option<&crate::session::ControlEndpoint>,
-) -> Result<Components, super::MaterializeError> {
-    if matches!(options.backend_mode, super::BackendMode::WithServer) {
-        return Err(super::MaterializeError::UnsupportedMode { backend: "flaude" });
-    }
-    Ok(Components::try_new(vec![Component::from_launch(
-        Role::Session,
-        launch,
-        "flaude",
-        options.extra_args.clone(),
-        &options.env,
-        &options.project_dir,
-    )])?)
-}
-
 pub(super) fn exec_session(
-    launch: &[String],
+    command: &[String],
     model: Option<&str>,
     effort: Option<&str>,
-    options: SessionOptions,
+    request: SessionRequest,
 ) -> Result<(), std::io::Error> {
     let Some(path) = exec_record_path() else {
         return Ok(());
@@ -50,14 +30,13 @@ pub(super) fn exec_session(
 
     let record = serde_json::json!({
         "action": "exec_session",
-        "trust": options.trust,
-        "resume": matches!(options.resume, super::ResumeMode::Latest),
-        "backend_mode": options.backend_mode.label(),
-        "session_prompt": options.session_prompt,
-        "project_dir": options.project_dir.to_string_lossy(),
-        "extra_args": options.extra_args,
-        "cmd": launch,
-        "env": options.env,
+        "trust": request.trust,
+        "resume": matches!(request.resume, ResumeMode::Latest),
+        "session_prompt": request.session_prompt,
+        "project_dir": request.project_dir.to_string_lossy(),
+        "extra_args": request.extra_args,
+        "cmd": command,
+        "env": request.env,
         "model": model,
         "effort": effort,
     });
@@ -72,14 +51,14 @@ pub(super) fn exec_session(
 }
 
 pub(super) fn exec_one_shot(
-    launch: &[String],
+    command: &[String],
     model: Option<&str>,
     effort: Option<&str>,
-    options: OneShotOptions,
+    request: OneShotRequest,
 ) -> Result<Output, std::io::Error> {
     use std::io::Write;
 
-    let prompt_repr = match &options.prompt {
+    let prompt_repr = match &request.prompt {
         PromptInput::Inline(text) => serde_json::json!({"kind": "inline", "text": text}),
         PromptInput::Stdin => serde_json::json!({"kind": "stdin"}),
     };
@@ -87,10 +66,10 @@ pub(super) fn exec_one_shot(
     let record = serde_json::json!({
         "action": "exec_one_shot",
         "prompt": prompt_repr,
-        "project_dir": options.project_dir.to_string_lossy(),
-        "extra_args": options.extra_args,
-        "cmd": launch,
-        "env": options.env,
+        "project_dir": request.project_dir.to_string_lossy(),
+        "extra_args": request.extra_args,
+        "cmd": command,
+        "env": request.env,
         "model": model,
         "effort": effort,
     });

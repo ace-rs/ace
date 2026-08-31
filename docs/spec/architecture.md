@@ -17,11 +17,11 @@ bindings are built only when a command reaches for them. Cache invalidation is e
 [configuration.md](configuration.md); package placement in
 [2026-06-05-resolver-dissolution.md](../decisions/2026-06-05-resolver-dissolution.md).
 
-Session launch adds a second demand-driven pipeline after preparation:
+Session startup adds a second demand-driven pipeline after preparation:
 
 ```text
 workspace expansion → configured Ace instances → feature requirements
-                    → backend component lists → feature component decoration
+                    → backend process topology → feature decoration
                     → local or mux execution
 ```
 
@@ -123,11 +123,11 @@ plan type. Callers finish configuration through the existing mutation surface, t
 
 ### Session composition — `session/`, `connect/`, `workspace/`, `mux/`
 
-The `session/` foundation is implemented; the composition modules remain designed:
+The native `session/` process boundary is implemented; composition remains designed:
 
-- `session/` owns typed process components, the validated ordered `Components` startup
-  list, and control-endpoint values. Runtime identity, thread handles, and lifecycle
-  operations extend that boundary.
+- `session/` owns `ResumeMode` and the executable `SessionProcess` for the current native
+  path. Managed process cohorts, control endpoints, runtime identity, backend handles,
+  and lifecycle operations enter together when a second owned process exists.
 - `connect/` decorates an instance with relay identity and inbound-message requirements.
 - `workspace/` parses a root manifest and constructs independent `Ace` instances.
 - `mux/` realizes component lists in tmux and exposes their runtime mapping.

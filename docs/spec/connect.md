@@ -26,10 +26,11 @@ A project opts into connected startup through its existing configuration:
 enabled = true
 ```
 
-Bare `ace` resolves this setting before launch. Connect selects
-`BackendMode::WithServer`, the backend materializes its control and terminal-session
-components, and the built-in connect decorator inserts its relay immediately before the
-terminal session. There is no separate `ace connect start` path.
+Bare `ace` resolves this setting before startup. A connected-session request carries its
+control requirement and concrete endpoint as one structurally valid value. The backend
+then constructs its control topology, and the built-in connect decorator inserts its
+relay immediately before the terminal session. There is no separate
+`ace connect start` path.
 
 Connected startup cannot generally be retrofitted onto an arbitrary backend process.
 Codex and OpenCode must be born through their server/control surfaces so ACE has the

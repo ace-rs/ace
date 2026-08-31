@@ -2,26 +2,20 @@ use std::collections::HashMap;
 use std::io::Write;
 
 use crate::actions::project::{Prepare, PrepareError};
-use crate::backend::{
-    BackendError, BackendMode, OneShotOptions, PromptInput, ResumeMode, SessionOptions,
-};
+use crate::backend::{BackendError, OneShotRequest, PromptInput, SessionRequest};
 use crate::config::ConfigError;
 use crate::config::ace_toml::Trust;
 use crate::config::resolve::Source;
 use crate::school::SchoolError;
+use crate::session::ResumeMode;
 use crate::templates::session::{SessionPromptInput, build_session_prompt};
 
 use super::{Ace, IoError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StartMode {
-    OneShot {
-        prompt: String,
-    },
-    Session {
-        resume: ResumeMode,
-        backend: BackendMode,
-    },
+    OneShot { prompt: String },
+    Session { resume: ResumeMode },
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -38,8 +32,6 @@ pub enum StartError {
     Prepare(#[from] PrepareError),
     #[error("{0}")]
     Prompt(#[from] IoError),
-    #[error("invalid start mode")]
-    InvalidStartMode,
 }
 
 impl StartError {
@@ -48,23 +40,13 @@ impl StartError {
             Self::School(error) => error.hint(),
             Self::Prepare(error) => error.hint(),
             Self::Prompt(error) => error.hint(),
-            Self::Io(_) | Self::Config(_) | Self::Backend(_) | Self::InvalidStartMode => None,
+            Self::Io(_) | Self::Config(_) | Self::Backend(_) => None,
         }
     }
 }
 
 impl Ace {
     pub fn start(&mut self, mode: StartMode) -> Result<(), StartError> {
-        if matches!(
-            &mode,
-            StartMode::Session {
-                backend: BackendMode::WithServer,
-                ..
-            }
-        ) {
-            return Err(StartError::InvalidStartMode);
-        }
-
         self.require_config_or_recover()?;
 
         let (specifier, school_from) = {
@@ -121,20 +103,19 @@ impl Ace {
 
         match mode {
             StartMode::OneShot { prompt } => self.start_one_shot(prompt, project_dir, env),
-            StartMode::Session { resume, backend } => {
+            StartMode::Session { resume } => {
                 let resume = match (resume, resume_preference) {
                     (ResumeMode::Latest, true) => ResumeMode::Latest,
                     (ResumeMode::Latest, false) | (ResumeMode::Fresh, _) => ResumeMode::Fresh,
                 };
 
-                self.start_session(SessionOptions {
+                self.start_session(SessionRequest {
                     trust,
                     session_prompt,
                     project_dir,
                     env,
                     extra_args: self.backend_args.clone(),
                     resume,
-                    backend_mode: backend,
                 })
             }
         }
@@ -146,7 +127,7 @@ impl Ace {
         project_dir: std::path::PathBuf,
         env: HashMap<String, String>,
     ) -> Result<(), StartError> {
-        let output = self.backend()?.exec_one_shot(OneShotOptions {
+        let output = self.backend()?.exec_one_shot(OneShotRequest {
             prompt: PromptInput::Inline(prompt),
             project_dir,
             env,
@@ -162,10 +143,10 @@ impl Ace {
         Ok(())
     }
 
-    fn start_session(&mut self, options: SessionOptions) -> Result<(), StartError> {
+    fn start_session(&mut self, request: SessionRequest) -> Result<(), StartError> {
         let backend = self.backend()?.clone();
-        if backend.kind.supports_trust(options.trust) {
-            match options.trust {
+        if backend.kind.supports_trust(request.trust) {
+            match request.trust {
                 Trust::Auto => self.info("auto mode — AI decides approvals"),
                 Trust::Yolo => self.warn("yolo mode — permission prompts disabled"),
                 Trust::Default => {}
@@ -174,16 +155,16 @@ impl Ace {
             self.warn(&format!(
                 "{} does not support {} trust — running with its default permissions",
                 backend.kind.name(),
-                options.trust.label(),
+                request.trust.label(),
             ));
         }
 
-        if matches!(options.resume, ResumeMode::Latest) {
+        if matches!(request.resume, ResumeMode::Latest) {
             self.hint("Resuming previous session. If this fails, run: ace new");
         }
         self.separator();
 
-        backend.exec_session(options)?;
+        backend.exec_session(request)?;
 
         Ok(())
     }
@@ -226,7 +207,6 @@ fn school_source_notice(from: Source, specifier: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::paths::AcePaths;
 
     #[test]
     fn user_school_is_announced() {
@@ -254,27 +234,5 @@ mod tests {
     #[test]
     fn typed_override_is_silent() {
         assert!(school_source_notice(Source::Override, "ace-rs/school").is_none());
-    }
-
-    #[test]
-    fn unavailable_backend_mode_fails_before_configuration() {
-        let temp = tempfile::tempdir().expect("create temp dir");
-        let project_dir = temp.path().to_path_buf();
-        let paths = AcePaths {
-            user: project_dir.join("user.toml"),
-            project: project_dir.join("ace.toml"),
-            local: project_dir.join("ace.local.toml"),
-            cache: project_dir.join("cache"),
-        };
-        let mut ace = Ace::new(project_dir, paths, super::super::Io::new(false, true));
-
-        let error = ace
-            .start(StartMode::Session {
-                resume: ResumeMode::Latest,
-                backend: BackendMode::WithServer,
-            })
-            .expect_err("server-backed start should not prepare the project yet");
-
-        assert!(matches!(error, StartError::InvalidStartMode));
     }
 }

@@ -19,8 +19,7 @@ use std::collections::HashMap;
 
 use clap::{Parser, Subcommand};
 
-use crate::ace::{Ace, StartMode, WordmarkStyle};
-use crate::backend::{BackendMode, ResumeMode};
+use crate::ace::{Ace, ResumeMode, StartMode, Wordmark};
 use crate::config::Scope;
 use crate::config::ace_toml::{AceToml, Trust};
 
@@ -109,7 +108,7 @@ pub struct Cli {
     #[arg(long, global = true)]
     local: bool,
 
-    /// Machine-readable output (no colors, no spinners, no logo)
+    /// Machine-readable output (no colors, no spinners, no wordmark)
     #[arg(long, global = true)]
     pub porcelain: bool,
 
@@ -226,14 +225,10 @@ enum Command {
     Version,
 }
 
-trait Wordmark {
-    fn wordmark(&self) -> WordmarkStyle;
-}
-
-impl Wordmark for Command {
-    fn wordmark(&self) -> WordmarkStyle {
+impl Command {
+    fn wordmark(&self) -> Wordmark {
         match self {
-            Self::New { .. } => WordmarkStyle::Big,
+            Self::New { .. } => Wordmark::Big,
             Self::Setup { .. }
             | Self::Fmt
             | Self::Format
@@ -241,10 +236,10 @@ impl Wordmark for Command {
             | Self::Pull
             | Self::Link { .. }
             | Self::Auto
-            | Self::Yolo => WordmarkStyle::Compact,
+            | Self::Yolo => Wordmark::Compact,
             Self::Config {
                 command: Some(config::Command::Set { .. }),
-            } => WordmarkStyle::Compact,
+            } => Wordmark::Compact,
             Self::Mcp {
                 command:
                     Some(
@@ -252,10 +247,10 @@ impl Wordmark for Command {
                         | mcp::Command::Register { .. }
                         | mcp::Command::Unregister { .. },
                     ),
-            } => WordmarkStyle::Compact,
+            } => Wordmark::Compact,
             Self::School {
                 command: school::Command::Init { .. } | school::Command::Pull,
-            } => WordmarkStyle::Compact,
+            } => Wordmark::Compact,
             Self::Skills {
                 command:
                     Some(
@@ -264,8 +259,8 @@ impl Wordmark for Command {
                         | skills::Command::Reset { .. },
                     ),
                 ..
-            } => WordmarkStyle::Compact,
-            Self::Upgrade { silent: false, .. } => WordmarkStyle::Compact,
+            } => Wordmark::Compact,
+            Self::Upgrade { silent: false, .. } => Wordmark::Compact,
             Self::Diff
             | Self::Config { .. }
             | Self::Paths { .. }
@@ -274,22 +269,22 @@ impl Wordmark for Command {
             | Self::Skills { .. }
             | Self::Explain { .. }
             | Self::Upgrade { silent: true, .. }
-            | Self::Version => WordmarkStyle::None,
+            | Self::Version => Wordmark::None,
         }
     }
 }
 
 impl Cli {
-    pub(crate) fn wordmark(&self) -> WordmarkStyle {
+    pub(crate) fn wordmark(&self) -> Wordmark {
         match &self.command {
             None => {
                 if self.one_shot_prompt.is_some() {
-                    WordmarkStyle::None
+                    Wordmark::None
                 } else {
-                    WordmarkStyle::Big
+                    Wordmark::Big
                 }
             }
-            Some(Command::New { .. }) if self.one_shot_prompt.is_some() => WordmarkStyle::None,
+            Some(Command::New { .. }) if self.one_shot_prompt.is_some() => Wordmark::None,
             Some(command) => command.wordmark(),
         }
     }
@@ -334,7 +329,6 @@ pub fn run(ace: &mut Ace, cli: Cli) {
             Some(prompt) => StartMode::OneShot { prompt },
             None => StartMode::Session {
                 resume: ResumeMode::Latest,
-                backend: BackendMode::Normal,
             },
         };
         return main::run(ace, cli.backend_args, mode);
@@ -380,7 +374,6 @@ pub fn run(ace: &mut Ace, cli: Cli) {
                 Some(prompt) => StartMode::OneShot { prompt },
                 None => StartMode::Session {
                     resume: ResumeMode::Fresh,
-                    backend: BackendMode::Normal,
                 },
             };
             main::run(ace, backend_args, mode)
@@ -514,15 +507,15 @@ mod tests {
 
     #[test]
     fn session_commands_use_the_big_wordmark() {
-        assert_eq!(parses(&["ace"]).wordmark(), WordmarkStyle::Big);
-        assert_eq!(parses(&["ace", "new"]).wordmark(), WordmarkStyle::Big);
+        assert_eq!(parses(&["ace"]).wordmark(), Wordmark::Big);
+        assert_eq!(parses(&["ace", "new"]).wordmark(), Wordmark::Big);
     }
 
     #[test]
     fn one_shot_session_uses_no_wordmark() {
         assert_eq!(
             parses(&["ace", "--prompt", "answer"]).wordmark(),
-            WordmarkStyle::None
+            Wordmark::None
         );
     }
 
@@ -539,7 +532,7 @@ mod tests {
             &["ace", "yolo"],
             &["ace", "upgrade"],
         ] {
-            assert_eq!(parses(args).wordmark(), WordmarkStyle::Compact, "{args:?}");
+            assert_eq!(parses(args).wordmark(), Wordmark::Compact, "{args:?}");
         }
     }
 
@@ -556,7 +549,7 @@ mod tests {
             &["ace", "skills", "exclude", "code"],
             &["ace", "skills", "reset"],
         ] {
-            assert_eq!(parses(args).wordmark(), WordmarkStyle::Compact, "{args:?}");
+            assert_eq!(parses(args).wordmark(), Wordmark::Compact, "{args:?}");
         }
     }
 
@@ -577,7 +570,7 @@ mod tests {
             &["ace", "upgrade", "--silent"],
             &["ace", "version"],
         ] {
-            assert_eq!(parses(args).wordmark(), WordmarkStyle::None, "{args:?}");
+            assert_eq!(parses(args).wordmark(), Wordmark::None, "{args:?}");
         }
     }
 

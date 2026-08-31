@@ -54,31 +54,26 @@ backend-dependent commands generally, including bare `ace`, `ace mcp`, `ace conf
 
 Each backend must provide:
 
-- **`binary()`** — executable name on `$PATH`, used for process launch.
+- **`binary()`** — executable name on `$PATH`, used to start the backend process.
 - **`backend_dir()`** — project directory where school folders are linked.
 - **`instructions_file()`** — markdown file generated per-project during setup.
 - **`is_ready()`** — heuristic check that the backend is authenticated/configured.
 - **`supports_trust(trust)`** — whether the backend can honour the given trust level.
   Independent of whether it emits flags for it (flaude honours every level yet emits
-  none). Before launching a session, ACE checks this and announces an unsupported
+  none). Before starting a session, ACE checks this and announces an unsupported
   level to the user — the backend runs with its own default permissions; the level is
   never dropped silently.
-- **`exec_session(options)`** — launch an interactive backend session under ACE
+- **`exec_session(request)`** — start an interactive backend session under ACE
   supervision.
-  Materializes a validated one-component `Components` list from `SessionOptions`, then
-  spawns its terminal session component with inherited terminal streams and waits for it.
+  Builds one `SessionProcess` from `SessionRequest`, starts it with inherited terminal
+  streams, and waits for it.
   Returns `io::Error` on spawn or wait failure and propagates the child's exit status. In
   `Latest` mode, some backends may fail if no prior session exists (Claude) while others
-  handle it gracefully (Codex). ACE prints a hint before launch so the user knows to run
+  handle it gracefully (Codex). ACE prints a hint before startup so the user knows to run
   `ace new` on failure. See
   [backends/claude.md → Session Resume](backends/claude.md#session-resume).
-- **`materialize_session_components(options, endpoint)`** — construct the validated
-  ordered `session::Components` startup list through the resolved `Backend` boundary.
-  The endpoint is absent for normal mode and must already be allocated for server-backed
-  mode; backends validate the transport they support. This method does not execute
-  components or establish protocol handles.
-- **`exec_one_shot(options)`** — spawn the backend non-interactively and capture
-  stdout/stderr. Builds its Command from `OneShotOptions` (prompt source, project dir,
+- **`exec_one_shot(request)`** — spawn the backend non-interactively and capture
+  stdout/stderr. Builds its command from `OneShotRequest` (prompt source, project dir,
   env, extra args; no resume, trust, or session prompt — the non-interactive entry point
   doesn't take approval modes or system-prompt injection). Returns
   `io::Result<std::process::Output>` — caller inspects `status.success()` and `stderr` for
@@ -98,24 +93,17 @@ See per-backend specs for implementation details.
 
 ### Managed-session contract
 
-`exec_session` is the implemented single-component transport. `Ace::start` supplies a
-`BackendMode`; every normal launch passes through validated `Components` before the local
-execution edge spawns and waits for the terminal process.
+`exec_session` is the implemented native-session transport. Each backend converts its
+configured command and `SessionRequest` into one `SessionProcess`; the process boundary
+owns spawning, waiting, terminal inheritance, and exit propagation.
 
-`session` owns list validation, process roles, and typed control endpoints. Each backend
-materializes its topology into an ordered list while preserving environment, working
-directory, configured launch wrappers, and backend arguments. Every included component
-is essential, and exactly one terminal component has the `session` role. Codex requires
-a concrete Unix-socket endpoint; OpenCode requires a concrete loopback HTTP endpoint.
-The local execution edge supervises a one-component foreground list. Multi-component
-execution remains unavailable until readiness and owner-classified exit handling land.
-
-Connect selects `BackendMode::WithServer` before materialization. The runtime supplies
-the allocated endpoint separately from that launch intent. Each backend produces its
-backend-owned control/session components and primary-session target or reports the
-requirement unsupported. The connect decorator then inserts its relay before the terminal
-session; no backend or executor owns relay semantics. No caller branches on `Kind` to
-construct Codex or OpenCode process topology.
+Controlled sessions are one later coherent boundary, not a dormant production mode.
+That boundary introduces runtime-allocated endpoints, backend-owned control/session
+components, readiness, and primary-session handles together. A controlled request carries
+its concrete endpoint by construction; there is no independent mode plus optional
+endpoint combination. Codex requires a Unix socket, and OpenCode requires loopback HTTP.
+Connect then inserts its relay before the terminal session; no backend or executor owns
+relay semantics. No caller branches on `Kind` to construct backend process topology.
 
 List order governs startup only. The executor waits for each component owner's readiness
 before starting the next. The backend controller establishes the primary handle before
@@ -140,8 +128,8 @@ wake-idle behavior, or a shared subagent model. See [session.md](session.md) and
 `exec_session` and `exec_one_shot` are the two transport methods — deliberately two, not
 one `exec(Intent)`: interactive execution inherits terminal streams and is supervised,
 while one-shot execution returns captured `Output`. Each backend builds its argv from the
-matching options type. The argv builder is the polymorphic core; the session path carries
-it in a component, while one-shot builds and captures its subprocess directly.
+matching request type. The argv builder is the polymorphic core; the session path places
+it in a `SessionProcess`, while one-shot builds and captures its subprocess directly.
 
 `ace -p` routes through `exec_one_shot`, which captures then prints after the child
 exits. That buffering belongs to the user-requested one-shot surface only. Model-driven
@@ -161,13 +149,13 @@ OneShot is non-interactive — approval modes don't apply.
 
 ### Prompt Source
 
-`OneShotOptions.prompt: PromptInput` is `Inline(String)` for argv-passed prompts, `Stdin`
+`OneShotRequest.prompt: PromptInput` is `Inline(String)` for argv-passed prompts, `Stdin`
 for piped stdin. Backends translate per the table above. When `Stdin`, the spawned child
 inherits the parent's stdin (`Stdio::inherit()`); the caller must arrange the piped data
 themselves.
 
-Launch-domain values use `Mode` or `Options`; `Request` is network-protocol terminology
-and is not used for in-process launch configuration.
+A request contains the complete input to one backend operation. Required values are not
+described as options.
 
 ## MCP Server Registration
 
@@ -213,7 +201,7 @@ instructions file, linked-folder layout) is inherited from the aliased `Kind`.
 ```toml
 [backends.bailer]           # key is selectable via `backend = "bailer"` or `-b bailer`
 kind = "claude"             # optional — see kind resolution below
-cmd = ["claude"]            # optional — argv for launch; defaults to [kind.name()]
+cmd = ["claude"]            # optional — process command; defaults to [kind.name()]
 env = { ANTHROPIC_BASE_URL = "https://proxy.example.com" }
 model = "opus"              # optional opaque backend-native value
 effort = "high"             # optional opaque backend-native value
@@ -279,7 +267,7 @@ plus a `{{ ... }}` reference, or written as a literal path. Rendering happens in
 - **Multiple instances of the same kind** — register `bailer` and `bedrock-claude` as
   separate names, each with its own env, both backed by `Kind::Claude`. Users select via
   `backend = "..."`.
-- **Wrap a built-in binary** — set `cmd = ["wrapper", "claude"]` to launch the backend
+- **Wrap a built-in binary** — set `cmd = ["wrapper", "claude"]` to start the backend
   through a process wrapper while keeping the rest of the contract (MCP, instructions
   file, linked folders) intact.
 
@@ -291,9 +279,9 @@ Adding a genuinely new backend requires extending the `Kind` enum in source.
 `model` and `effort` are optional opaque strings on each backend instance. ACE does not
 maintain a shared model catalogue or normalize effort values across vendors. The resolved
 `Backend` owns one pair, and its `Kind` translates each configured value through the
-backend's native launch surface.
+backend's native command surface.
 
-The pair governs every model process ACE launches through that backend: interactive
+The pair governs every model process ACE starts through that backend: interactive
 sessions, `ace -p`, and model-driven operations such as MCP health checks. There is no
 secondary pair. A missing field leaves that choice to the backend's own default.
 

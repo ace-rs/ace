@@ -24,9 +24,9 @@ fn main() {
     let cli = Cli::parse();
     let mut io = Io::new(cli.porcelain, cli.yes);
 
-    let logo = io.logo(cli.wordmark());
-    if !logo.is_empty() {
-        eprintln!("{logo}");
+    let wordmark = io.wordmark(cli.wordmark());
+    if !wordmark.is_empty() {
+        eprintln!("{wordmark}");
         io.info(&format!("version {}", cmd::BUILD_IDENTITY));
     }
 

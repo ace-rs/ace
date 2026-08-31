@@ -19,7 +19,8 @@ use crate::school::toml::SchoolToml;
 use crate::school::{School, SchoolError, toml as school_toml};
 use crate::skills::{Decided, SkillError, Skills};
 
-pub use io::{Io, IoError, WordmarkStyle, partition_picked};
+pub use crate::session::ResumeMode;
+pub use io::{Io, IoError, Wordmark, partition_picked};
 pub use start::{StartError, StartMode};
 
 /// Lazy-cached session view. All read accessors take `&self` and populate
