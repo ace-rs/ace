@@ -5,6 +5,10 @@ Not spec/decision because: explicitly undecided — the review it needs never ha
 Captured 2026-05-30. Draft / research. Full review + decisions deferred to a fresh
 session. Do **not** treat anything here as ruled.
 
+Task owner: [backlog J, item 200](../backlog/j-docs.md#local-records); the conditional
+closure of PROD9-13 stays with [H](../backlog/h-cli.md). The research and open questions
+below support those entries, not a separate task queue.
+
 ## Origin
 
 While auditing builtin templates (N3), confirmed `school.toml`'s `session_prompt`

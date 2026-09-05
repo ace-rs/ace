@@ -165,7 +165,8 @@ between variants.
 Liberal intake means ACE accepts skills that violate the agentskills.io spec — e.g.
 `name != basename(identity)`, non-kebab-case names, length over 64, missing fields,
 non-string types. These are surfaced as warnings, not rejected at
-intake. (A doctor-check follow-up is tracked in the Outline **ACE** collection.)
+intake. The doctor-check follow-up belongs to
+[backlog F, task 123](../../backlog/f-school-lifecycle.md#doctor-scope).
 
 Rationale: rejecting on parse forces the school author to upstream-fix every imported
 violation before the skill can be used. Warning lets the import succeed; the violation

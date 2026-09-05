@@ -117,17 +117,15 @@ binary and the formula sha means the release is broken — verify after publishi
 
 ## Roadmap & backlog
 
-**Outline is the only tracker.** All tasks, epics, phasing, and planning artifacts go
-there — never into local files, never into Linear. File new work as a checklist item on
-the matching epic doc (or the `Roadmap` doc for ordering); nothing gets a local
-`TODO.md`, backlog note, or plan file.
+**The repository is the task tracker.** Start at [docs/backlog/README.md](docs/backlog/README.md)
+and use [the roadmap](docs/backlog/roadmap.md) for ordering. File each task once in its
+owning epic; other epics and the roadmap link to it. Keep status, source evidence, and
+ask provenance; an idea or backlog entry does not authorize implementation.
 
-Lives in the **ACE** collection on Outline (self-hosted, via the `outline` MCP):
-<https://outline.prodigy9.co/collection/ace-hbmmUqagR9> — one doc per epic (A–L),
-each with its own checklist, plus a `Roadmap` doc for suggested ordering. The collection
-home page indexes every doc. There is no local roadmap/backlog file — the local
-consolidation and catalog notes were deleted once Outline took over (2026-07-22); recover
-them from git history if ever needed.
+`.ace/save.md` holds session context and `.ace/save.ledger.md` links in-flight asks to
+their backlog owners. Long-lived tasks belong in `docs/backlog/`, research in the
+existing docs routing structure, and product contracts in `docs/spec/`.
 
-Legacy: Linear project ACE (team PRODIGY9, key PROD9) — scope queries to
-`project:"ACE"`. Superseded by Outline; issue numbers survive as references only.
+Outline's ACE collection and Linear's PROD9 issue numbers are historical references.
+The source comparison, known closures, and unresolved conflicts live in
+[docs/backlog/reconciliation.md](docs/backlog/reconciliation.md).

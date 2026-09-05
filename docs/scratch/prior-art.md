@@ -140,7 +140,8 @@ contracts. Droid was dropped as a backend; its half of the plan is dead.
 
 **Stale.** Model names, SDK availability, LiteLLM compatibility notes, the
 Claude/OpenCode/Codex comparison table, the "gaps in ACE's Codex support" list, and
-all Linear (PROD9) issue references — Outline replaced Linear as the tracker.
+all Linear (PROD9) issue references — current task ownership lives in
+[the repository backlog](../backlog/README.md).
 
 ---
 

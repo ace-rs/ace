@@ -3,6 +3,9 @@
 Not spec/decision because: it's a menu of unmeasured options, not a ruling on which
 to take.
 
+Task owner: [backlog I, build-speedups](../backlog/i-quality.md#local-records).
+This note holds candidate rationale and historical measurements, not a separate queue.
+
 Captured from session memory before repo move. Ranked menu of remaining wins
 after the 2026-04-22 build-all.sh rework (commits 7253dd2, 2d89be1: zig 0.14
 pin, multi-target groups, sccache opt-in).
@@ -33,8 +36,8 @@ is independently measurable.
    Common offenders: `serde_derive`, `clap_derive`, `regex`. ACE already
    disables default features on `ureq`/`inquire`/`indicatif`/`gif`. Worth
    auditing `console`'s default features.
-3. **CI registry caching** if/when build-all moves to CI: `actions/cache` on
-   `~/.cargo/registry` and `~/.cargo/git`.
+3. **Portable registry caching** if build-all runs in CI: preserve Cargo registry and
+   Git dependency caches through the build environment's storage contract.
 
 ### Tier 2 — more effort, more payoff
 

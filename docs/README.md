@@ -5,6 +5,10 @@ yes. The bottom (`scratch/`) charges a toll, so nothing lands there by default.
 
 ## Where does this go?
 
+Tasks, epics, priority ordering, and unresolved asks → [`backlog/`](backlog/README.md).
+Give each task one owner; link supporting research or specifications rather than copying
+their content into a second task list. For other durable artifacts, use the gate below.
+
 1. A ruling you'd defend if someone reopened it? → [`decisions/`](decisions/) — dated,
    never edited.
 2. Third-party facts you keep to look up (a framework, an external API/CLI)? →
