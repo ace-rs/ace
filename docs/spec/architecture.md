@@ -51,6 +51,19 @@ config ← { backend, school, skills } ← { ace, actions } ← cmd
   in `config/resolve/`, skill resolution in `skills/resolve/`. No layer imports a layer to
   its right.
 
+### TOML data and document editing
+
+Use `toml` with Serde for typed configuration reads and serialization of generated
+TOML. Use `toml_edit` for targeted edits to existing user-authored TOML files,
+retaining the original document and preserving unrelated fields and comments.
+Keep document-editing types at the persistence boundary; configuration resolution
+consumes ACE's typed data. A preserving edit must not regenerate the whole file from
+a deserialized struct.
+
+This is the accepted crate boundary; preserving config writes remain to be implemented.
+The [decision record](../decisions/2026-09-05-toml-data-and-document-editing.md)
+contains the alternatives, maintenance evidence, and preservation limitations.
+
 ## Module map
 
 ### `config/` — parse + merge
