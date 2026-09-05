@@ -152,9 +152,9 @@ mutations use the compact wordmark, and read surfaces stay undecorated:
 | none         | `connect discover` / `send` / `monitor` / `status`             |
 | none         | silent `upgrade`; `version`; help output                       |
 
-Aliases inherit their canonical command's presentation. The wordmark is followed by a
-regular `info` item identifying the build as `version X (commit)`, where `X` is the
-package version and `commit` is the build's short git hash.
+Aliases inherit their canonical command's presentation. Build identity uses the package
+version and the build's short git hash. The big wordmark is followed by a regular `info`
+item identifying the build as `version X (commit)`.
 
 The big wordmark uses three fixed letter colors: A is `rgb(55, 225, 225)`, C is
 `rgb(30, 205, 230)`, and E is `rgb(40, 175, 225)`. Its A has no crossbar, and
@@ -168,11 +168,11 @@ its E is the same open silhouette as C with a detached middle stroke:
 ```
 
 The compact wordmark uses Greek capital pi followed by regular Latin C and E,
-with the same per-letter colors:
+with the same per-letter colors. Its build identity follows on the same line without a
+`version` label, in dim bright-black (ANSI 2;90) for muted gray text:
 
 ```text
-ΠCE
-  version 0.9.2 (97ba9e2)
+ΠCE 0.9.2 (97ba9e2)
 ```
 
 The version and hash above are illustrative. Rendering uses the current package version

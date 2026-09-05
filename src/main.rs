@@ -16,7 +16,7 @@ mod skills;
 mod templates;
 mod upgrade;
 
-use ace::Io;
+use ace::{Io, Wordmark};
 use clap::Parser;
 use cmd::Cli;
 
@@ -26,8 +26,16 @@ fn main() {
 
     let wordmark = io.wordmark(cli.wordmark());
     if !wordmark.is_empty() {
-        eprintln!("{wordmark}");
-        io.info(&format!("version {}", cmd::BUILD_IDENTITY));
+        match cli.wordmark() {
+            Wordmark::Compact => {
+                eprintln!("{wordmark} \x1b[2;90m{}\x1b[0m", cmd::BUILD_IDENTITY);
+            }
+            Wordmark::Big => {
+                eprintln!("{wordmark}");
+                io.info(&format!("version {}", cmd::BUILD_IDENTITY));
+            }
+            Wordmark::None => {}
+        }
     }
 
     let project_dir = std::env::current_dir().expect("cannot determine current directory");
