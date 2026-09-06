@@ -24,6 +24,11 @@ This repo IS the ACE tool, so the full `ace*` family applies (`ace`, `ace-afk`,
 
 ## Coding Style
 
+- **Dependency approval:** All dependency changes require Chakrit's explicit approval
+  before any dependency manifest or lockfile is changed. This includes additions,
+  removals, version upgrades or downgrades, source changes, feature changes, and
+  transitive dependency updates. Approval to implement a task is not approval to change
+  its dependencies; present the specific dependency change and obtain approval first.
 - Load `architect`, `code`, and `rust-coding` before proposing changes.
 - **Formatting**: the toolchain is pinned (`rust-toolchain.toml`, stable 1.96),
   so `cargo fmt` is deterministic and idempotent across the tree — just run it.
