@@ -101,9 +101,9 @@ resolved root exists but has no `school.toml`. Full case matrix in
 ACE has real users. CLI verbs, subcommand names, config keys (`ace.toml`, `school.toml`,
 `ace.local.toml`), and storage paths are public contracts.
 
-- Renames: add new name + `#[command(visible_alias = "...")]`; don't remove in a patch.
-  While ACE is in v0, each minor is the breaking-change boundary; after v1, removals
-  require a major bump. Every removal requires a release note.
+- While ACE is in v0, breaking changes are allowed in any release, including patches.
+  From v1 onward, renames add the new name + `#[command(visible_alias = "...")]`;
+  removals require a major bump. Every removal requires a release note.
 - Internal renames (struct/variant/module): no obligation.
 - Storage migrations: detect-and-hint (see `warn_stray_cache_dirs` in `src/main.rs`),
   not silent auto-migration.
