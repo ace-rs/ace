@@ -79,6 +79,11 @@ The planned controlled-session boundary constructs the first two process roles a
 `codex --remote unix://...` session. Runtime endpoint allocation and primary-thread
 establishment remain part of the later controller/executor boundary.
 
+This order describes startup, not message routing: the terminal connects directly to
+app-server. The split exposes the sanctioned receive surface that `ace connect send`
+uses to deliver to this instance. The sending agent invokes the ACE command; ACE resolves
+the recipient and translates the send into the Codex call without changing Codex internals.
+
 The controller waits for app-server readiness and establishes the primary-thread handle
 before starting its consumers. It also classifies Codex-native shutdown cascades so exit
 observation order does not decide the outcome. A successful user exit from the native
