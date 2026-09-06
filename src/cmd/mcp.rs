@@ -52,7 +52,7 @@ fn run_list(ace: &mut Ace) -> Result<(), CmdError> {
         Err(e) if e.is_absent() => Vec::new(),
         Err(e) => return Err(e.into()),
     };
-    let excluded = ace.excluded_mcp();
+    let excluded = ace.excluded_mcp()?;
     let registered = backend.mcp_list(ace.project_dir());
 
     for row in inventory(&declared, &excluded, &registered) {
@@ -295,7 +295,7 @@ pub(super) fn load_school_mcp(
         Err(e) if e.is_absent() => Vec::new(),
         Err(e) => return Err(e.into()),
     };
-    let excluded = ace.excluded_mcp();
+    let excluded = ace.excluded_mcp()?;
     let entries = filter_excluded(raw, &excluded);
     let project_dir = ace.project_dir().to_path_buf();
     Ok((backend, entries, project_dir))

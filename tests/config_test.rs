@@ -24,23 +24,30 @@ fn config_shows_effective() {
 }
 
 #[test]
-fn config_includes_school_toml() {
+fn config_is_one_effective_document_with_school_backend_contributions() {
     let env = TestEnv::new();
     env.setup_embedded("top-gun");
+    env.write_file("school.toml", "name = \"top-gun\"\nbackend = \"codex\"\n[env]\nSCHOOL = \"school-only\"\n[backends.codex]\neffort = \"high\"\n");
+    env.write_file("ace.toml", "school = \".\"\n[env]\nPROJECT = \"project\"\n");
 
     let output = env.ace().args(["config"]).output().expect("ace config");
 
     assert!(output.status.success());
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("# school.toml"),
-        "should include school.toml section header"
+    let document: toml::Value = toml::from_str(&stdout).expect("one effective TOML document");
+    assert_eq!(document["backend"].as_str(), Some("codex"));
+    assert_eq!(
+        document["backends"]["codex"]["effort"].as_str(),
+        Some("high")
     );
+    assert_eq!(document["env"]["PROJECT"].as_str(), Some("project"));
     assert!(
-        stdout.contains("top-gun"),
-        "should include school name from school.toml"
+        document.get("name").is_none(),
+        "school metadata is not config"
     );
+    assert_eq!(document["resume"].as_bool(), Some(true));
+    assert_eq!(document["skip_update"].as_bool(), Some(false));
 }
 
 #[test]

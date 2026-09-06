@@ -18,11 +18,11 @@ Status reconciled against repository records at `9df624a` on 2026-09-05.
 
 ## Config command consistency
 
-- [ ] **config-command-consistency** repair explicit trust-default overrides, preserve
+- [x] **config-command-consistency** repair explicit trust-default overrides, preserve
       unrelated configuration during writes, and align config inspection with runtime
       resolution. Audit evidence and proposed phases: `.ace/config-command-audit.md`;
-      retained regression tests: `tests/config_contract_test.rs`; later-slice candidates
-      are retained in `.ace/config-contract-deferred.rs`.
+      regression tests: `tests/config_contract_test.rs` and
+      `tests/config_diagnostics_test.rs`.
       The first slice is complete: explicit trust overrides retain their presence and
       provenance; targeted writes preserve unrelated fields, comments, and key formatting,
       publish atomically, preserve file permissions and symlinks, and invalidate caches.
@@ -32,9 +32,23 @@ Status reconciled against repository records at `9df624a` on 2026-09-05.
       failures, two ignored, clean Clippy, formatting, and full-slice audit.
       `.ace/dependency-upgrade-audit.md` records the dependency assessment and resolved
       comment-preservation finding; no dependency-driven API migration was found.
-      Remaining work: inspection/runtime consistency, unknown or misplaced-field
+      Completed 2026-09-06: inspection/runtime consistency, unknown or misplaced-field
       diagnostics, initial built-in selection, effective-write feedback, typed explanation
-      rendering, and compatibility-aware bare output. These need a later approved slice.
+      rendering, and compatibility-aware bare output. Authorized together on 2026-09-06:
+      "ok switch to that first then let's complete the config slices first".
+      Full validation: 832 passed, zero failed, two network tests ignored across 25
+      targets; compilation 12.67s and summed test execution 9.68s. Final focused config
+      validation: 70 passed (2.06s compilation); all-target/all-feature Clippy passed
+      (10.75s), formatting and whitespace checks passed, and full-scope audit found no
+      remaining violations. No dependency changes were needed; explanations use escaped
+      human-readable values, while machine output remains TOML.
+      Next-release migration note: **Breaking (v0):** bare `ace config` now emits one valid
+      TOML document, including explicit defaults, configured backend declarations, and
+      selection policies. It no longer appends school metadata as a second document.
+      Scripts should parse all stdout as TOML and obtain school-owned metadata from the
+      linked school's `school.toml`. Config inspection now exposes backend model/effort
+      and selection lists; `connect.enabled` remains planned and is not a supported
+      config command key.
       Custom-selector scope policy retains its existing owner
       in [A — Backends](a-backends.md), item 146.
       Ask provenance: "ok $ace-save please we'll restart the work next slice beginning

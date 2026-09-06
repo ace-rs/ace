@@ -82,7 +82,17 @@ Dumb I/O plus the pure merge; no filesystem beyond reading the config files.
 - `config/resolve/` — `merge(tree, school, overrides) -> Resolved`, infallible past parse,
   with per-field `Sourced<T>` provenance (rules in [configuration.md](configuration.md)).
   Owns `Source { User, Project, Local, School, Override, Default }`. Never reads a
-  discovered school itself, so `ace config show` survives without a clone.
+  discovered school itself, so bare `ace config` survives without a clone.
+- Backend fields fold independently in `config/resolve/`, with per-field provenance.
+  `Resolved` also retains ordered declarations so backend binding can validate earlier
+  kind declarations that a later value would otherwise hide. Inspection consumes the
+  pure configured values; binding applies kind validation and path rendering.
+- `config/selection` — pure policy fold for the skill base and skill/MCP unions, shared
+  by inspection and runtime selection. Ordered union values deduplicate for display;
+  source occurrences remain available for runtime traces and collision diagnostics.
+- `config/inspection` — typed projections of resolved fields and raw contributions for
+  get, explain, effective-write feedback, and the complete config display document.
+  It performs no backend binding or skill discovery.
 - `ConfigError` — parse / I/O only.
 
 ### Bindings — `backend/`, `school/`, `skills/`
@@ -112,7 +122,7 @@ tree-load failures bubble without double-handling.
 
 A single `Ace` instance is created in `main()` and threaded through every command. It owns
 the project dir, output sink, runtime overrides, and a lazy cache cell per stage. Commands
-declare what they need by calling accessors; failures stay local (`ace config show` is
+declare what they need by calling accessors; failures stay local (bare `ace config` is
 unaffected by an unknown backend selector, which `cmd::main` matches directly to drive the
 recovery picker).
 

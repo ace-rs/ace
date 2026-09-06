@@ -27,7 +27,8 @@ Each layer can set:
   `"opencode"` (plus the debug-only `"flaude"` test fixture, absent from release builds).
   Custom names are valid when declared in `[backends.<name>]` (see
   [Custom backends](#custom-backends)). See [backend.md](backend.md).
-- `session_prompt` — additional prompt text (last non-empty wins)
+- `session_prompt` — additional prompt text (last present wins). An explicit empty string
+  clears inherited text; omission inherits it.
 - `env` — environment variables (additive merge, later keys override)
 - `skip_update` — disable automatic version check and background upgrade. Default: `false`.
   See [upgrade.md](upgrade.md). Also overridden by `ACE_SKIP_UPDATE=1` env var.
@@ -40,8 +41,6 @@ Each layer can set:
 - `exclude_mcp` — MCP server names to skip registering. **Union across all scopes**, same
   exception as the skill patterns. Written by answering "no" to a registration prompt;
   cleared by `ace mcp register <name>`. See [mcp.md](mcp.md).
-- `[connect]` — connected-session settings. `enabled` is last-wins across user, project,
-  and local layers; default `false`. See [connect.md](connect.md).
 
 ### Personal-only fields
 
@@ -60,14 +59,18 @@ project-committed `ace.toml` or `school.toml`. They are personal workflow prefer
 Resolution for personal-only fields: runtime overrides win over local, then user.
 Project layer is skipped entirely, including explicit trust values.
 
-## Connected sessions
+## Connected sessions (planned)
+
+`[connect]` is a planned configuration surface, pending **connect-core** in
+[M — Managed sessions](../backlog/m-sessions.md). It is not supported by current
+`ace config get` or `ace config set`; the following describes the intended contract.
 
 ```toml
 [connect]
 enabled = true
 ```
 
-`enabled` requests connect-compatible startup through bare `ace`; it does not select a
+`enabled` will request connect-compatible startup through bare `ace`; it does not select a
 different command. Local wins over project, which wins over user. Workspace mode may add
 the same requirement to its member plans at runtime without writing the child configs.
 
@@ -100,6 +103,11 @@ override their settings, while new keys reuse an existing built-in's behavior (i
 `[backends.<name>]` may appear in `school.toml` and in any `ace.toml` /
 `ace.local.toml` layer. Resolution walks **built-ins → school → user → project → local**,
 applying each keyed patch in order.
+
+The config layer folds each field with its own provenance and retains the declarations
+in layer order. Inspection reads this fold without constructing a runnable backend;
+binding consumes the same values, validates each declaration's kind, then renders paths.
+An incomplete or invalid backend declaration remains inspectable even when it cannot bind.
 
 ### Resolution rules
 
@@ -243,7 +251,7 @@ When no scope flag is given, the default is inferred from the key:
 
 - Personal-only fields (`trust`, `resume`) → `--local`
 - Shared fields (`school`, `backend`, `session_prompt`, `env.*`, `skip_update`,
-  `connect.enabled`) → `--project`
+  `backends.<instance>.model`, `backends.<instance>.effort`) → `--project`
 
 An explicit scope flag always overrides inference.
 
@@ -251,24 +259,46 @@ An explicit scope flag always overrides inference.
 
 ### `ace config`
 
-Bare `ace config` prints the effective resolved configuration (all layers merged).
+Bare `ace config` prints one valid TOML document containing the effective configuration:
+explicit scalar defaults, merged environment entries, configured backend declarations,
+and the `skills`, `include_skills`, `exclude_skills`, and `exclude_mcp` selection policies.
+Backend declarations retain configured values before binding renders path templates;
+inspection does not invent backend-native model or effort defaults.
+
+Selection policies are available without discovering skills or MCP servers. An empty
+`skills` base means all discovered skills; union lists retain first-occurrence order
+across user → project → local. Runtime selection and inspection use the same policy fold,
+while runtime traces retain all source occurrences for diagnostics.
+
+School metadata is not appended as a second document. This changes the v0 output contract:
+consumers should parse the entire stdout as one TOML document and read school-owned
+metadata from the linked school's `school.toml`.
 
 ### `ace config get <key>`
 
-Print the effective resolved value for a single key. Outputs the raw value, one line.
+Print the effective resolved value for a single key. Scalar values retain their existing
+raw output; selection lists print as inline TOML arrays.
 
 Keys: `school`, `backend`, `trust`, `resume`, `session_prompt`, `skip_update`,
-`connect.enabled`, `env.KEY`.
+`env.KEY`, `backends.<instance>.model`, `backends.<instance>.effort`, `skills`,
+`include_skills`, `exclude_skills`, `exclude_mcp`. Selection lists are read-only through
+`ace config`; their dedicated editing commands and direct TOML editing remain available.
 
 ### `ace config explain [key]`
 
 Print provenance per layer for one or all keys. Bare form lists every key; pass a key name
-(e.g. `backend`, `trust`, `env.FOO`) to filter to one block.
+(e.g. `backend`, `trust`, `env.FOO`, `backends.codex.model`) to filter to one block.
+The supported keys match `ace config get`.
 
-Each block shows the resolved winner with its source label, then a per-layer breakdown
+Each scalar or skill-base block shows the resolved winner with its source label, then a
+per-layer breakdown
 (`user`/`project`/`local`/`school`/`override`). The winning layer is marked `← winner`.
 When no layer contributes a value (winner is `default`), the block collapses to a single
-line.
+line, except when an ignored project value needs explaining. Values are typed
+literals for human inspection: strings are quoted and escaped, booleans remain booleans,
+and arrays are inline. This annotated display is not a TOML serialization surface.
+Embedded newlines and control characters are escaped so each value occupies one line.
+Union lists identify contributing sources rather than claiming a single winning layer.
 
 ```
 backend = "bailer"  [project]
@@ -283,7 +313,7 @@ trust = "default"  [default]
 
 The breakdown shows the raw value present in each file. For personal-only keys (`trust`,
 `resume`), the merge ignores the project layer — a value listed under `project:` for those
-keys is informational only and does not influence the winner.
+keys is explicitly marked ignored and does not influence the winner.
 
 ### `ace config set <key> <value> [--user|--project|--local]`
 
@@ -292,6 +322,13 @@ saves back. Targeted writes retain the original TOML document, including unrelat
 recognized and unknown fields, comments, and inline tables; dotted backend instance and
 environment names remain literal table keys. Setting trust also removes the deprecated
 `yolo` field from the target layer.
+
+Successful writes report the target scope and the effective value's winning scope, or
+explain that the written field is ignored there. A higher-priority layer may retain the
+effective value after a lower-priority write. Selecting a built-in backend also works
+when no config layer exists yet; the write creates the target configuration.
+If inspection fails after publication, the command still reports a successful save and
+warns that the effective value could not be inspected.
 
 Validation finishes before filesystem mutation. Writes publish a complete replacement
 atomically in the target directory, retain existing file permissions, and follow file
@@ -302,7 +339,6 @@ owner. Explicit `ace fmt` remains a separate whole-file canonicalization operati
 
 Key syntax:
 - Simple fields: `backend`, `school`, `trust`, `resume`, `session_prompt`, `skip_update`
-- Connected-session field: `connect.enabled`
 - Env map entries: `env.KEY` — dot-path into the `[env]` table (e.g.
   `ace config set env.ANTHROPIC_API_KEY sk-...`)
 - Backend instance fields: `backends.<instance>.model` and
@@ -325,6 +361,13 @@ empty vec, `None`, etc.).
 
 This means a TOML with no `name` key produces `SchoolToml { name: "".into(), .. }` rather
 than a serde error. Partial or empty files always parse.
+
+`ace config` reports unknown and misplaced fields in user, project, and local `ace.toml`
+layers and in the linked school's backend declarations. Diagnostics identify the source
+file and offending key path without echoing values; other `school.toml` fields are outside
+this diagnostic surface. These diagnostics do not discard fields: targeted writes preserve
+unrelated content, including keys ACE does not recognize. Arbitrary environment variable
+names and backend instance names remain valid map keys.
 
 ### Validation
 

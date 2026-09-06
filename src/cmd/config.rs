@@ -1,13 +1,13 @@
-use std::collections::{BTreeSet, HashMap};
-
 use clap::Subcommand;
+use toml::Value;
 
 use crate::ace::Ace;
 use crate::actions::project::edit_config::{EditConfig, FieldEdit};
-use crate::config::ace_toml::{AceToml, Trust};
+use crate::backend::Kind;
+use crate::config::ace_toml::Trust;
+use crate::config::inspection::{View, display_value, render};
 use crate::config::resolve::Source;
-use crate::config::tree::Tree;
-use crate::config::{BackendConfigField, ConfigKey, ConfigSetKey, Scope};
+use crate::config::{ConfigError, ConfigKey, Scope};
 
 use super::CmdError;
 
@@ -15,19 +15,19 @@ use super::CmdError;
 pub enum Command {
     /// Print the resolved value of a config key
     Get {
-        /// Key to read (school, backend, trust, resume, session_prompt, env.KEY)
+        #[arg(help = ConfigKey::help())]
         key: String,
     },
     /// Set a config value in the appropriate layer
     Set {
-        /// Key to write (simple field, env.KEY, or backends.NAME.model/effort)
+        #[arg(help = ConfigKey::help())]
         key: String,
         /// Value to set
         value: String,
     },
     /// Show provenance per layer for one or all keys
     Explain {
-        /// Optional key to inspect (omit for all keys)
+        #[arg(help = ConfigKey::help())]
         key: Option<String>,
     },
 }
@@ -39,130 +39,91 @@ pub fn run(ace: &mut Ace, command: Option<Command>) {
 
 fn run_inner(ace: &mut Ace, command: Option<Command>) -> Result<(), CmdError> {
     match command {
-        None => show(ace),
-        Some(Command::Get { key }) => get(ace, &key),
-        Some(Command::Set { key, value }) => set(ace, &key, &value),
-        Some(Command::Explain { key }) => explain(ace, key.as_deref()),
-    }
-}
-
-/// Bare `ace config` — print effective resolved configuration.
-///
-/// Reads the merged `Resolved` only; does not bind the backend. A stale
-/// `backend = "..."` selector (one not in the registry) still prints the
-/// configured name without erroring — recovery is the bare `ace` command's job.
-fn show(ace: &Ace) -> Result<(), CmdError> {
-    let r = ace.require_config()?;
-    let backend_name = r.backend_name.value.clone();
-
-    let session_prompt_value = r.session_prompt.value.clone();
-    let env_flat: HashMap<String, String> = r
-        .env
-        .iter()
-        .map(|(k, v)| (k.clone(), v.value.clone()))
-        .collect();
-    let effective = AceToml {
-        school: r.school_specifier.value.clone().unwrap_or_default(),
-        backend: Some(backend_name),
-        session_prompt: if session_prompt_value.is_empty() {
-            None
-        } else {
-            Some(session_prompt_value)
-        },
-        env: env_flat,
-        trust: Some(r.trust.value),
-        resume: if r.resume.value { None } else { Some(false) },
-        skip_update: if r.skip_update.value {
-            Some(true)
-        } else {
-            None
-        },
-        ..AceToml::default()
-    };
-
-    let output = toml::to_string_pretty(&effective).map_err(|e| CmdError::failed(e.to_string()))?;
-    print!("{output}");
-
-    match ace.school() {
-        Ok(school) => {
-            let s = toml::to_string_pretty(school).map_err(|e| CmdError::failed(e.to_string()))?;
-            println!("\n# school.toml");
-            print!("{s}");
+        None => {
+            report_diagnostics(ace)?;
+            show(ace)
         }
-        Err(e) if e.is_absent() => {}
-        Err(e) => return Err(e.into()),
+        Some(Command::Get { key }) => {
+            let key = parse_key(&key)?;
+            report_diagnostics(ace)?;
+            get(ace, &key)
+        }
+        Some(Command::Set { key, value }) => set(ace, &parse_key(&key)?, &value),
+        Some(Command::Explain { key }) => {
+            let key = key.as_deref().map(parse_key).transpose()?;
+            report_diagnostics(ace)?;
+            explain(ace, key)
+        }
     }
-
-    Ok(())
 }
 
-/// `ace config get <key>` — print resolved value for a single key.
-fn get(ace: &mut Ace, key: &str) -> Result<(), CmdError> {
-    let config_key = ConfigKey::parse(key)
-        .ok_or_else(|| CmdError::usage(format!("unknown config key: {key}")))?;
+fn parse_key(key: &str) -> Result<ConfigKey, CmdError> {
+    ConfigKey::parse(key).ok_or_else(|| CmdError::usage(format!("unknown config key: {key}")))
+}
 
-    let r = ace.require_config()?;
-
-    let value = match config_key {
-        ConfigKey::School => r.school_specifier.value.clone().unwrap_or_default(),
-        ConfigKey::Backend => r.backend_name.value.clone(),
-        ConfigKey::Trust => r.trust.value.label().to_string(),
-        ConfigKey::Resume => r.resume.value.to_string(),
-        ConfigKey::SkipUpdate => r.skip_update.value.to_string(),
-        ConfigKey::SessionPrompt => r.session_prompt.value.clone(),
-        ConfigKey::Env(ref env_key) => r
-            .env
-            .get(env_key)
-            .map(|v| v.value.clone())
-            .unwrap_or_default(),
+fn view(ace: &Ace) -> Result<View<'_>, CmdError> {
+    let resolved = ace.require_config()?;
+    let school = match ace.school_toml() {
+        Ok(school) => Some(school),
+        Err(error) if error.is_absent() => None,
+        Err(error) => return Err(error.into()),
     };
+    Ok(View {
+        resolved,
+        tree: ace.require_tree()?,
+        overrides: ace.overrides(),
+        school,
+    })
+}
 
-    ace.data(&value);
+fn show(ace: &Ace) -> Result<(), CmdError> {
+    let document = view(ace)?.document()?;
+    let output = toml::to_string_pretty(&document).map_err(ConfigError::from)?;
+    print!("{output}");
     Ok(())
 }
 
-/// `ace config set <key> <value>` — write a field to the appropriate layer.
-fn set(ace: &mut Ace, key: &str, value: &str) -> Result<(), CmdError> {
-    let config_key = ConfigSetKey::parse(key)
-        .ok_or_else(|| CmdError::usage(format!("unknown config key: {key}")))?;
+fn get(ace: &mut Ace, key: &ConfigKey) -> Result<(), CmdError> {
+    let effective = view(ace)?.effective(key);
+    let output = match effective.value {
+        Value::String(value) => value,
+        value => render(&value)?,
+    };
+    ace.data(&output);
+    Ok(())
+}
 
+fn set(ace: &mut Ace, key: &ConfigKey, value: &str) -> Result<(), CmdError> {
+    if !key.is_writable() {
+        return Err(CmdError::usage(format!(
+            "config key is read-only: {}",
+            key.name()
+        )));
+    }
     let scope = ace
         .scope_override()
-        .unwrap_or_else(|| Scope::default_for_key(config_key.scope_key()));
-
+        .unwrap_or_else(|| Scope::default_for_key(key.scope_key()));
     let target = scope.path_in(ace.paths()).to_path_buf();
-    let sets_trust = matches!(&config_key, ConfigSetKey::Readable(ConfigKey::Trust));
-    let assignment = match config_key {
-        ConfigSetKey::Readable(config_key) => match config_key {
-            ConfigKey::School => FieldEdit::new("school", value),
-            ConfigKey::Backend => {
-                let known = ace.known_backend_names()?;
-                if !known.iter().any(|name| name == value) {
-                    return Err(CmdError::usage(format!(
-                        "unknown backend: {value} (known: {})",
-                        known.join(", "),
-                    )));
-                }
-                FieldEdit::new("backend", value)
-            }
-            ConfigKey::Trust => FieldEdit::new("trust", parse_trust(value)?.label()),
-            ConfigKey::Resume => FieldEdit::new("resume", parse_bool(value)?),
-            ConfigKey::SkipUpdate => FieldEdit::new("skip_update", parse_bool(value)?),
-            ConfigKey::SessionPrompt => FieldEdit::new("session_prompt", value),
-            ConfigKey::Env(env_key) => {
-                FieldEdit::new(env_key, value).in_tables(["env".to_string()])
-            }
-        },
-        ConfigSetKey::Backend { name, field } => {
-            let key = match field {
-                BackendConfigField::Model => "model",
-                BackendConfigField::Effort => "effort",
-            };
-            FieldEdit::new(key, value).in_tables(["backends".to_string(), name])
+    let assignment = match key {
+        ConfigKey::School => FieldEdit::new("school", value),
+        ConfigKey::Backend => {
+            validate_backend(ace, value)?;
+            FieldEdit::new("backend", value)
         }
+        ConfigKey::Trust => FieldEdit::new(
+            "trust",
+            value.parse::<Trust>().map_err(CmdError::usage)?.label(),
+        ),
+        ConfigKey::Resume => FieldEdit::new("resume", parse_bool(value)?),
+        ConfigKey::SkipUpdate => FieldEdit::new("skip_update", parse_bool(value)?),
+        ConfigKey::SessionPrompt => FieldEdit::new("session_prompt", value),
+        ConfigKey::Env(name) => FieldEdit::new(name, value).in_tables(["env".to_string()]),
+        ConfigKey::BackendField { name, field } => {
+            FieldEdit::new(field.label(), value).in_tables(["backends".to_string(), name.clone()])
+        }
+        ConfigKey::Selection(_) => return Err(CmdError::usage("selection fields are read-only")),
     };
-
-    let assignments = if sets_trust {
+    let assignments = if matches!(key, ConfigKey::Trust) {
         vec![assignment, FieldEdit::remove("yolo")]
     } else {
         vec![assignment]
@@ -172,229 +133,165 @@ fn set(ace: &mut Ace, key: &str, value: &str) -> Result<(), CmdError> {
         assignments,
     }
     .run(ace)?;
-    ace.done(&format!("{key} = {value}"));
+    ace.done(&format!(
+        "saved {} in {} ({})",
+        key.display_name(),
+        scope.label(),
+        target.display()
+    ));
+
+    // Publication has succeeded; an inspection failure cannot undo that fact or
+    // turn the successful write into a misleading command failure.
+    if let Err(error) = report_write_effect(ace, key, scope) {
+        ace.warn(&format!(
+            "saved configuration; effective value could not be inspected: {error}"
+        ));
+    }
+    if let Err(error) = report_diagnostics(ace) {
+        ace.warn(&format!(
+            "saved configuration; field diagnostics unavailable: {error}"
+        ));
+    }
     Ok(())
 }
 
-/// `ace config explain [key]` — print provenance per layer for one or all keys.
-///
-/// Reads the raw `Tree` and overrides directly so users can see what each layer
-/// contributes — not just the merged winner. Output collapses to a single line
-/// when no layer contributes (winner is `Source::Default`).
-fn explain(ace: &Ace, key: Option<&str>) -> Result<(), CmdError> {
-    let parsed = key
-        .map(|k| {
-            ConfigKey::parse(k).ok_or_else(|| CmdError::usage(format!("unknown config key: {k}")))
-        })
-        .transpose()?;
-
-    let resolved = ace.require_config()?.clone();
-    let tree = ace.require_tree()?.clone();
-    let overrides = ace.overrides().clone();
-
-    let mut blocks: Vec<String> = Vec::new();
-
-    let want = |k: &ConfigKey| match &parsed {
-        None => true,
-        Some(target) => target == k,
+fn validate_backend(ace: &Ace, name: &str) -> Result<(), CmdError> {
+    // Built-ins do not require a pre-existing configuration or a linked school.
+    if Kind::from_name(name).is_some() {
+        return Ok(());
+    }
+    let known = match ace.known_backend_names() {
+        Ok(names) => names,
+        Err(ConfigError::NoConfig) => Kind::ALL
+            .iter()
+            .map(|kind| kind.name().to_string())
+            .collect(),
+        Err(error) => return Err(error.into()),
     };
+    if known.iter().any(|known| known == name) {
+        return Ok(());
+    }
+    Err(CmdError::usage(format!(
+        "unknown backend: {name} (known: {})",
+        known.join(", ")
+    )))
+}
 
-    if want(&ConfigKey::School) {
-        let layers = scalar_layers(&tree, &overrides, |c| {
-            if c.school.is_empty() {
-                None
-            } else {
-                Some(c.school.clone())
-            }
-        });
-        let winner_value = resolved.school_specifier.value.clone().unwrap_or_default();
-        blocks.push(format_block(
-            "school",
-            &quoted(&winner_value),
-            resolved.school_specifier.from,
-            &layers,
-            None,
-        ));
-    }
+fn report_write_effect(ace: &mut Ace, key: &ConfigKey, scope: Scope) -> Result<(), CmdError> {
+    let effective = view(ace)?.effective(key);
+    let value = display_value(&effective.value);
+    let target_source = match scope {
+        Scope::User => Source::User,
+        Scope::Project => Source::Project,
+        Scope::Local => Source::Local,
+    };
+    let consequence = if key.is_personal() && scope == Scope::Project {
+        "ignored: personal-only"
+    } else if !effective.sources.contains(&target_source) {
+        "overridden or non-contributing"
+    } else {
+        "effective"
+    };
+    let sources = effective
+        .sources
+        .iter()
+        .map(|source| source.label())
+        .collect::<Vec<_>>()
+        .join(", ");
+    ace.info(&format!(
+        "{consequence}: {} = {value} [{sources}]",
+        key.display_name()
+    ));
+    Ok(())
+}
 
-    if want(&ConfigKey::Backend) {
-        let layers = scalar_layers(&tree, &overrides, |c| c.backend.clone());
-        let school_contrib = match ace.school_toml() {
-            Ok(st) => st.backend.clone().filter(|s| !s.is_empty()),
-            Err(e) if e.is_absent() => None,
-            Err(e) => return Err(e.into()),
-        };
-        blocks.push(format_block(
-            "backend",
-            &quoted(&resolved.backend_name.value),
-            resolved.backend_name.from,
-            &layers,
-            school_contrib.as_deref(),
-        ));
-    }
-
-    if want(&ConfigKey::Trust) {
-        let layers = scalar_layers(&tree, &overrides, |c| {
-            c.trust_override().map(|trust| trust.label().to_string())
-        });
-        blocks.push(format_block(
-            "trust",
-            &quoted(resolved.trust.value.label()),
-            resolved.trust.from,
-            &layers,
-            None,
-        ));
-    }
-
-    if want(&ConfigKey::Resume) {
-        let layers = scalar_layers(&tree, &overrides, |c| c.resume.map(|b| b.to_string()));
-        blocks.push(format_block(
-            "resume",
-            &resolved.resume.value.to_string(),
-            resolved.resume.from,
-            &layers,
-            None,
-        ));
-    }
-
-    if want(&ConfigKey::SkipUpdate) {
-        let layers = scalar_layers(&tree, &overrides, |c| c.skip_update.map(|b| b.to_string()));
-        blocks.push(format_block(
-            "skip_update",
-            &resolved.skip_update.value.to_string(),
-            resolved.skip_update.from,
-            &layers,
-            None,
-        ));
-    }
-
-    if want(&ConfigKey::SessionPrompt) {
-        let layers = scalar_layers(&tree, &overrides, |c| c.session_prompt.clone());
-        blocks.push(format_block(
-            "session_prompt",
-            &quoted(&resolved.session_prompt.value),
-            resolved.session_prompt.from,
-            &layers,
-            None,
-        ));
-    }
-
-    let mut env_keys: BTreeSet<String> = BTreeSet::new();
-    for layer in tree_layer_iter(&tree, &overrides).flatten() {
-        env_keys.extend(layer.env.keys().cloned());
-    }
-    env_keys.extend(resolved.env.keys().cloned());
-    if let Some(ConfigKey::Env(name)) = &parsed {
-        // Filtered to a specific env.X — always emit a block, even when no
-        // layer has it set, so the user sees an explicit "(default)" answer.
-        env_keys.insert(name.clone());
-    }
-    for env_key in env_keys {
-        let key_str = format!("env.{env_key}");
-        let target = ConfigKey::Env(env_key.clone());
-        if !want(&target) {
-            continue;
-        }
-        let layers = scalar_layers(&tree, &overrides, |c| c.env.get(&env_key).cloned());
-        let (winner_value, winner_from) = resolved
-            .env
-            .get(&env_key)
-            .map(|s| (s.value.clone(), s.from))
-            .unwrap_or((String::new(), Source::Default));
-        blocks.push(format_block(
-            &key_str,
-            &quoted(&winner_value),
-            winner_from,
-            &layers,
-            None,
-        ));
-    }
-
-    if blocks.is_empty() {
-        // A specific key was requested but produced nothing. Only env.* can hit
-        // this path (unknown env name); other keys always exist with defaults.
-        if let Some(k) = key {
-            return Err(CmdError::usage(format!("unknown config key: {k}")));
-        }
-    }
-
+fn explain(ace: &Ace, key: Option<ConfigKey>) -> Result<(), CmdError> {
+    let view = view(ace)?;
+    let keys = key.map(|key| vec![key]).unwrap_or_else(|| view.keys());
+    let blocks = keys
+        .iter()
+        .map(|key| format_block(&view, key))
+        .collect::<Vec<_>>();
     print!("{}", blocks.join("\n"));
     Ok(())
 }
 
-/// Per-layer values for a scalar field. Returns 4 entries: user, project, local,
-/// override — in that fixed order. School is handled separately per-key (only
-/// `backend` is school-contributable today).
-fn scalar_layers(
-    tree: &Tree,
-    overrides: &AceToml,
-    pick: impl Fn(&AceToml) -> Option<String>,
-) -> [(Source, Option<String>); 4] {
-    let user_val = tree.user.as_ref().and_then(&pick);
-    let project_val = tree.project.as_ref().and_then(&pick);
-    let local_val = tree.local.as_ref().and_then(&pick);
-    let override_val = pick(overrides);
-    [
-        (Source::User, user_val),
-        (Source::Project, project_val),
-        (Source::Local, local_val),
-        (Source::Override, override_val),
-    ]
-}
-
-fn tree_layer_iter<'a>(
-    tree: &'a Tree,
-    overrides: &'a AceToml,
-) -> impl Iterator<Item = Option<&'a AceToml>> {
-    [
-        tree.user.as_ref(),
-        tree.project.as_ref(),
-        tree.local.as_ref(),
-        Some(overrides),
-    ]
-    .into_iter()
-}
-
-/// Build one block. `school_contrib` is the optional school-layer value (only
-/// `backend` uses this slot today); when present it appears as the school row.
-fn format_block(
-    key: &str,
-    winner_value: &str,
-    winner_from: Source,
-    layers: &[(Source, Option<String>); 4],
-    school_contrib: Option<&str>,
-) -> String {
-    let any_set = layers.iter().any(|(_, v)| v.is_some()) || school_contrib.is_some();
-
-    if !any_set {
-        return format!("{key} = {winner_value}  [{}]\n", winner_from.label());
+fn format_block(view: &View<'_>, key: &ConfigKey) -> String {
+    let effective = view.effective(key);
+    let value = display_value(&effective.value);
+    let sources = effective
+        .sources
+        .iter()
+        .map(|source| source.label())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut output = format!("{} = {value}  [{sources}]\n", key.display_name());
+    let rows = view.contributions(key);
+    if rows.iter().all(|(_, value)| value.is_none()) {
+        return output;
     }
 
-    let mut out = format!("{key} = {winner_value}  [{}]\n", winner_from.label());
-    let school_row = (Source::School, school_contrib.map(str::to_string));
-    let rows = [&layers[0], &layers[1], &layers[2], &school_row, &layers[3]];
-    for (src, val) in rows {
-        let label = format!("{}:", src.label());
-        let value_str = match val {
-            Some(v) => quoted(v),
-            None => "(unset)".to_string(),
-        };
-        let marker = if *src == winner_from {
+    for (source, value) in rows {
+        let marker = if source == Source::Project && key.is_personal() && value.is_some() {
+            "  (ignored: personal-only)"
+        } else if effective.sources.contains(&source) && key.is_union() {
+            "  ← contributor"
+        } else if effective.sources.contains(&source) {
             "  ← winner"
         } else {
             ""
         };
-        out.push_str(&format!("  {label:<10}{value_str}{marker}\n"));
+        let rendered = match value {
+            Some(value) => display_value(&value),
+            None => "(unset)".into(),
+        };
+        let label = format!("{}:", source.label());
+        output.push_str(&format!("  {label:<10}{rendered}{marker}\n"));
     }
-    out
+    output
 }
 
-fn quoted(s: &str) -> String {
-    format!("\"{s}\"")
-}
-
-fn parse_trust(value: &str) -> Result<Trust, CmdError> {
-    value.parse::<Trust>().map_err(CmdError::usage)
+fn report_diagnostics(ace: &mut Ace) -> Result<(), CmdError> {
+    let tree = ace.require_tree()?;
+    let scopes = [
+        (Scope::User, &tree.user),
+        (Scope::Project, &tree.project),
+        (Scope::Local, &tree.local),
+    ];
+    let mut messages = Vec::new();
+    for (scope, layer) in scopes {
+        let Some(layer) = layer else {
+            continue;
+        };
+        for key in layer.unknown_field_paths() {
+            let path = scope.path_in(ace.paths());
+            messages.push(format!(
+                "{}: {key}: unknown or misplaced field; ignored",
+                path.display()
+            ));
+        }
+    }
+    match ace.school_toml() {
+        Ok(school) => {
+            let path = ace.require_linked_school()?.toml_path();
+            let unknown_fields = school
+                .backends
+                .iter()
+                .flat_map(|(name, backend)| backend.unknown_field_paths(name));
+            for key in unknown_fields {
+                messages.push(format!(
+                    "{}: {key}: unknown or misplaced field; ignored",
+                    path.display()
+                ));
+            }
+        }
+        Err(error) if error.is_absent() => {}
+        Err(error) => return Err(error.into()),
+    }
+    for message in messages {
+        ace.warn(&message);
+    }
+    Ok(())
 }
 
 fn parse_bool(value: &str) -> Result<bool, CmdError> {

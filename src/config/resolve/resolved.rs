@@ -1,5 +1,6 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
+use super::ResolvedBackend;
 use super::source::Sourced;
 use crate::config::ace_toml::{BackendDecl, Trust};
 
@@ -11,7 +12,9 @@ use crate::config::ace_toml::{BackendDecl, Trust};
 pub struct Resolved {
     pub school_specifier: Sourced<Option<String>>,
     pub backend_name: Sourced<String>,
+    /// Ordered declarations retain kind-inference and mismatch evidence for binding.
     pub backend_decls: Vec<Sourced<BackendDecl>>,
+    pub backends: BTreeMap<String, ResolvedBackend>,
     pub session_prompt: Sourced<String>,
     pub env: HashMap<String, Sourced<String>>,
     pub trust: Sourced<Trust>,

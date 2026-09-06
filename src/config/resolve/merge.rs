@@ -5,7 +5,6 @@
 
 use std::collections::HashMap;
 
-use crate::backend::Kind;
 use crate::config::ace_toml::{AceToml, BackendDecl, Trust};
 use crate::config::tree::Tree;
 use crate::school::toml::SchoolToml;
@@ -35,10 +34,14 @@ pub fn merge(tree: &Tree, school: Option<&SchoolToml>, overrides: &AceToml) -> R
         (Source::Override, overrides),
     ];
 
+    let backend_decls = backend_decls(school, &layers);
+    let backends = super::backend::merge(&backend_decls);
+
     Resolved {
         school_specifier: school_specifier(&layers),
         backend_name: backend_name(&layers, school.and_then(|s| s.backend.as_deref())),
-        backend_decls: backend_decls(school, &layers),
+        backend_decls,
+        backends,
         session_prompt: session_prompt(&layers),
         env: env(&layers),
         trust: trust(&personal),
@@ -67,7 +70,7 @@ fn backend_name(layers: &[(Source, &AceToml); 4], school_backend: Option<&str>) 
     if let Some(name) = school_backend {
         return Sourced::new(name.to_string(), Source::School);
     }
-    Sourced::at_default(Kind::default().into())
+    Sourced::at_default("claude".to_string())
 }
 
 fn backend_decls(
@@ -147,6 +150,7 @@ fn skip_update(layers: &[(Source, &AceToml); 4]) -> Sourced<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::backend::Kind;
     use crate::config::ace_toml::BackendDecl;
     use crate::config::tree::Tree;
 
@@ -479,6 +483,7 @@ mod tests {
                 env: HashMap::new(),
                 model: None,
                 effort: None,
+                ..BackendDecl::default()
             },
         );
         let mut local = ace("", &[]);
@@ -491,6 +496,7 @@ mod tests {
                 env: HashMap::new(),
                 model: None,
                 effort: None,
+                ..BackendDecl::default()
             },
         );
 

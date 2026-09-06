@@ -220,16 +220,20 @@ For a new name, `kind` is resolved in order:
 4. Otherwise → `BackendError::Unresolvable`.
 
 For a name that already exists (built-in or earlier-layer custom), the decl partially
-overrides the existing entry: `env` merges per-key; `cmd`, `model`, and `effort` are
-last-wins when present; and a declared `kind` must match the existing kind (otherwise
-`BackendError::KindMismatch`).
+overrides the existing entry: `env` merges per-key; `cmd` is last-nonempty-wins;
+`model` and `effort` are last-wins when present; and a declared `kind` must match the
+existing kind (otherwise `BackendError::KindMismatch`).
 
 ### Layer Merge
 
-Declarations are folded into a registry seeded with built-ins, in layer order: school →
-user → project → local. Later layers may add new entries or partially override earlier
-ones. The selected backend name (resolved per the [Resolution Order](#resolution-order)
-above) is then looked up in the final registry; an unknown name is `BackendError::Unknown`.
+The config layer folds declarations by field, in layer order: school → user → project →
+local, retaining each field's provenance and the declaration history. Later layers may
+add new entries or partially override earlier ones. Binding validates kinds against the
+ordered history, then consumes the folded values to populate a registry seeded with
+built-ins and render configured paths. Config inspection uses the same field fold without
+requiring successful binding. The selected backend name (resolved per the
+[Resolution Order](#resolution-order) above) is then looked up in the final registry;
+an unknown name is `BackendError::Unknown`.
 
 Session-start sites recover from `Unknown` interactively: on a TTY, a picker over the
 registry names, then re-resolve with the pick as a runtime override and print

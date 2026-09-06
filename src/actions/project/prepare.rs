@@ -139,7 +139,7 @@ impl Prepare<'_> {
             Err(error) if error.is_absent() => Vec::new(),
             Err(error) => return Err(error.into()),
         };
-        let excluded = ace.excluded_mcp();
+        let excluded = ace.excluded_mcp()?;
         let entries = raw_entries
             .into_iter()
             .filter(|entry| !excluded.contains(&entry.name))

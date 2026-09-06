@@ -1,7 +1,9 @@
 pub mod ace_toml;
 pub mod index_toml;
+pub mod inspection;
 pub mod paths;
 pub mod resolve;
+pub mod selection;
 pub mod tree;
 
 use std::collections::HashMap;
@@ -68,8 +70,8 @@ mod scope_tests {
     }
 }
 
-/// Parsed config key for get/set operations.
-#[derive(Debug, PartialEq, Eq)]
+/// One key surface shared by inspection and mutation.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConfigKey {
     School,
     Backend,
@@ -78,85 +80,154 @@ pub enum ConfigKey {
     SkipUpdate,
     SessionPrompt,
     Env(String),
+    BackendField {
+        name: String,
+        field: BackendConfigField,
+    },
+    Selection(SelectionField),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BackendConfigField {
     Model,
     Effort,
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum ConfigSetKey {
-    Readable(ConfigKey),
-    Backend {
-        name: String,
-        field: BackendConfigField,
-    },
+impl BackendConfigField {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Model => "model",
+            Self::Effort => "effort",
+        }
+    }
 }
 
-impl ConfigSetKey {
-    pub fn parse(key: &str) -> Option<Self> {
-        if let Some(config_key) = ConfigKey::parse(key) {
-            return Some(ConfigSetKey::Readable(config_key));
-        }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SelectionField {
+    Skills,
+    IncludeSkills,
+    ExcludeSkills,
+    ExcludeMcp,
+}
 
-        let backend_path = key.strip_prefix("backends.")?;
-        let (name, field_name) = backend_path.rsplit_once('.')?;
-        if name.is_empty() {
-            return None;
-        }
-
-        let field = match field_name {
-            "model" => BackendConfigField::Model,
-            "effort" => BackendConfigField::Effort,
-            _ => return None,
-        };
-
-        Some(ConfigSetKey::Backend {
-            name: name.to_string(),
-            field,
-        })
-    }
-
-    pub fn scope_key(&self) -> &str {
+impl SelectionField {
+    pub fn label(self) -> &'static str {
         match self {
-            ConfigSetKey::Readable(config_key) => config_key.scope_key(),
-            ConfigSetKey::Backend { .. } => "backends",
+            Self::Skills => "skills",
+            Self::IncludeSkills => "include_skills",
+            Self::ExcludeSkills => "exclude_skills",
+            Self::ExcludeMcp => "exclude_mcp",
         }
     }
 }
 
 impl ConfigKey {
+    pub const SCALARS: [Self; 6] = [
+        Self::School,
+        Self::Backend,
+        Self::Trust,
+        Self::Resume,
+        Self::SkipUpdate,
+        Self::SessionPrompt,
+    ];
+    pub const SELECTIONS: [Self; 4] = [
+        Self::Selection(SelectionField::Skills),
+        Self::Selection(SelectionField::IncludeSkills),
+        Self::Selection(SelectionField::ExcludeSkills),
+        Self::Selection(SelectionField::ExcludeMcp),
+    ];
+
     pub fn parse(key: &str) -> Option<Self> {
-        if let Some(env_key) = key.strip_prefix("env.") {
-            if env_key.is_empty() {
+        if let Some(name) = key.strip_prefix("env.") {
+            return (!name.is_empty()).then(|| Self::Env(name.to_string()));
+        }
+        if let Some(path) = key.strip_prefix("backends.") {
+            let (name, field) = path.rsplit_once('.')?;
+            if name.is_empty() {
                 return None;
             }
-            return Some(ConfigKey::Env(env_key.to_string()));
+            let field = match field {
+                "model" => BackendConfigField::Model,
+                "effort" => BackendConfigField::Effort,
+                _ => return None,
+            };
+            return Some(Self::BackendField {
+                name: name.to_string(),
+                field,
+            });
         }
-
-        match key {
-            "school" => Some(ConfigKey::School),
-            "backend" => Some(ConfigKey::Backend),
-            "trust" => Some(ConfigKey::Trust),
-            "resume" => Some(ConfigKey::Resume),
-            "skip_update" => Some(ConfigKey::SkipUpdate),
-            "session_prompt" => Some(ConfigKey::SessionPrompt),
-            _ => None,
-        }
+        Self::SCALARS
+            .into_iter()
+            .chain(Self::SELECTIONS)
+            .find(|candidate| candidate.scope_key() == key)
     }
 
     pub fn scope_key(&self) -> &str {
         match self {
-            ConfigKey::School => "school",
-            ConfigKey::Backend => "backend",
-            ConfigKey::Trust => "trust",
-            ConfigKey::Resume => "resume",
-            ConfigKey::SkipUpdate => "skip_update",
-            ConfigKey::SessionPrompt => "session_prompt",
-            ConfigKey::Env(_) => "env",
+            Self::School => "school",
+            Self::Backend => "backend",
+            Self::Trust => "trust",
+            Self::Resume => "resume",
+            Self::SkipUpdate => "skip_update",
+            Self::SessionPrompt => "session_prompt",
+            Self::Env(_) => "env",
+            Self::BackendField { .. } => "backends",
+            Self::Selection(field) => field.label(),
         }
+    }
+
+    pub fn name(&self) -> String {
+        match self {
+            Self::Env(name) => format!("env.{name}"),
+            Self::BackendField { name, field } => format!("backends.{name}.{}", field.label()),
+            _ => self.scope_key().to_string(),
+        }
+    }
+
+    pub fn is_writable(&self) -> bool {
+        !matches!(self, Self::Selection(_))
+    }
+
+    pub fn is_personal(&self) -> bool {
+        matches!(self, Self::Trust | Self::Resume)
+    }
+
+    pub fn is_union(&self) -> bool {
+        matches!(
+            self,
+            Self::Selection(
+                SelectionField::IncludeSkills
+                    | SelectionField::ExcludeSkills
+                    | SelectionField::ExcludeMcp
+            )
+        )
+    }
+
+    pub fn display_name(&self) -> String {
+        use ace_toml::display_key_segment;
+        match self {
+            Self::Env(name) => format!("env.{}", display_key_segment(name)),
+            Self::BackendField { name, field } => {
+                format!("backends.{}.{}", display_key_segment(name), field.label())
+            }
+            _ => self.name(),
+        }
+    }
+
+    pub fn help() -> String {
+        let simple = Self::SCALARS
+            .into_iter()
+            .map(|key| key.name())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let selections = Self::SELECTIONS
+            .into_iter()
+            .map(|key| key.name())
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(
+            "{simple}, env.KEY, backends.NAME.model, backends.NAME.effort; read-only: {selections}"
+        )
     }
 }
 
@@ -165,59 +236,21 @@ mod config_key_tests {
     use super::*;
 
     #[test]
-    fn parse_skip_update() {
-        assert_eq!(ConfigKey::parse("skip_update"), Some(ConfigKey::SkipUpdate));
-    }
-
-    #[test]
-    fn skip_update_scope_key() {
-        assert_eq!(ConfigKey::SkipUpdate.scope_key(), "skip_update");
-    }
-
-    #[test]
-    fn skip_update_default_scope_is_project() {
-        assert_eq!(Scope::default_for_key("skip_update"), Scope::Project);
-    }
-}
-
-#[cfg(test)]
-mod config_set_key_tests {
-    use super::*;
-
-    #[test]
-    fn parse_backend_model() {
+    fn backend_field_uses_the_terminal_field_and_literal_instance_name() {
         assert_eq!(
-            ConfigSetKey::parse("backends.claude.model"),
-            Some(ConfigSetKey::Backend {
-                name: "claude".to_string(),
-                field: BackendConfigField::Model,
-            }),
-        );
-    }
-
-    #[test]
-    fn parse_backend_effort_with_dotted_instance_name() {
-        assert_eq!(
-            ConfigSetKey::parse("backends.bedrock.claude.effort"),
-            Some(ConfigSetKey::Backend {
-                name: "bedrock.claude".to_string(),
+            ConfigKey::parse("backends.team.codex.effort"),
+            Some(ConfigKey::BackendField {
+                name: "team.codex".into(),
                 field: BackendConfigField::Effort,
-            }),
+            })
         );
-    }
-
-    #[test]
-    fn reject_unsupported_or_incomplete_backend_paths() {
-        assert_eq!(ConfigSetKey::parse("backends.claude.cmd"), None);
-        assert_eq!(ConfigSetKey::parse("backends..model"), None);
-        assert_eq!(ConfigSetKey::parse("backends.claude"), None);
-    }
-
-    #[test]
-    fn backend_fields_default_to_project_scope() {
-        let key = ConfigSetKey::parse("backends.claude.model").expect("parse backend model");
-
-        assert_eq!(Scope::default_for_key(key.scope_key()), Scope::Project);
+        assert_eq!(ConfigKey::parse("backends..model"), None);
+        assert_eq!(ConfigKey::parse("backends.codex.cmd"), None);
+        assert!(
+            !ConfigKey::parse("skills")
+                .expect("readable key")
+                .is_writable()
+        );
     }
 }
 

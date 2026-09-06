@@ -25,6 +25,24 @@ pub struct BackendDecl {
     pub model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub effort: Option<String>,
+    #[serde(flatten, skip_serializing)]
+    pub unknown_fields: BTreeMap<String, toml::Value>,
+}
+
+impl BackendDecl {
+    pub fn unknown_field_paths(&self, name: &str) -> Vec<String> {
+        let mut paths = Vec::new();
+        for (key, value) in &self.unknown_fields {
+            let path = format!(
+                "backends.{}.{}",
+                display_key_segment(name),
+                display_key_segment(key)
+            );
+            unknown_paths(&path, value, &mut paths);
+        }
+
+        paths
+    }
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -111,6 +129,8 @@ pub struct AceToml {
     /// Per-backend declarations keyed by their registry identity.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub backends: BTreeMap<String, BackendDecl>,
+    #[serde(flatten, skip_serializing)]
+    pub unknown_fields: BTreeMap<String, toml::Value>,
 }
 
 impl AceToml {
@@ -119,6 +139,19 @@ impl AceToml {
     pub fn trust_override(&self) -> Option<Trust> {
         let legacy_trust = self.yolo.then_some(Trust::Yolo);
         self.trust.or(legacy_trust)
+    }
+
+    /// Unsupported fields remain parseable; diagnostics expose only their paths.
+    pub fn unknown_field_paths(&self) -> Vec<String> {
+        let mut paths = Vec::new();
+        for (key, value) in &self.unknown_fields {
+            unknown_paths(&display_key_segment(key), value, &mut paths);
+        }
+        for (name, backend) in &self.backends {
+            paths.extend(backend.unknown_field_paths(name));
+        }
+
+        paths
     }
 }
 
@@ -141,6 +174,35 @@ pub fn load_or_default(path: &Path) -> Result<AceToml, ConfigError> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(AceToml::default()),
         Err(e) => Err(ConfigError::from(e)),
     }
+}
+
+fn unknown_paths(path: &str, value: &toml::Value, paths: &mut Vec<String>) {
+    if let toml::Value::Table(table) = value
+        && !table.is_empty()
+    {
+        for (key, child) in table {
+            unknown_paths(
+                &format!("{path}.{}", display_key_segment(key)),
+                child,
+                paths,
+            );
+        }
+        return;
+    }
+
+    paths.push(path.to_string());
+}
+
+pub(crate) fn display_key_segment(key: &str) -> String {
+    let bare = !key.is_empty()
+        && key
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'));
+    if bare {
+        return key.to_string();
+    }
+
+    format!("{key:?}")
 }
 
 fn inject_backend_names(backends: &mut BTreeMap<String, BackendDecl>) {

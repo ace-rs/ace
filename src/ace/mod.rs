@@ -11,6 +11,7 @@ use crate::config::ace_toml::AceToml;
 use crate::config::paths::AcePaths;
 use crate::config::resolve;
 use crate::config::resolve::Resolved;
+use crate::config::selection::Policy;
 use crate::config::tree::Tree;
 use crate::config::{ConfigError, Scope};
 use crate::git::Git;
@@ -214,24 +215,11 @@ impl Ace {
         }
     }
 
-    /// Union of `exclude_mcp` across user/project/local scopes. Empty when no
-    /// tree is loaded; callers needing a guarantee should `require_config`
-    /// or `require_tree` first.
-    pub fn excluded_mcp(&self) -> std::collections::HashSet<String> {
-        let Ok(tree) = self.require_tree() else {
-            return std::collections::HashSet::new();
-        };
-        let mut out = std::collections::HashSet::new();
-        for toml in [&tree.user, &tree.project, &tree.local]
-            .iter()
-            .copied()
-            .flatten()
-        {
-            for name in &toml.exclude_mcp {
-                out.insert(name.clone());
-            }
-        }
-        out
+    /// Union of `exclude_mcp` across user/project/local scopes.
+    pub fn excluded_mcp(&self) -> Result<std::collections::HashSet<String>, ConfigError> {
+        let policy = Policy::from_tree(self.require_tree()?);
+
+        Ok(policy.exclude_mcp().values().into_iter().collect())
     }
 
     /// Names of school skills filtered out by the resolved

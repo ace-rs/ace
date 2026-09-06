@@ -15,6 +15,8 @@
 use std::collections::BTreeMap;
 
 use crate::config::ace_toml::AceToml;
+use crate::config::resolve::Sourced;
+use crate::config::selection::Policy;
 use crate::config::tree::Tree;
 use crate::glob;
 use crate::skills::identity::pattern_matches;
@@ -164,6 +166,7 @@ impl Skills<Validated> {
 /// then the exclude and include phases, recording a trace entry per rule that
 /// touches a skill. Identity-only — it never sees the discovery payload.
 fn select(locators: &[Locator], user: &AceToml, project: &AceToml, local: &AceToml) -> Selection {
+    let policy = Policy::from_layers(user, project, local);
     let mut state: BTreeMap<Locator, Verdict> = locators
         .iter()
         .map(|loc| {
@@ -183,23 +186,21 @@ fn select(locators: &[Locator], user: &AceToml, project: &AceToml, local: &AceTo
         &mut state,
         &mut unknown_patterns,
         &mut invalid_patterns,
-        user,
-        project,
-        local,
+        policy.skills(),
     );
     apply_phase(
         &mut state,
         &mut unknown_patterns,
         &mut invalid_patterns,
         Phase::Exclude,
-        scoped(user, project, local, |a| &a.exclude_skills),
+        policy.exclude_skills().sources(),
     );
     apply_phase(
         &mut state,
         &mut unknown_patterns,
         &mut invalid_patterns,
         Phase::Include,
-        scoped(user, project, local, |a| &a.include_skills),
+        policy.include_skills().sources(),
     );
 
     let collisions = detect_collisions(&state);
@@ -229,41 +230,13 @@ fn glob_ok(pattern: &str, source: Source, field: Field, invalid: &mut Vec<Invali
     false
 }
 
-fn scoped<'a, F>(
-    user: &'a AceToml,
-    project: &'a AceToml,
-    local: &'a AceToml,
-    pick: F,
-) -> Vec<(Source, &'a [String])>
-where
-    F: Fn(&'a AceToml) -> &'a Vec<String>,
-{
-    vec![
-        (Source::User, pick(user).as_slice()),
-        (Source::Project, pick(project).as_slice()),
-        (Source::Local, pick(local).as_slice()),
-    ]
-}
-
 fn apply_base(
     state: &mut BTreeMap<Locator, Verdict>,
     unknown: &mut Vec<UnknownPattern>,
     invalid: &mut Vec<InvalidPattern>,
-    user: &AceToml,
-    project: &AceToml,
-    local: &AceToml,
+    base: Sourced<&[String]>,
 ) {
-    let winner = if !local.skills.is_empty() {
-        Some((Source::Local, &local.skills))
-    } else if !project.skills.is_empty() {
-        Some((Source::Project, &project.skills))
-    } else if !user.skills.is_empty() {
-        Some((Source::User, &user.skills))
-    } else {
-        None
-    };
-
-    let Some((source, patterns)) = winner else {
+    if base.value.is_empty() {
         for verdict in state.values_mut() {
             verdict.trace.push(Entry {
                 source: Source::Default,
@@ -274,9 +247,10 @@ fn apply_base(
             verdict.decision = Decision::Included;
         }
         return;
-    };
+    }
 
-    for pattern in patterns {
+    let source = base.from;
+    for pattern in base.value {
         if !glob_ok(pattern, source, Field::Skills, invalid) {
             continue;
         }
@@ -343,7 +317,7 @@ fn apply_phase(
     unknown: &mut Vec<UnknownPattern>,
     invalid: &mut Vec<InvalidPattern>,
     phase: Phase,
-    sources: Vec<(Source, &[String])>,
+    sources: [(Source, &[String]); 3],
 ) {
     let field = phase.field();
     for (source, patterns) in sources {
