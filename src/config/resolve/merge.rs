@@ -116,14 +116,9 @@ fn env(layers: &[(Source, &AceToml); 4]) -> HashMap<String, Sourced<String>> {
 }
 
 fn trust(layers: &[(Source, &AceToml)]) -> Sourced<Trust> {
-    // Last non-default trust wins; backcompat yolo=true → Trust::Yolo at the
-    // same layer.
     for (src, layer) in layers.iter().rev() {
-        if !layer.trust.is_default() {
-            return Sourced::new(layer.trust, *src);
-        }
-        if layer.yolo {
-            return Sourced::new(Trust::Yolo, *src);
+        if let Some(trust) = layer.trust_override() {
+            return Sourced::new(trust, *src);
         }
     }
     Sourced::at_default(Trust::Default)
@@ -337,11 +332,11 @@ mod tests {
     #[test]
     fn trust_local_wins() {
         let user = AceToml {
-            trust: Trust::Auto,
+            trust: Some(Trust::Auto),
             ..AceToml::default()
         };
         let local = AceToml {
-            trust: Trust::Yolo,
+            trust: Some(Trust::Yolo),
             ..AceToml::default()
         };
 
@@ -377,6 +372,35 @@ mod tests {
         let r = merge(&t, None, &empty_overrides());
         assert_eq!(r.trust.value, Trust::Default);
         assert_eq!(r.trust.from, Source::Default);
+    }
+
+    #[test]
+    fn trust_explicit_default_overrides_inherited_and_legacy_modes() {
+        let user = toml::from_str("trust = \"yolo\"").expect("parse user trust");
+        let local = toml::from_str("trust = \"default\"\nyolo = true")
+            .expect("parse explicit local trust and legacy yolo");
+        let t = Tree {
+            user: Some(user),
+            project: None,
+            local: Some(local),
+        };
+
+        let resolved = merge(&t, None, &empty_overrides());
+
+        assert_eq!(resolved.trust.value, Trust::Default);
+        assert_eq!(resolved.trust.from, Source::Local);
+    }
+
+    #[test]
+    fn trust_explicit_default_runtime_override_retains_provenance() {
+        let local = toml::from_str("trust = \"auto\"").expect("parse local trust");
+        let t = tree(AceToml::default(), local);
+        let overrides = toml::from_str("trust = \"default\"").expect("parse runtime trust");
+
+        let resolved = merge(&t, None, &overrides);
+
+        assert_eq!(resolved.trust.value, Trust::Default);
+        assert_eq!(resolved.trust.from, Source::Override);
     }
 
     #[test]

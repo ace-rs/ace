@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use crate::ace::{Ace, IoError, partition_picked};
-use crate::actions::project::edit_mcp_config;
+use crate::actions::project::edit_mcp_config::{EditMcpConfig, Op};
 use crate::backend::{Backend, Kind};
 use crate::config::ConfigError;
 use crate::school::toml::McpDecl;
@@ -66,9 +66,11 @@ fn exclude_all(ace: &mut Ace, local_path: &Path, declined: &[McpDecl]) -> Result
         return Ok(());
     }
 
-    for entry in declined {
-        edit_mcp_config::exclude(local_path, &entry.name)?;
+    EditMcpConfig {
+        path: local_path,
+        op: Op::Exclude(declined.iter().map(|entry| entry.name.clone()).collect()),
     }
+    .run(ace)?;
 
     let names: Vec<&str> = declined.iter().map(|e| e.name.as_str()).collect();
     ace.hint(&format!(

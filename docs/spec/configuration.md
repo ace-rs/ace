@@ -49,13 +49,16 @@ These fields are resolved from the **user** and **local** layers only — never 
 project-committed `ace.toml` or `school.toml`. They are personal workflow preferences.
 
 - `trust` — permission mode: `"default"`, `"auto"`, or `"yolo"`. Default: `"default"`.
+  Omission inherits from the next contributing layer; explicit `"default"` overrides
+  inherited `"auto"` or `"yolo"` and retains the selected layer's provenance.
+  Legacy `yolo = true` contributes `"yolo"` only when that layer omits `trust`.
 - `resume` — auto-resume the previous session when `ace` starts. Default: `true`.
   When `true`, `ace` passes resume flags to the backend if a previous session exists for
   the current project directory. The `ace new` subcommand forces a fresh session
   regardless. Backends that don't support resume start fresh silently.
 
-Resolution for personal-only fields: local wins over user. Project layer is skipped
-entirely.
+Resolution for personal-only fields: runtime overrides win over local, then user.
+Project layer is skipped entirely, including explicit trust values.
 
 ## Connected sessions
 
@@ -285,7 +288,17 @@ keys is informational only and does not influence the winner.
 ### `ace config set <key> <value> [--user|--project|--local]`
 
 Write a single field to the appropriate layer. Loads the target file, modifies the field,
-saves back. Other fields in that file are preserved.
+saves back. Targeted writes retain the original TOML document, including unrelated
+recognized and unknown fields, comments, and inline tables; dotted backend instance and
+environment names remain literal table keys. Setting trust also removes the deprecated
+`yolo` field from the target layer.
+
+Validation finishes before filesystem mutation. Writes publish a complete replacement
+atomically in the target directory, retain existing file permissions, and follow file
+symlinks to replace their target while leaving the link intact. A successful publication
+invalidates the instance's configuration and school-derived caches before another read.
+Skills and MCP selection edits and school-specifier writes use the same publication
+owner. Explicit `ace fmt` remains a separate whole-file canonicalization operation.
 
 Key syntax:
 - Simple fields: `backend`, `school`, `trust`, `resume`, `session_prompt`, `skip_update`

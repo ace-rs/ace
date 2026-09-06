@@ -227,6 +227,10 @@ pub enum ConfigError {
     Io(#[from] std::io::Error),
     #[error("bad config: {0}")]
     Parse(#[from] toml::de::Error),
+    #[error("bad config document: {0}")]
+    Document(#[from] toml_edit::TomlError),
+    #[error("bad config edit: {0}")]
+    InvalidEdit(String),
     #[error("bad config: {0}")]
     Encode(#[from] toml::ser::Error),
 

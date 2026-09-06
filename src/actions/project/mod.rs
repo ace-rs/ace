@@ -1,4 +1,5 @@
 pub mod clone_school;
+pub mod edit_config;
 pub mod edit_mcp_config;
 pub mod edit_skills_config;
 pub mod explain_skill;
@@ -6,6 +7,7 @@ pub mod link;
 pub mod link_skills;
 pub mod list_skills;
 pub mod prepare;
+pub mod publish_config;
 pub mod pull;
 pub mod register_mcp;
 pub mod remove_mcp;

@@ -380,6 +380,68 @@ fn config_set_backend_field_supports_dotted_name_and_explicit_scope() {
 }
 
 #[test]
+fn config_set_dotted_keys_preserves_inline_tables_and_siblings() {
+    let env = TestEnv::new();
+    env.write_file(
+        "ace.toml",
+        concat!(
+            "env = { \"APP.MODE\" = \"old\", KEEP = \"yes\" } # environment\n",
+            "[backends]\n",
+            "\"bedrock.claude\" = { model = \"old\", future = \"keep\" } # provider\n",
+        ),
+    );
+
+    env.ace()
+        .args(["config", "set", "env.APP.MODE", "new"])
+        .assert()
+        .success();
+    env.ace()
+        .args(["config", "set", "backends.bedrock.claude.model", "opus"])
+        .assert()
+        .success();
+
+    let written = env.read_file("ace.toml");
+    assert!(written.contains("# environment"), "{written}");
+    assert!(written.contains("# provider"), "{written}");
+    let config: toml::Value = toml::from_str(&written).expect("valid edited TOML");
+    assert_eq!(config["env"]["APP.MODE"].as_str(), Some("new"));
+    assert_eq!(config["env"]["KEEP"].as_str(), Some("yes"));
+    assert_eq!(
+        config["backends"]["bedrock.claude"]["model"].as_str(),
+        Some("opus")
+    );
+    assert_eq!(
+        config["backends"]["bedrock.claude"]["future"].as_str(),
+        Some("keep")
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn config_set_preserves_symlink_and_target_permissions() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let env = TestEnv::new();
+    env.write_file("personal.toml", "resume = true\n");
+    env.symlink("personal.toml", "ace.local.toml");
+    let target = env.path("personal.toml");
+    std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o640))
+        .expect("set config permissions");
+
+    env.ace()
+        .args(["config", "set", "resume", "false"])
+        .assert()
+        .success();
+
+    env.assert_symlink("ace.local.toml", "personal.toml");
+    env.assert_contains("personal.toml", "resume = false");
+    let permissions = std::fs::metadata(target)
+        .expect("stat target")
+        .permissions();
+    assert_eq!(permissions.mode() & 0o777, 0o640);
+}
+
+#[test]
 fn config_set_backend_field_rejects_unsupported_path() {
     let env = TestEnv::new();
     env.setup_embedded("phoenix");
@@ -408,24 +470,31 @@ fn config_set_resume_to_local() {
 fn config_set_invalid_backend() {
     let env = TestEnv::new();
     env.setup_embedded("phoenix");
+    let original = env.read_file("ace.toml");
 
     env.ace()
         .args(["config", "set", "backend", "invalid"])
         .assert()
         .failure()
         .stderr(predicates::str::contains("unknown backend"));
+
+    assert_eq!(env.read_file("ace.toml"), original);
 }
 
 #[test]
 fn config_set_invalid_trust() {
     let env = TestEnv::new();
     env.setup_embedded("phoenix");
+    let original = "trust = \"auto\" # personal\nfuture = \"keep\"\n";
+    env.write_file("ace.local.toml", original);
 
     env.ace()
         .args(["config", "set", "trust", "invalid"])
         .assert()
         .failure()
         .stderr(predicates::str::contains("invalid trust value"));
+
+    assert_eq!(env.read_file("ace.local.toml"), original);
 }
 
 // -- scope flag conflicts --
@@ -650,10 +719,16 @@ fn yolo_with_user_scope() {
 fn auto_with_user_scope() {
     let env = TestEnv::new();
     env.setup_embedded("phoenix");
+    env.write_file(
+        "config/ace/ace.toml",
+        "trust = \"default\" # personal trust\nfuture = \"keep\"\n",
+    );
 
     env.ace().args(["--user", "auto"]).assert().success();
 
     env.assert_contains("config/ace/ace.toml", "trust = \"auto\"");
+    env.assert_contains("config/ace/ace.toml", "# personal trust");
+    env.assert_contains("config/ace/ace.toml", "future = \"keep\"");
 }
 
 // -- override-shaped CLI flags (--trust, --auto, --yolo, --session-prompt, --env) --

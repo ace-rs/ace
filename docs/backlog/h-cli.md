@@ -16,6 +16,34 @@ Status reconciled against repository records at `9df624a` on 2026-09-05.
 - [x] `ace explain` surfaces the skill's frontmatter description — shipped 2026-08-03
       (`0cde8c1`).
 
+## Config command consistency
+
+- [ ] **config-command-consistency** repair explicit trust-default overrides, preserve
+      unrelated configuration during writes, and align config inspection with runtime
+      resolution. Audit evidence and proposed phases: `.ace/config-command-audit.md`;
+      retained regression tests: `tests/config_contract_test.rs`; later-slice candidates
+      are retained in `.ace/config-contract-deferred.rs`.
+      The first slice is complete: explicit trust overrides retain their presence and
+      provenance; targeted writes preserve unrelated fields, comments, and key formatting,
+      publish atomically, preserve file permissions and symlinks, and invalidate caches.
+      Existing keys are edited through `TableLike::get_mut`; only absent keys are inserted.
+      The two-crate choice is accepted at `74e86dd`; the user approved adding toml_edit
+      and upgrading all packages on 2026-09-06. Final validation: 831 passed tests, no
+      failures, two ignored, clean Clippy, formatting, and full-slice audit.
+      `.ace/dependency-upgrade-audit.md` records the dependency assessment and resolved
+      comment-preservation finding; no dependency-driven API migration was found.
+      Remaining work: inspection/runtime consistency, unknown or misplaced-field
+      diagnostics, initial built-in selection, effective-write feedback, typed explanation
+      rendering, and compatibility-aware bare output. These need a later approved slice.
+      Custom-selector scope policy retains its existing owner
+      in [A — Backends](a-backends.md), item 146.
+      Ask provenance: "ok $ace-save please we'll restart the work next slice beginning
+      w dependency clarification/research first" (2026-09-05); "confirm start"
+      (2026-09-06, first implementation slice); "ok do this: add toml_edit, then upgrade
+      ALL packages in one go please, then audit for any changes needed and plan for
+      those after." (2026-09-06, upgrade and assessment); "approve" (2026-09-06,
+      comment-preservation repair, full verification, audit, and local commits).
+
 ## Ideas / later
 
 * **126** auto-spawn a tmux side pane with editor / diff view on session start (borderline

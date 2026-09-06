@@ -422,8 +422,8 @@ fn build_overrides(cli: &Cli) -> Result<AceToml, CmdError> {
 
     let trusts = trust_override_flags(cli)?;
     let trust = match trusts.as_slice() {
-        [] => Trust::default(),
-        [t] => *t,
+        [] => None,
+        [t] => Some(*t),
         _ => {
             return Err(CmdError::usage(
                 "cannot combine multiple trust override flags (--trust, --auto, --yolo)",

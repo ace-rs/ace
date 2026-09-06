@@ -16,6 +16,11 @@ mod skills;
 mod templates;
 mod upgrade;
 
+// In-process integration tests exercise cache lifetime without exposing a public library.
+#[cfg(test)]
+#[path = "../tests/config_actions/mod.rs"]
+mod config_action_tests;
+
 use ace::{Io, Wordmark};
 use clap::Parser;
 use cmd::Cli;

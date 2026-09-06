@@ -1,6 +1,7 @@
 use crate::ace::Ace;
+use crate::actions::project::edit_config::{EditConfig, FieldEdit};
 use crate::config::Scope;
-use crate::config::ace_toml::{self, Trust};
+use crate::config::ace_toml::Trust;
 
 use super::CmdError;
 
@@ -11,17 +12,15 @@ pub fn run(ace: &mut Ace, trust: Trust) {
 
 fn run_inner(ace: &mut Ace, trust: Trust) -> Result<(), CmdError> {
     let scope = ace.scope_override().unwrap_or(Scope::Local);
-    let paths = ace.paths();
-    let target = scope.path_in(paths);
-
-    if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent)?;
+    let target = scope.path_in(ace.paths()).to_path_buf();
+    EditConfig {
+        path: &target,
+        assignments: vec![
+            FieldEdit::new("trust", trust.label()),
+            FieldEdit::remove("yolo"),
+        ],
     }
-
-    let mut config = ace_toml::load_or_default(target)?;
-    config.trust = trust;
-    config.yolo = false; // clear deprecated field
-    ace_toml::save(target, &config)?;
+    .run(ace)?;
 
     let msg = match trust {
         Trust::Auto => "Auto mode — AI decides which actions need approval",

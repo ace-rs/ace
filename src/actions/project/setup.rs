@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use super::edit_config::{EditConfig, FieldEdit};
 use crate::ace::Ace;
 use crate::config;
 
@@ -20,7 +21,7 @@ pub struct Setup<'a> {
 }
 
 impl Setup<'_> {
-    pub fn run(&self, _ace: &mut Ace) -> Result<(), SetupError> {
+    pub fn run(&self, ace: &mut Ace) -> Result<(), SetupError> {
         if !super::super::is_git_repo(self.project_dir) {
             return Err(SetupError::NotInGitRepo);
         }
@@ -30,7 +31,11 @@ impl Setup<'_> {
             return Err(SetupError::AlreadySetUp);
         }
 
-        config::ace_toml::set_school(&ace_paths.project, self.specifier)?;
+        EditConfig {
+            path: &ace_paths.project,
+            assignments: vec![FieldEdit::new("school", self.specifier)],
+        }
+        .run(ace)?;
         Ok(())
     }
 }

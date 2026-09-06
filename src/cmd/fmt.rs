@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use crate::ace::Ace;
+use crate::actions::project::publish_config::PublishConfig;
 use crate::config;
 use crate::school::toml as school_toml;
 
@@ -36,7 +37,12 @@ fn run_inner(ace: &mut Ace) -> Result<(), CmdError> {
 
 fn format_ace_toml(ace: &mut Ace, path: &Path) -> Result<(), CmdError> {
     let toml = config::ace_toml::load(path)?;
-    config::ace_toml::save(path, &toml)?;
+    let content = toml::to_string_pretty(&toml).map_err(config::ConfigError::from)?;
+    PublishConfig {
+        path,
+        content: &content,
+    }
+    .run(ace)?;
     ace.done(&format!("Formatted {}", path.display()));
     Ok(())
 }

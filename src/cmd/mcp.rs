@@ -3,7 +3,8 @@ use std::collections::HashSet;
 use clap::Subcommand;
 
 use crate::ace::Ace;
-use crate::actions::project::{RegisterMcp, RemoveMcp, edit_mcp_config};
+use crate::actions::project::edit_mcp_config::{EditMcpConfig, Op};
+use crate::actions::project::{RegisterMcp, RemoveMcp};
 use crate::backend::McpStatus;
 use crate::school::toml::McpDecl;
 
@@ -255,7 +256,11 @@ fn run_register(ace: &mut Ace, name: String) -> Result<(), CmdError> {
         })?;
 
     let local_path = ace.paths().local.clone();
-    edit_mcp_config::include(&local_path, &name)?;
+    EditMcpConfig {
+        path: &local_path,
+        op: Op::Include(name),
+    }
+    .run(ace)?;
 
     let entries = vec![entry];
     RegisterMcp {

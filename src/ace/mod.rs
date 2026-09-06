@@ -319,6 +319,11 @@ impl Ace {
         self.invalidate_resolved();
     }
 
+    pub fn invalidate_config_caches(&mut self) {
+        self.tree = OnceCell::new();
+        self.invalidate_school_caches();
+    }
+
     /// Lazy-load the resolved School binding. Absence propagates as the
     /// `SchoolError` variant `school_toml()` raised — tolerant callers check
     /// `SchoolError::is_absent`. Does NOT require the backend to resolve, so

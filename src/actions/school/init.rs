@@ -2,8 +2,9 @@ use std::path::Path;
 
 use crate::ace::Ace;
 use crate::actions::project::UpdateGitignore;
+use crate::actions::project::edit_config::{EditConfig, FieldEdit};
 use crate::actions::school::pull_imports::{PullImports, PullImportsError};
-use crate::config::{ConfigError, ace_toml};
+use crate::config::ConfigError;
 use crate::school::toml::{self as school_toml, ImportDecl};
 use crate::templates;
 
@@ -66,7 +67,11 @@ impl Init<'_> {
         // the embedded school via the specifier.
         let ace_toml_path = self.project_dir.join("ace.toml");
         if !ace_toml_path.exists() {
-            ace_toml::set_school(&ace_toml_path, ".")?;
+            EditConfig {
+                path: &ace_toml_path,
+                assignments: vec![FieldEdit::new("school", ".")],
+            }
+            .run(ace)?;
             ace.done("Created ace.toml");
         }
 

@@ -60,7 +60,10 @@ Keep document-editing types at the persistence boundary; configuration resolutio
 consumes ACE's typed data. A preserving edit must not regenerate the whole file from
 a deserialized struct.
 
-This is the accepted crate boundary; preserving config writes remain to be implemented.
+`actions/project/edit_config` retains and edits the original document for targeted
+configuration writes. `publish_config` owns atomic publication and invalidates the
+instance's cached configuration after success; explicit formatting shares that
+publication boundary. Document types stay within these persistence actions.
 The [decision record](../decisions/2026-09-05-toml-data-and-document-editing.md)
 contains the alternatives, maintenance evidence, and preservation limitations.
 

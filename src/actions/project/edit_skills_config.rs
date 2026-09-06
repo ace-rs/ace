@@ -1,11 +1,12 @@
 //! Edit the per-scope skills selection fields in `ace.toml`.
 //!
 //! Pure-logic `apply()` mutates an `AceToml` in place; the `EditSkillsConfig`
-//! action wraps load/save around it for the chosen scope. Per-scope dedup is
+//! action delegates targeted document edits for the chosen scope. Per-scope dedup is
 //! automatic since each scope owns its own `AceToml` file.
 
 use std::path::PathBuf;
 
+use super::edit_config::{EditConfig, FieldEdit};
 use crate::ace::Ace;
 use crate::config::ace_toml::{self, AceToml};
 use crate::config::{ConfigError, Scope};
@@ -33,16 +34,31 @@ pub struct EditSkillsConfig {
 }
 
 impl EditSkillsConfig {
-    pub fn run(&self, ace: &Ace) -> Result<(), ConfigError> {
+    pub fn run(&self, ace: &mut Ace) -> Result<(), ConfigError> {
         let paths = ace.paths();
         let path: PathBuf = self.scope.path_in(paths).to_path_buf();
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(ConfigError::from)?;
-        }
         let mut toml = ace_toml::load_or_default(&path)?;
         apply(&mut toml, &self.op);
-        ace_toml::save(&path, &toml)?;
-        Ok(())
+        let assignments = match &self.op {
+            Op::Include(_) => {
+                vec![FieldEdit::strings("include_skills", &toml.include_skills)]
+            }
+            Op::Exclude(_) => {
+                vec![FieldEdit::strings("exclude_skills", &toml.exclude_skills)]
+            }
+            Op::Reset(ResetTarget::Include) => vec![FieldEdit::remove("include_skills")],
+            Op::Reset(ResetTarget::Exclude) => vec![FieldEdit::remove("exclude_skills")],
+            Op::Reset(ResetTarget::Both) => vec![
+                FieldEdit::remove("include_skills"),
+                FieldEdit::remove("exclude_skills"),
+            ],
+        };
+
+        EditConfig {
+            path: &path,
+            assignments,
+        }
+        .run(ace)
     }
 }
 

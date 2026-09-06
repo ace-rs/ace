@@ -37,10 +37,6 @@ pub enum Trust {
 }
 
 impl Trust {
-    pub fn is_default(&self) -> bool {
-        matches!(self, Trust::Default)
-    }
-
     pub fn label(self) -> &'static str {
         match self {
             Trust::Default => "default",
@@ -80,8 +76,8 @@ pub struct AceToml {
     pub session_prompt: Option<String>,
     #[serde(skip_serializing_if = "is_empty_map")]
     pub env: HashMap<String, String>,
-    #[serde(skip_serializing_if = "Trust::is_default")]
-    pub trust: Trust,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trust: Option<Trust>,
 
     /// Auto-resume previous session. Personal-only (local config).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -117,6 +113,15 @@ pub struct AceToml {
     pub backends: BTreeMap<String, BackendDecl>,
 }
 
+impl AceToml {
+    /// Explicit trust, including `default`, takes precedence over legacy `yolo`.
+    /// See docs/spec/configuration.md, personal-only fields.
+    pub fn trust_override(&self) -> Option<Trust> {
+        let legacy_trust = self.yolo.then_some(Trust::Yolo);
+        self.trust.or(legacy_trust)
+    }
+}
+
 pub fn load(path: &Path) -> Result<AceToml, ConfigError> {
     let content = std::fs::read_to_string(path)?;
     let mut config: AceToml = toml::from_str(&content)?;
@@ -142,19 +147,6 @@ fn inject_backend_names(backends: &mut BTreeMap<String, BackendDecl>) {
     for (name, backend) in backends {
         backend.name.clone_from(name);
     }
-}
-
-pub fn save(path: &Path, toml: &AceToml) -> Result<(), ConfigError> {
-    let content = toml::to_string_pretty(toml)?;
-    std::fs::write(path, content)?;
-    Ok(())
-}
-
-/// Set the school specifier, preserving all other fields.
-pub fn set_school(path: &Path, specifier: &str) -> Result<(), ConfigError> {
-    let mut config = load_or_default(path)?;
-    config.school = specifier.to_string();
-    save(path, &config)
 }
 
 #[cfg(test)]
@@ -187,17 +179,6 @@ mod tests {
         std::fs::write(&path, "not valid {{{{ toml").expect("write");
 
         assert!(load_or_default(&path).is_err());
-    }
-
-    #[test]
-    fn set_school_creates_new_file() {
-        let dir = tempfile::tempdir().expect("create tempdir");
-        let path = dir.path().join("ace.toml");
-
-        set_school(&path, "ace-rs/school").expect("set school");
-
-        let config = load(&path).expect("reload");
-        assert_eq!(config.school, "ace-rs/school");
     }
 
     #[test]
@@ -242,47 +223,5 @@ AWS_REGION = "us-east-1"
             load(&path).is_err(),
             "legacy backend arrays must be rejected"
         );
-    }
-
-    #[test]
-    fn exclude_mcp_round_trip() {
-        let dir = tempfile::tempdir().expect("create tempdir");
-        let path = dir.path().join("ace.toml");
-        std::fs::write(&path, "exclude_mcp = [\"github\", \"linear\"]\n").expect("write");
-
-        let loaded = load_or_default(&path).expect("load");
-        assert_eq!(
-            loaded.exclude_mcp,
-            vec!["github".to_string(), "linear".to_string()]
-        );
-
-        save(&path, &loaded).expect("save");
-        let text = std::fs::read_to_string(&path).expect("re-read");
-        assert!(text.contains("exclude_mcp"), "missing key: {text}");
-        assert!(text.contains("github"), "missing github: {text}");
-        assert!(text.contains("linear"), "missing linear: {text}");
-    }
-
-    #[test]
-    fn exclude_mcp_empty_omitted_on_save() {
-        let dir = tempfile::tempdir().expect("create tempdir");
-        let path = dir.path().join("ace.toml");
-        let toml = AceToml::default();
-        save(&path, &toml).expect("save");
-        let text = std::fs::read_to_string(&path).expect("re-read");
-        assert!(!text.contains("exclude_mcp"), "should be skipped: {text}");
-    }
-
-    #[test]
-    fn set_school_preserves_env() {
-        let dir = tempfile::tempdir().expect("create tempdir");
-        let path = dir.path().join("ace.toml");
-        std::fs::write(&path, "school = \"old\"\n\n[env]\nKEY = \"value\"\n").expect("write");
-
-        set_school(&path, "ace-rs/school").expect("set school");
-
-        let config = load(&path).expect("reload");
-        assert_eq!(config.school, "ace-rs/school");
-        assert_eq!(config.env.get("KEY").map(String::as_str), Some("value"));
     }
 }

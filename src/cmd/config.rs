@@ -3,7 +3,8 @@ use std::collections::{BTreeSet, HashMap};
 use clap::Subcommand;
 
 use crate::ace::Ace;
-use crate::config::ace_toml::{self, AceToml, Trust};
+use crate::actions::project::edit_config::{EditConfig, FieldEdit};
+use crate::config::ace_toml::{AceToml, Trust};
 use crate::config::resolve::Source;
 use crate::config::tree::Tree;
 use crate::config::{BackendConfigField, ConfigKey, ConfigSetKey, Scope};
@@ -69,7 +70,7 @@ fn show(ace: &Ace) -> Result<(), CmdError> {
             Some(session_prompt_value)
         },
         env: env_flat,
-        trust: r.trust.value,
+        trust: Some(r.trust.value),
         resume: if r.resume.value { None } else { Some(false) },
         skip_update: if r.skip_update.value {
             Some(true)
@@ -129,57 +130,48 @@ fn set(ace: &mut Ace, key: &str, value: &str) -> Result<(), CmdError> {
         .scope_override()
         .unwrap_or_else(|| Scope::default_for_key(config_key.scope_key()));
 
-    let paths = ace.paths();
-    let target = scope.path_in(paths);
-
-    if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-
-    let mut config = ace_toml::load_or_default(target)?;
-
-    match config_key {
+    let target = scope.path_in(ace.paths()).to_path_buf();
+    let sets_trust = matches!(&config_key, ConfigSetKey::Readable(ConfigKey::Trust));
+    let assignment = match config_key {
         ConfigSetKey::Readable(config_key) => match config_key {
-            ConfigKey::School => config.school = value.to_string(),
+            ConfigKey::School => FieldEdit::new("school", value),
             ConfigKey::Backend => {
                 let known = ace.known_backend_names()?;
-                if !known.iter().any(|n| n == value) {
+                if !known.iter().any(|name| name == value) {
                     return Err(CmdError::usage(format!(
                         "unknown backend: {value} (known: {})",
                         known.join(", "),
                     )));
                 }
-                config.backend = Some(value.to_string());
+                FieldEdit::new("backend", value)
             }
-            ConfigKey::Trust => {
-                let trust = parse_trust(value)?;
-                config.trust = trust;
-                config.yolo = false; // clear deprecated field
-            }
-            ConfigKey::Resume => {
-                let resume = parse_bool(value)?;
-                config.resume = Some(resume);
-            }
-            ConfigKey::SkipUpdate => {
-                config.skip_update = Some(parse_bool(value)?);
-            }
-            ConfigKey::SessionPrompt => {
-                config.session_prompt = Some(value.to_string());
-            }
+            ConfigKey::Trust => FieldEdit::new("trust", parse_trust(value)?.label()),
+            ConfigKey::Resume => FieldEdit::new("resume", parse_bool(value)?),
+            ConfigKey::SkipUpdate => FieldEdit::new("skip_update", parse_bool(value)?),
+            ConfigKey::SessionPrompt => FieldEdit::new("session_prompt", value),
             ConfigKey::Env(env_key) => {
-                config.env.insert(env_key, value.to_string());
+                FieldEdit::new(env_key, value).in_tables(["env".to_string()])
             }
         },
         ConfigSetKey::Backend { name, field } => {
-            let backend = config.backends.entry(name).or_default();
-            match field {
-                BackendConfigField::Model => backend.model = Some(value.to_string()),
-                BackendConfigField::Effort => backend.effort = Some(value.to_string()),
-            }
+            let key = match field {
+                BackendConfigField::Model => "model",
+                BackendConfigField::Effort => "effort",
+            };
+            FieldEdit::new(key, value).in_tables(["backends".to_string(), name])
         }
-    }
+    };
 
-    ace_toml::save(target, &config)?;
+    let assignments = if sets_trust {
+        vec![assignment, FieldEdit::remove("yolo")]
+    } else {
+        vec![assignment]
+    };
+    EditConfig {
+        path: &target,
+        assignments,
+    }
+    .run(ace)?;
     ace.done(&format!("{key} = {value}"));
     Ok(())
 }
@@ -243,11 +235,7 @@ fn explain(ace: &Ace, key: Option<&str>) -> Result<(), CmdError> {
 
     if want(&ConfigKey::Trust) {
         let layers = scalar_layers(&tree, &overrides, |c| {
-            if c.trust.is_default() && !c.yolo {
-                None
-            } else {
-                Some(effective_trust(c).label().to_string())
-            }
+            c.trust_override().map(|trust| trust.label().to_string())
         });
         blocks.push(format_block(
             "trust",
@@ -403,15 +391,6 @@ fn format_block(
 
 fn quoted(s: &str) -> String {
     format!("\"{s}\"")
-}
-
-/// Honour the deprecated `yolo = true` field as `Trust::Yolo` for display.
-fn effective_trust(c: &AceToml) -> Trust {
-    if c.yolo && c.trust.is_default() {
-        Trust::Yolo
-    } else {
-        c.trust
-    }
 }
 
 fn parse_trust(value: &str) -> Result<Trust, CmdError> {

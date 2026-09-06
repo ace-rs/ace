@@ -181,6 +181,8 @@ fn config_exit_code(error: &ConfigError) -> ExitCode {
     match error {
         // Bad content the user authored in a config file.
         ConfigError::Parse(_)
+        | ConfigError::Document(_)
+        | ConfigError::InvalidEdit(_)
         | ConfigError::Encode(_)
         | ConfigError::TraversalInSource(_)
         | ConfigError::TraversalInPath(_) => ExitCode::Usage,
