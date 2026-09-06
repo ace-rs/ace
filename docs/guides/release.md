@@ -36,7 +36,7 @@ From a clean working tree on `main`:
 ./release.sh 0.7.2     # bump, build, patch formula, commit, tag, push, publish
 ```
 
-Then author the GitHub release notes (§7) and notify the website agent (§8).
+Then author the GitHub release notes (§7); Chakrit handles the website handoff (§8).
 
 ## 3. What each script does
 
@@ -149,28 +149,16 @@ features that are actually downstream *manifestations* of the headline change
 (e.g. an admission-policy or validation tweak that the rearchitecture produced)
 belong under it, not promoted alongside it.
 
-The same headline summary feeds the website notify (§8) — author it once here,
-then adapt tone per surface. Write the body to
+Chakrit uses the published release notes for the website handoff (§8). Write the body to
 `/tmp/ace-<ver>-ghnotes.md` (so the harness doesn't mangle
 backticks/angle-brackets) and keep the `Full Changelog` compare link at the
 bottom.
 
-## 8. Notify the website agent
+## 8. Website handoff
 
-After every published GitHub release, send an `ace-connect` bridge message
-to the `ace-rs.www.claude` peer so the website (schools, commands,
-configuration pages) can be regenerated. Include:
-
-- the version tag (e.g. `v0.7.0`)
-- a short summary of user-visible changes (new commands, flags, config keys,
-  removed behavior)
-
-See the `ace-connect` skill for the send/receive flow.
-
-The bridge truncates lines past ~500 chars. For a release announcement that
-lists more than a couple of changes, write the full notes to a tmp file
-(`/tmp/ace-<ver>-www.md`) and send a short body that links to it, rather
-than stuffing the whole changelog into one line.
+Chakrit passes release information to the ACE website himself. Include the published
+release URL in the release completion report; the release notes carry the version and
+user-visible changes needed to update the website.
 
 ## 9. Open gaps
 
