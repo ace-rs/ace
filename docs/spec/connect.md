@@ -118,9 +118,23 @@ Connected Codex uses its documented app-server surface. For fresh startup, the c
 retains its initial thread ID before publishing the recipient through connect.
 Publication makes the backend endpoint and fixed primary target discoverable to senders;
 the instance is not an available recipient before both are established. This requires
-neither a setup message nor a model response. `ace connect send` targets that primary
-thread through the sanctioned thread/turn API. The process split supplies the receive
-capability; it does not require a second ACE translation layer on the receiving side.
+neither a setup message nor a model response.
+
+`ace connect send` delegates delivery to the recipient's configured Codex CLI:
+
+```sh
+codex queue --remote unix:///path/to/socket --thread <ID> --message "..."
+```
+
+ACE supplies the discovered endpoint, retained primary thread ID, and message envelope
+as separate process arguments. It preserves the configured executable/wrapper and invokes
+the command once; Codex owns communication with app-server. The sender receives the
+command's success or failure, not an acknowledgement from the receiving model.
+
+The command and options were confirmed with `codex queue --help` in Codex 0.154.0.
+Delivery through this invocation has not yet been tested. Server readiness and primary-ID
+discovery remain separate startup requirements; this command accepts an ID, it does not
+discover one. Their sanctioned CLI inspection route remains to be established.
 
 ACE may list backend-native child threads for inspection, but the relay does not address
 them. Plain interactive Codex has no external receive endpoint and is therefore not a
@@ -129,7 +143,8 @@ connected session.
 [Codex 0.154.0 integration checks](backends/codex.md#verified-managed-session-integration)
 verified first delivery to an empty recipient, native fresh startup, populated-thread
 attachment, idle delivery, and busy steering. The verified fresh path lets the native
-client create the primary and is the selected fresh-start ordering above.
+client create the primary and is the selected fresh-start ordering above. Those checks
+used direct app-server calls and are not evidence that `codex queue` delivery is verified.
 
 ### OpenCode
 
@@ -175,7 +190,7 @@ The Rust implementation ports the proven shell behavior in narrow slices:
 
 1. local identity, discovery, send, and monitor;
 2. connect configuration and instance-plan decoration;
-3. Codex primary-thread injection;
+3. Codex delivery through `codex queue` to the fixed primary;
 4. OpenCode primary-session injection;
 5. Claude monitor integration.
 

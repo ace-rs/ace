@@ -61,8 +61,8 @@ plugin ABI in the initial implementation.
 - [ ] **connect-core** add `[connect] enabled = true`, relay identity, Unix-socket
       discovery/send/monitor/status, and component decoration; preserve fire-and-forget
       semantics.
-- [ ] **connect-codex** inject incoming messages into the Codex primary thread created by
-      the managed component graph; never address native child threads.
+- [ ] **connect-codex** invoke `codex queue` to deliver to the managed instance's fixed
+      primary thread; never address native child threads.
 - [ ] **connect-opencode** inject incoming messages into the OpenCode primary session
       created by the managed component graph.
 - [ ] **connect-claude** move the proven monitor receive path into the binary and report
@@ -70,9 +70,10 @@ plugin ABI in the initial implementation.
 
 ## First Codex managed-runtime implementation plan
 
-**Implementation approved; dependency approval pending.** This plan serves the implementer
-and reviewer of **runtime-endpoints**, **component-supervision**, and the single-instance
-portion of **mux-runtime**. It delivers a usable, inspectable managed Codex session before
+**Implementation approved; CLI readiness/discovery route unresolved.** This plan serves
+the implementer and reviewer of **runtime-endpoints**, **component-supervision**, and
+the single-instance portion of **mux-runtime**. It delivers an inspectable Codex session
+before
 **connect-core** and **connect-codex** depend on it. Existing specs govern behavior; the
 implementation choices below are approved.
 
@@ -118,7 +119,7 @@ explicit names as path components and keep runtime sockets private to the user. 
 materialization. Socket-path collisions or excessive path lengths produce an explicit
 error rather than a changed storage convention.
 
-The Codex backend owns app-server initialization and native client construction. Fresh
+The Codex backend owns app-server launch and native client command construction. Fresh
 startup uses the approved sequence and the recorded empty dedicated-server baseline:
 launch the native client, discover its sole initial loaded thread through public metadata,
 and retain that ID. No ID means still starting; multiple candidates are an explicit
@@ -135,8 +136,8 @@ resume limitations remain backend-owned; do not manufacture a turn or inspect ro
 files to make attachment succeed.
 
 Extend `SessionProcess` for owned components instead of duplicating process construction.
-Use regular threads and channels for the actual concurrent workloads. Put Codex protocol
-control in a responsibility-named module under the existing backend, separating it from
+Use regular threads and channels for the actual concurrent workloads. Put Codex CLI
+invocation logic under the existing backend, separating it from
 MCP provisioning before `src/backend/codex.rs` exceeds 1,000 lines. Keep all process and
 socket mutations behind their owning operations; `cmd` remains composition.
 
@@ -159,7 +160,7 @@ exit propagation until cleanup finishes; no automatic restart or unrelated tmux 
 
 ### Implementation and validation sequence
 
-First resolve the concrete dependency gate below. Then implement the runtime boundary as
+First resolve the CLI readiness/discovery route below. Then implement the runtime as
 one coherent slice: identity/endpoint ownership, controlled Codex startup and fixed
 primary, cohort shutdown, and the single-instance tmux command/read surfaces. Update
 CLI help and
@@ -171,9 +172,9 @@ extend that fixture for managed intent instead of impersonating a real backend b
 Use isolated runtime tests for locks, stale sockets, premature publication, ambiguous
 primary discovery, partial startup failure, reordered exit observations, cleanup failure,
 and the shared grace deadline. Pure Codex construction/parsing tests belong with the
-backend; test protocol decisions with recording in-process fixtures. Exercise tmux command
-composition without touching the user's windows; any live attachment check requires its
-own explicitly owned target and appropriate execution authority.
+backend; test startup command construction and error reporting. Exercise tmux composition
+without touching the user's windows; any live attachment check requires its own explicitly
+owned target and appropriate execution authority.
 
 Run focused tests, the full suite, `cargo fmt --check`, all-target/all-feature Clippy,
 documentation links, and whitespace checks after code approval. Retain existing deadlines;
@@ -183,62 +184,41 @@ No new live model turns are prerequisites: the Codex spec already preserves the
 integration evidence, and backend approvals, sender completion lifetime, and
 terminal-selection tracking are outside these implementation tests.
 
-### Dependency gate and following slice
+### Codex send invocation and following slice
 
-The current manifest has no WebSocket client. The verified Unix app-server transport needs
-WebSocket handshake/framing, so select a blocking client with Unix-stream support and
-present its exact version, features, and transitive changes for separate approval.
-Likewise check safe Unix signalling and advisory locking against the pinned standard
-library and existing dependencies before proposing any additional crate or feature.
-Do not add an async runtime, hand-roll WebSocket transport, use private transitive APIs,
-or change manifests/lockfiles before approval. Resource-intensive checks need their own
-execution approval under the repository rules.
+Codex delivery is a single invocation of the configured backend executable:
 
-Concrete dependency proposal, checked on 2026-09-13 with `cargo search`,
-`cargo info --locked --verbose`, and `cargo tree --locked -e features -i nix`:
-
-```toml
-[target.'cfg(unix)'.dependencies]
-nix = { version = "0.31.3", default-features = false, features = ["signal"] }
-tungstenite = { version = "0.30.0", default-features = false, features = ["handshake"] }
+```sh
+codex queue --remote unix:///path/to/socket --thread <ID> --message "..."
 ```
 
-The [tungstenite client API][websocket-client] accepts any `Read + Write` stream,
-so it can perform the required handshake over `UnixStream` without an async runtime.
-Only its handshake feature is enabled; the [0.30.0 manifest][websocket-manifest]
-requires Rust 1.85, below ACE's pinned 1.96. TLS and URL parsing features stay disabled.
+ACE resolves the recipient endpoint and fixed primary ID, builds the envelope, and passes
+those values as separate process arguments through the existing backend command owner.
+Codex handles its app-server transport. Preserve configured wrappers, report command
+errors, and make one delivery attempt without waiting for a receiving-model response.
+The command and flags are verified by installed Codex 0.154.0 help; delivery has not yet
+been tested through this invocation. Earlier direct app-server checks remain backend
+capability evidence, not verification of this CLI path.
 
-The new package families are tungstenite, data-encoding, rand/rand_core and its RNG
-dependencies, and sha1/digest and its hashing dependencies. Metadata identifies chacha20,
-cpufeatures, crypto-common, block-buffer, const-oid, hybrid-array, and typenum along those
-paths. Existing bytes, http, httparse, log, thiserror, cfg-if, and getrandom versions
-satisfy their corresponding requirements. This is a metadata-derived expected delta,
-not a resolved lockfile: the exact transitive versions and feature union must be checked
-when the approved change is resolved. Approval is requested for these required additions,
-with existing locked versions retained and no unrelated upgrades; surface any incompatible
-resolution instead of widening the update.
+Authority on 2026-09-13: “Ok rip out all mention of websoccket implementation and replace
+them with this simple invocation please. amend specs/docs first.” The user selected the
+CLI send path after rejecting the dependency proposal. No transport library selection or
+implementation is part of this plan. Process-signalling requirements remain separate;
+any dependency proposal for them still requires its own justification and approval.
+Standard-library file locking covers the instance lock.
 
-The [nix signalling API][unix-signals] provides safe SIGTERM/SIGKILL operations.
-Version 0.31.3 and its `signal`/`process` features already occur through `ctrlc`, so the
-new direct dependency exposes an existing package on its public surface without adding
-packages or features. Signal only retained owned children; a bare PID is not ownership.
+The invocation accepts an already known thread ID. Establish the sanctioned CLI route
+for server readiness and initial primary-ID discovery before implementing dependent
+startup steps; do not claim the queue command supplies those observations. The existing
+ACE runtime inspection socket remains an ACE-owned surface, distinct from communication
+with Codex.
 
-[Standard-library file locking][file-lock] is stable since Rust 1.89, so no locking
-crate is needed. Retain a writable, non-truncated file handle for the owner lifetime and
-distinguish lock contention from I/O failure. These checks changed no manifest or lockfile
-and ran no builds or backend sessions.
-
-[websocket-client]: https://docs.rs/tungstenite/0.30.0/tungstenite/client/fn.client.html
-[websocket-manifest]: https://github.com/snapview/tungstenite-rs/blob/v0.30.0/Cargo.toml
-[unix-signals]: https://docs.rs/nix/0.31.3/nix/sys/signal/fn.kill.html
-[file-lock]: https://doc.rust-lang.org/std/fs/struct.File.html#method.try_lock
-
-After the runtime slice is accepted and implemented, **connect-core** and
-**connect-codex** add configuration/decorating, recipient publication, discovery/status,
-and the common
-`ace connect send` translation to the fixed primary. Sender-side translation remains the
-only backend message translation boundary. Workspace composition, other backend adapters,
-durable runtime history, and automatic restart remain outside the first runtime slice.
+After the runtime slice is implemented, **connect-core** and **connect-codex** add
+configuration/decorating, recipient publication, discovery/status, and the common
+`ace connect send` command invoking `codex queue`. Workspace composition, other backend
+adapters, durable runtime history, and automatic restart remain outside the first slice.
+Connect validation covers exact argument values, one delivery attempt, and CLI failure
+reporting; live queue delivery is not yet verified by the recorded backend tests.
 
 ## Next — compose workspaces
 

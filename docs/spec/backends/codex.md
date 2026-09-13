@@ -83,12 +83,23 @@ establishment remain part of the later controller/executor boundary.
 This order describes startup, not message routing: the terminal connects directly to
 app-server. The split exposes the sanctioned receive surface that `ace connect send`
 uses to deliver to this instance. The sending agent invokes the ACE command; ACE resolves
-the recipient and translates the send into the Codex call without changing Codex internals.
+the recipient and invokes the configured Codex CLI without changing Codex internals:
+
+```sh
+codex queue --remote unix:///path/to/socket --thread <ID> --message "..."
+```
+
+The endpoint and fixed primary ID come from recipient discovery. Pass the message as
+one process argument, preserve executable/wrapper configuration, and report command
+failure without retrying. Codex owns the app-server transport. The command is confirmed
+by installed Codex 0.154.0 help; delivery through it remains untested.
 
 The planned controller distinguishes server readiness from recipient readiness. For fresh
 startup it waits for app-server readiness, starts the native terminal to create the
 primary, discovers its initial ID on the dedicated server, and retains that fixed target.
 Only then may connect publish the endpoint and primary ID as an available recipient.
+The sanctioned CLI route for readiness and primary-ID inspection remains unresolved;
+`codex queue` consumes the known ID and does not establish those startup facts.
 This follows the
 [verified native-client-created primary](#verified-managed-session-integration)
 without a setup message or model response. Later terminal conversation selection does
@@ -111,7 +122,8 @@ request must carry its control endpoint and topology requirement by construction
 ## Verified managed-session integration
 
 Recorded 2026-09-13 against installed Codex 0.154.0. These are backend integration
-results, not evidence that ACE session or connect commands are implemented. Checks used
+results, not evidence that ACE session or connect commands are implemented or that the
+selected `codex queue` invocation has been tested. Checks used
 public app-server APIs and the native terminal; no backend rollout files were inspected
 or manufactured.
 
@@ -183,6 +195,8 @@ under Managed and connected sessions above. ACE-owned endpoint, discovery,
 lifecycle, and command behavior still need implementation tests; backend-owned approvals,
 sender lifetime semantics, and terminal-selection tracking are not additional
 prerequisites. Integration verification does not approve implementation or dependencies.
+The selected send implementation delegates to `codex queue`; the direct protocol calls
+above describe historical checks, not an ACE transport implementation requirement.
 
 ## MCP Registration
 

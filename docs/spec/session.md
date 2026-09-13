@@ -154,6 +154,10 @@ For a fresh Codex session, the native client creates the primary. ACE retains it
 thread ID before publishing recipient readiness; later terminal conversation selection
 does not change that target. Publication makes the endpoint and fixed target discoverable
 to `ace connect send`. It requires no setup message or model response.
+Codex delivery uses the [CLI invocation in the connect spec](connect.md#codex).
+That invocation consumes the primary ID; the sanctioned CLI route for establishing
+readiness and inspecting the initial primary remains to be identified before startup
+implementation can satisfy this boundary.
 The controlled OpenCode path constructs the same roles with a concrete loopback HTTP
 endpoint:
 `opencode serve --hostname 127.0.0.1 --port ...` followed by `opencode attach ...`.
