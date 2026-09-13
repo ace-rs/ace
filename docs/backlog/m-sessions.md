@@ -70,17 +70,21 @@ plugin ABI in the initial implementation.
 
 ## First Codex managed-runtime implementation plan
 
-**Proposed; implementation approval pending.** This plan serves the implementer and
-reviewer of **runtime-endpoints**, **component-supervision**, and the single-instance
+**Implementation approved; dependency approval pending.** This plan serves the implementer
+and reviewer of **runtime-endpoints**, **component-supervision**, and the single-instance
 portion of **mux-runtime**. It delivers a usable, inspectable managed Codex session before
 **connect-core** and **connect-codex** depend on it. Existing specs govern behavior; the
-implementation choices below remain proposed.
+implementation choices below are approved.
 
 Planning authority: “sharpen the draft a bit and then start planning plz”, retained in
 `.ace/save.ledger.md`. On 2026-09-13 Chakrit replied “approve” to the specific fresh-start
 order: server ready → native terminal creates primary → retain its initial ID → publish
 recipient readiness. That ordering is now in the session, connect, and Codex specs;
 approval of the ordering does not authorize application code or dependency changes.
+Chakrit subsequently replied “approve” to “Approve the first implementation slice:
+managed Codex startup, tmux attachment, inspection, and coordinated cleanup?” on the
+same date. That second approval authorizes this implementation plan and its validation;
+dependency changes remain separately gated by the repository rules.
 
 ### Scope and acceptance
 
@@ -137,7 +141,7 @@ MCP provisioning before `src/backend/codex.rs` exceeds 1,000 lines. Keep all pro
 socket mutations behind their owning operations; `cmd` remains composition.
 
 The runtime owner holds the resolved instance and current component state in memory.
-Proposed inspection transport: a private sibling `<slug>.control.sock` under the existing
+Inspection transport: a private sibling `<slug>.control.sock` under the existing
 session runtime root, queried by `list`, `inspect`, `stop`, and component launchers.
 This ACE-local control socket is distinct from the Codex socket and the later message
 discovery directory. It avoids per-instance TOML records and a new durable database.
@@ -189,6 +193,45 @@ library and existing dependencies before proposing any additional crate or featu
 Do not add an async runtime, hand-roll WebSocket transport, use private transitive APIs,
 or change manifests/lockfiles before approval. Resource-intensive checks need their own
 execution approval under the repository rules.
+
+Concrete dependency proposal, checked on 2026-09-13 with `cargo search`,
+`cargo info --locked --verbose`, and `cargo tree --locked -e features -i nix`:
+
+```toml
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.31.3", default-features = false, features = ["signal"] }
+tungstenite = { version = "0.30.0", default-features = false, features = ["handshake"] }
+```
+
+The [tungstenite client API][websocket-client] accepts any `Read + Write` stream,
+so it can perform the required handshake over `UnixStream` without an async runtime.
+Only its handshake feature is enabled; the [0.30.0 manifest][websocket-manifest]
+requires Rust 1.85, below ACE's pinned 1.96. TLS and URL parsing features stay disabled.
+
+The new package families are tungstenite, data-encoding, rand/rand_core and its RNG
+dependencies, and sha1/digest and its hashing dependencies. Metadata identifies chacha20,
+cpufeatures, crypto-common, block-buffer, const-oid, hybrid-array, and typenum along those
+paths. Existing bytes, http, httparse, log, thiserror, cfg-if, and getrandom versions
+satisfy their corresponding requirements. This is a metadata-derived expected delta,
+not a resolved lockfile: the exact transitive versions and feature union must be checked
+when the approved change is resolved. Approval is requested for these required additions,
+with existing locked versions retained and no unrelated upgrades; surface any incompatible
+resolution instead of widening the update.
+
+The [nix signalling API][unix-signals] provides safe SIGTERM/SIGKILL operations.
+Version 0.31.3 and its `signal`/`process` features already occur through `ctrlc`, so the
+new direct dependency exposes an existing package on its public surface without adding
+packages or features. Signal only retained owned children; a bare PID is not ownership.
+
+[Standard-library file locking][file-lock] is stable since Rust 1.89, so no locking
+crate is needed. Retain a writable, non-truncated file handle for the owner lifetime and
+distinguish lock contention from I/O failure. These checks changed no manifest or lockfile
+and ran no builds or backend sessions.
+
+[websocket-client]: https://docs.rs/tungstenite/0.30.0/tungstenite/client/fn.client.html
+[websocket-manifest]: https://github.com/snapview/tungstenite-rs/blob/v0.30.0/Cargo.toml
+[unix-signals]: https://docs.rs/nix/0.31.3/nix/sys/signal/fn.kill.html
+[file-lock]: https://doc.rust-lang.org/std/fs/struct.File.html#method.try_lock
 
 After the runtime slice is accepted and implemented, **connect-core** and
 **connect-codex** add configuration/decorating, recipient publication, discovery/status,
