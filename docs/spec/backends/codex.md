@@ -72,8 +72,8 @@ error or crash on first run.
 Codex advertises controlled startup, primary-thread input, native resume, and thread
 listing through its documented app-server surface. The backend materializes app-server
 on its sanctioned Unix-socket transport followed by the native client UI as the terminal
-`session` component. Connect inserts its relay between them. Every listed component is
-essential.
+`session` component. Connect publishes the recipient after its primary is known.
+Every listed component is essential.
 
 The planned controlled-session boundary constructs the first two process roles as
 `codex app-server --listen unix://...` followed by
@@ -85,14 +85,18 @@ app-server. The split exposes the sanctioned receive surface that `ace connect s
 uses to deliver to this instance. The sending agent invokes the ACE command; ACE resolves
 the recipient and translates the send into the Codex call without changing Codex internals.
 
-The planned controller waits for app-server readiness and establishes the primary-thread
-handle before starting its consumers. Fresh startup requires reconciling that ordering
-with the [verified native-client-created primary](#verified-managed-session-integration);
-controller-first empty-thread attachment is not verified. The controller also classifies
-Codex-native shutdown cascades so exit observation order does not decide the outcome.
-A successful user exit from the native
-client and its app-server cascade complete normally; unrelated app-server loss or an
-abnormal client exit fails the session. Connect classifies relay exits and may include
+The planned controller distinguishes server readiness from recipient readiness. For fresh
+startup it waits for app-server readiness, starts the native terminal to create the
+primary, discovers its initial ID on the dedicated server, and retains that fixed target.
+Only then may connect publish the endpoint and primary ID as an available recipient.
+This follows the
+[verified native-client-created primary](#verified-managed-session-integration)
+without a setup message or model response. Later terminal conversation selection does
+not change the retained target. The controller also classifies Codex-native shutdown
+cascades so exit observation order does not decide the outcome.
+A successful user exit from the native client and its app-server cascade complete
+normally; unrelated app-server loss or an abnormal client exit fails the session.
+Connect classifies relay exits and may include
 them in the normal user-exit cascade. Cleanup is idempotent, and ACE does not restart the
 component list.
 
@@ -174,9 +178,8 @@ preserves the evidence needed to resume planning without them. Test-owned proces
 were stopped after the runs. No ACE application code or dependencies changed.
 
 Resume implementation planning using these results; do not recreate the backend test
-suite merely because a new session starts. Reconcile the verified fresh-start sequence
-with readiness and primary-publication ordering before coding. This is a design task,
-not an unresolved empty-recipient receive capability. ACE-owned endpoint, discovery,
+suite merely because a new session starts. The selected fresh-start ordering is specified
+under Managed and connected sessions above. ACE-owned endpoint, discovery,
 lifecycle, and command behavior still need implementation tests; backend-owned approvals,
 sender lifetime semantics, and terminal-selection tracking are not additional
 prerequisites. Integration verification does not approve implementation or dependencies.

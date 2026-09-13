@@ -46,8 +46,9 @@ enabled = true
 
 Bare `ace` resolves this setting before startup. A connected-session request carries its
 control requirement and concrete endpoint as one structurally valid value. The backend
-then constructs its control topology, and the built-in connect decorator inserts its
-relay immediately before the terminal session. There is no separate
+then constructs its control topology, and the built-in connect decorator adds its relay
+according to the backend's startup prerequisites. Connect publishes the recipient only
+after its endpoint and fixed primary target are known. There is no separate
 `ace connect start` path.
 
 Connected startup cannot generally be retrofitted onto an arbitrary backend process.
@@ -112,11 +113,14 @@ history, and structured artifacts are outside this contract.
 
 ### Codex
 
-Connected Codex uses its documented app-server surface. The configured `Ace` starts the
-server, establishes the primary thread, starts the relay adapter, and finally attaches
-the native client UI. `ace connect send` targets that primary thread through the sanctioned
-thread/turn API. The process split supplies the receive capability; it does not require
-a second ACE translation layer on the receiving side.
+Connected Codex uses its documented app-server surface. For fresh startup, the configured
+`Ace` waits for server readiness, starts the native client to create the primary, and
+retains its initial thread ID before publishing the recipient through connect.
+Publication makes the backend endpoint and fixed primary target discoverable to senders;
+the instance is not an available recipient before both are established. This requires
+neither a setup message nor a model response. `ace connect send` targets that primary
+thread through the sanctioned thread/turn API. The process split supplies the receive
+capability; it does not require a second ACE translation layer on the receiving side.
 
 ACE may list backend-native child threads for inspection, but the relay does not address
 them. Plain interactive Codex has no external receive endpoint and is therefore not a
@@ -125,8 +129,7 @@ connected session.
 [Codex 0.154.0 integration checks](backends/codex.md#verified-managed-session-integration)
 verified first delivery to an empty recipient, native fresh startup, populated-thread
 attachment, idle delivery, and busy steering. The verified fresh path lets the native
-client create the primary; reconcile that result with the planned controller-first
-ordering above during implementation planning. No setup message is required for delivery.
+client create the primary and is the selected fresh-start ordering above.
 
 ### OpenCode
 
@@ -151,9 +154,11 @@ Connect decorates a session plan; it does not execute the plan. The local or mux
 places the backend and relay components. Their lifecycles are coordinated because they
 belong to one ACE instance, not because the relay became a supervisor.
 
-Server → relay → terminal is startup order, not a terminal-traffic pipeline. The
-communication command uses the receive surface made available by the controlled startup;
-the sender agent knows only the ACE CLI command and recipient identity.
+Component startup follows each backend's readiness prerequisites. Fresh Codex starts the
+native terminal before publishing its recipient identity because the terminal creates the
+primary. The terminal connects directly to its backend server. The communication command
+uses the receive surface made available by controlled startup; the sender agent knows
+only the ACE CLI command and recipient identity.
 
 Every decorated component is essential. Connect owns relay readiness and exit semantics;
 the backend owns its native cascade classification. The cohort is reconciled before its

@@ -11,8 +11,8 @@ backend handles, and multi-process ownership can land together.
 [Codex integration evidence](backends/codex.md#verified-managed-session-integration)
 is verified against 0.154.0,
 including delivery to an empty recipient and native fresh startup. This evidence is
-sufficient to resume planning; the native-client-created primary requires reconciling
-the primary-before-consumer ordering below before implementation.
+sufficient for implementation planning. Fresh Codex startup follows server readiness,
+native-client creation of the primary, capture of its initial ID, and recipient readiness.
 
 ## Primitive
 
@@ -132,23 +132,28 @@ Managed startup introduces an ordered component cohort only when a second owned 
 exists. Every included component is essential by construction: ACE never starts an
 inessential process, and the session is useful only while every listed component is
 healthy. A backend constructs its portion because only the backend knows its process
-topology. Feature decorators then insert their own components before the terminal session.
+topology. Feature decorators add their own components at the readiness boundary they need.
 Roles describe purpose rather than backend-specific executable names:
 
 - `server` — backend control server, included only when another component requires it;
 - `relay` — connected-session message adapter, included only when connect is enabled;
 - `session` — the terminal primary backend session or native client.
 
-List order governs startup only. The executor starts each component after the preceding
-component's owner reports it ready. A backend controller owns protocol readiness and
-establishes the primary backend-session handle before any consumer of that handle starts;
-connect owns relay readiness. The local executor owns singleton and multi-component lists
-through the same runtime. The mux executor keeps each component's stdout and stderr
+Startup order follows readiness prerequisites. A backend controller owns server protocol
+readiness and primary-handle discovery; connect owns relay readiness. Server readiness
+allows the native client to connect. Recipient readiness additionally requires the
+established primary handle, so the native client may create that handle before connect
+publishes the instance for delivery. The local executor owns singleton and multi-component
+lists through the same runtime. The mux executor keeps each component's stdout and stderr
 directly inspectable.
 
 The controlled Codex path constructs `server -> session` with a concrete Unix-socket
 endpoint:
 `codex app-server --listen unix://...` followed by `codex --remote unix://...`.
+For a fresh Codex session, the native client creates the primary. ACE retains its initial
+thread ID before publishing recipient readiness; later terminal conversation selection
+does not change that target. Publication makes the endpoint and fixed target discoverable
+to `ace connect send`. It requires no setup message or model response.
 The controlled OpenCode path constructs the same roles with a concrete loopback HTTP
 endpoint:
 `opencode serve --hostname 127.0.0.1 --port ...` followed by `opencode attach ...`.
