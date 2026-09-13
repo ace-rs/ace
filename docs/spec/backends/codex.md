@@ -2,8 +2,9 @@
 
 Binary: `codex` | Dir: `.agents` | Instructions: `AGENTS.md`
 
-Verified against codex 0.145.0 and the vendored
-[Codex manual](../../vendor/codex-manual.md) (2026-08-03).
+Baseline verified against codex 0.145.0 and the vendored
+[Codex manual](../../vendor/codex-manual.md) (2026-08-03); managed-session integration
+verified against 0.154.0 on 2026-09-13 as recorded below.
 
 ## Model and Effort
 
@@ -84,9 +85,12 @@ app-server. The split exposes the sanctioned receive surface that `ace connect s
 uses to deliver to this instance. The sending agent invokes the ACE command; ACE resolves
 the recipient and translates the send into the Codex call without changing Codex internals.
 
-The controller waits for app-server readiness and establishes the primary-thread handle
-before starting its consumers. It also classifies Codex-native shutdown cascades so exit
-observation order does not decide the outcome. A successful user exit from the native
+The planned controller waits for app-server readiness and establishes the primary-thread
+handle before starting its consumers. Fresh startup requires reconciling that ordering
+with the [verified native-client-created primary](#verified-managed-session-integration);
+controller-first empty-thread attachment is not verified. The controller also classifies
+Codex-native shutdown cascades so exit observation order does not decide the outcome.
+A successful user exit from the native
 client and its app-server cascade complete normally; unrelated app-server loss or an
 abnormal client exit fails the session. Connect classifies relay exits and may include
 them in the normal user-exit cascade. Cleanup is idempotent, and ACE does not restart the
@@ -99,6 +103,83 @@ Codex subagent orchestration or route peer messages to child threads.
 Plain interactive Codex remains valid for an ordinary unmanaged session. It cannot be
 retrofitted with the external receive handle required by connected mode; a connected
 request must carry its control endpoint and topology requirement by construction.
+
+## Verified managed-session integration
+
+Recorded 2026-09-13 against installed Codex 0.154.0. These are backend integration
+results, not evidence that ACE session or connect commands are implemented. Checks used
+public app-server APIs and the native terminal; no backend rollout files were inspected
+or manufactured.
+
+### Empty-recipient delivery and fresh startup
+
+An app-server client created a thread with `thread/start` and verified that its returned
+`turns` array was empty. A separate WebSocket client sent the first input directly with
+`turn/start` to that explicit thread ID. The owner observed the completed turn and
+`EMPTY_RECIPIENT_OK` response in 5.848 seconds. No preceding setup message was sent.
+Recipient thread: `01a09a2f-ce6c-7091-bc45-62bd5a5572c3`.
+
+A second check started a dedicated app-server with no loaded threads, then opened
+`codex --remote unix://<socket>` without a prompt. The terminal created a fresh
+conversation and displayed its empty input interface. `thread/loaded/list` returned one
+thread ID; `thread/read` with `includeTurns: false` reported it idle, and no terminal
+input or turn request had been issued. The sender retained that ID and called
+`turn/start` directly. The terminal displayed both the first external input and the
+assistant response `FRESH_UI_EMPTY_OK` in 7.282 seconds while remaining alive.
+Recipient thread: `01a09a33-cff3-7e42-92e5-7344f0ad2af4`.
+
+**Verified:** an empty recipient can receive its first external message, and the native
+terminal can open empty and display that delivery. Neither requires a preceding “hi”.
+The second check verifies native-client-created primary → discover its initial ID →
+send to that fixed ID. It does not verify controller-created primary → attach an empty
+thread, or discovery among multiple candidate threads. Later terminal conversation
+selection was not followed.
+
+### Retained attachment and delivery evidence
+
+The preceding integration run verified native terminal attachment after one completed
+turn, external idle delivery, and external busy-turn steering to the fixed primary.
+Setup, idle, and busy turns completed in 6.928, 3.045, and 12.251 seconds respectively.
+The native terminal displayed each input and response. Busy input was accepted and
+subsequently displayed `BUSY_OK`; immediate interruption was not established.
+App-server continued answering after terminal disconnection.
+
+Observed boundaries and unsuccessful attempts:
+
+- Unix transport required WebSocket handshake and framing; raw JSONL through
+  `codex app-server proxy --sock` timed out, while websocat worked on the same socket.
+- Resuming an empty thread returned `no rollout found`; resuming after its first
+  completed turn succeeded. Direct `turn/start` did not require first calling
+  `thread/resume` on the empty recipient.
+- Remote terminal resume rejected permission overrides.
+- Full history reading in the native fresh-thread check returned
+  `list_turns is not supported yet`; the corrected check used public metadata and
+  observation of the native terminal response.
+- Waiting for completion notifications on the separate sender timed out although the
+  terminal displayed the response. The final assertion checked the rendered assistant
+  response and terminal liveness, rejecting prompt or test-log matches.
+
+### Test conditions and planning handoff
+
+Completed runs used `gpt-5.6-luna`, standard service tier, and fast mode disabled.
+Fresh terminal runs displayed medium effort. Low effort was requested afterward;
+scripts now set `model_reasoning_effort="low"` and turn `effort="low"`, but those setting
+changes were not used to repeat the successful live checks. Future test sessions must
+explicitly use Luna, low effort, and fast mode disabled.
+
+The original attachment/idle/busy scripts were discarded; their retained results are
+recorded above. Additional scripts, append-only results, and terminal captures remain
+at `/tmp/ace-empty-recipient-check/`. Those temporary files are supplementary; this spec
+preserves the evidence needed to resume planning without them. Test-owned processes
+were stopped after the runs. No ACE application code or dependencies changed.
+
+Resume implementation planning using these results; do not recreate the backend test
+suite merely because a new session starts. Reconcile the verified fresh-start sequence
+with readiness and primary-publication ordering before coding. This is a design task,
+not an unresolved empty-recipient receive capability. ACE-owned endpoint, discovery,
+lifecycle, and command behavior still need implementation tests; backend-owned approvals,
+sender lifetime semantics, and terminal-selection tracking are not additional
+prerequisites. Integration verification does not approve implementation or dependencies.
 
 ## MCP Registration
 

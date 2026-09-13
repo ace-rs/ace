@@ -122,6 +122,12 @@ ACE may list backend-native child threads for inspection, but the relay does not
 them. Plain interactive Codex has no external receive endpoint and is therefore not a
 connected session.
 
+[Codex 0.154.0 integration checks](backends/codex.md#verified-managed-session-integration)
+verified first delivery to an empty recipient, native fresh startup, populated-thread
+attachment, idle delivery, and busy steering. The verified fresh path lets the native
+client create the primary; reconcile that result with the planned controller-first
+ordering above during implementation planning. No setup message is required for delivery.
+
 ### OpenCode
 
 Connected OpenCode uses `opencode serve` and its documented session API. The instance

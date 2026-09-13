@@ -8,6 +8,12 @@ the resolved backend command, and supervises that process until it exits. Manage
 component cohorts begin only when endpoint allocation, protocol readiness, primary
 backend handles, and multi-process ownership can land together.
 
+[Codex integration evidence](backends/codex.md#verified-managed-session-integration)
+is verified against 0.154.0,
+including delivery to an empty recipient and native fresh startup. This evidence is
+sufficient to resume planning; the native-client-created primary requires reconciling
+the primary-before-consumer ordering below before implementation.
+
 ## Primitive
 
 The lowest-level ACE primitive is a named **ACE instance**:
