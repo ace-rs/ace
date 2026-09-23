@@ -22,11 +22,12 @@ has changed since.
 The question: could ACE run as a server, driving backends non-interactively behind a web
 UI? Three notes surveyed the execution model, MCP behavior, and credential handling.
 
-**Findings that still hold**
+**Historical findings**
 
-- ACE hands off with `exec()` — process replacement, no pipes, no subprocess
-  communication. Any server mode requires `spawn()` + pipe capture instead. That
-  handoff model is still the design; see [`spec/backend.md`](../spec/backend.md).
+- ACE then handed off with `exec()` — process replacement, no pipes, no subprocess
+  communication. This is superseded: ACE now supervises one native `SessionProcess`;
+  see [`spec/session.md`](../spec/session.md) and
+  [`spec/backend.md`](../spec/backend.md).
 - Backend headless surfaces differ sharply: Claude Code `-p` (one-shot, JSON/NDJSON
   output), OpenCode `serve` (persistent REST), Codex `exec --json` (JSONL events).
 - Claude Code `-p` did not load HTTP MCP servers (upstream issue #34131) — a hard
@@ -47,9 +48,9 @@ UI? Three notes surveyed the execution model, MCP behavior, and credential handl
 **Where it went.** Nowhere yet — ACE remains a local launcher. MCP scope is ruled by
 [remote-only MCP](../decisions/2026-03-04-remote-only-mcp.md); the current credential
 posture is [`spec/authentication.md`](../spec/authentication.md) and
-[`spec/mcp.md`](../spec/mcp.md). If hosted ACE is ever revisited, the `exec()` →
-`spawn()` change and the proxy-credential pattern are the two conclusions worth
-carrying forward; re-verify everything else against current backends.
+[`spec/mcp.md`](../spec/mcp.md). If hosted ACE is ever revisited, use the current
+[session contract](../spec/session.md) as the starting point; the proxy-credential
+pattern remains historical research to re-verify against current backends.
 
 ---
 
@@ -141,7 +142,7 @@ contracts. Droid was dropped as a backend; its half of the plan is dead.
 **Stale.** Model names, SDK availability, LiteLLM compatibility notes, the
 Claude/OpenCode/Codex comparison table, the "gaps in ACE's Codex support" list, and
 all Linear (PROD9) issue references — current task ownership lives in
-[the repository backlog](../backlog/README.md).
+[the Outline task index](../backlog/README.md).
 
 ---
 

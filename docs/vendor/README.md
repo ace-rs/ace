@@ -21,6 +21,17 @@ and a full copy rots the moment they ship.
 Upstream is the source of truth; the marker makes staleness legible. When the crib is
 wrong, re-read upstream — you cannot fix the rot by editing here.
 
+## Index
+
+These are dated reference snapshots; their provenance does not imply current upstream
+verification or support in ACE.
+
+- [Agent Skills](agent-skills-spec.md) — skill format and ecosystem behavior.
+- [ACP](acp.md) — protocol and backend support snapshot.
+- [Backend installation](backend-install.md) — observed install and upgrade mechanisms.
+- [Codex manual](codex-manual.md) — retained full upstream snapshot from 2026-08-03.
+- [Hermes](hermes.md) — upstream surface researched for a possible backend.
+
 ## Format
 
 One file per subject: `<slug>.md` (no date prefix — describes a thing, not a moment). Favor

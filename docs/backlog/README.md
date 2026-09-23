@@ -1,52 +1,42 @@
-# ACE backlog
+# ACE task index
 
-The repository is the authoritative task tracker for ACE. Start with the
-[roadmap](roadmap.md) for ordering, then read the owning epic for scope and status.
-Epics and priority bands guide selection; they do not authorize execution or releases.
-Product behavior belongs in [specifications](../spec/README.md), and rulings belong in
-[decisions](../decisions/README.md).
+[Outline’s ACE collection][outline] is the authoritative task tracker.
+Start with the [roadmap][roadmap] for ordering, then use the owning epic for scope,
+status, evidence, and approval. Each task has one owner; cross-topic references link to it.
+Ideas and roadmap placement do not authorize implementation or release.
+
+[outline]: https://outline.prodigy9.co/collection/ace-hbmmUqagR9
+[roadmap]: https://outline.prodigy9.co/doc/roadmap-2qndeh3bho
 
 ## Task owners
 
-- [A — Backends](a-backends.md): implementations, configuration, capability research.
-- [B — MCP](b-mcp.md): provisioning, checks, and MCP scope gates.
-- [C — Imports](c-imports.md): selection, collisions, ownership, and supply chain.
-- [D — Resource sync](d-resource-sync.md): expansion beyond skills; decision-gated.
-- [E — Selection](e-selection.md): skill filtering and prompt-injection ideas.
-- [F — School lifecycle](f-school-lifecycle.md): setup, switching, ejection, doctor.
-- [G — Entrypoints](g-entrypoints.md): headless invocation and input automation.
-- [H — CLI](h-cli.md): inspection, presentation, prompt override, editor side pane.
-- [I — Quality](i-quality.md): defects, audit residuals, build and test research.
-- [J — Docs](j-docs.md): templates, capability catalog, instruction delivery.
-- [K — Research](k-research.md): unscheduled spikes and references to their owners.
-- [L — Big bets](l-big-bets.md): desktop and ancillary product ideas.
-- [M — Sessions](m-sessions.md): native supervision, controlled startup, connect,
-  workspaces, and the deferred Claude transport choice.
-- [School records](school.md): separate-school history and recorded pantry reproductions.
-- [Cancelled / superseded](cancelled.md): rejection trail; never a queue of live work.
+- [A — Backends](https://outline.prodigy9.co/doc/a-backends-bgUEggvFml)
+- [B — MCP provisioning](https://outline.prodigy9.co/doc/b-mcp-provisioning-TysmxPORVh)
+- [C — Skill imports & supply chain](https://outline.prodigy9.co/doc/c-skill-imports-supply-chain-AMblsRDACh)
+- [Cancelled / superseded](https://outline.prodigy9.co/doc/cancelled-superseded-ryHk1rP9yA)
+- [D — Resource sync generalisation (gated)](https://outline.prodigy9.co/doc/d-resource-sync-generalisation-gated-AwW9Dd3dKC)
+- [E — Skill selection & learn](https://outline.prodigy9.co/doc/e-skill-selection-learn-ICDLuwjpx3)
+- [F — School lifecycle, setup & env health](https://outline.prodigy9.co/doc/f-school-lifecycle-setup-env-health-c8fcMTVW4C)
+- [G — Entrypoints & headless](https://outline.prodigy9.co/doc/g-entrypoints-headless-UcoFNgcTmT)
+- [H — CLI ergonomics & inspection](https://outline.prodigy9.co/doc/h-cli-ergonomics-inspection-QD9m16mtOX)
+- [I — Quality — testing & internals](https://outline.prodigy9.co/doc/i-quality-testing-internals-GDgCsAPMPB)
+- [J — Docs & templates](https://outline.prodigy9.co/doc/j-docs-templates-DydKB3lN3f)
+- [K — Research spikes (go/no-go gate)](https://outline.prodigy9.co/doc/k-research-spikes-gono-go-gate-5ATjEeLjJG)
+- [L — Big bets / out-of-core](https://outline.prodigy9.co/doc/l-big-bets-out-of-core-FBnWcHpPfz)
+- [M — Managed sessions, connect & workspaces](https://outline.prodigy9.co/doc/m-managed-sessions-connect-workspaces-FdFXj4qMEO)
+- [School](https://outline.prodigy9.co/doc/school-0LU8NLqTfG)
 
-## Recording work
+## Repository records
 
-Give each task one owning entry. Cross-topic references and roadmap bullets link to that
-owner instead of duplicating its checkbox. Keep existing names and legacy PROD9 numbers
-as stable search handles; newly recorded work gets a descriptive name.
+Product contracts remain in [specifications](../spec/README.md), rulings in
+[decisions](../decisions/README.md), research in its existing documentation folder,
+and procedures in [guides](../guides/README.md). Link them from tasks rather than
+copying their content into another checklist.
 
-- `[x]` means recorded complete, with commit evidence where available; it does not
-  imply a release or push.
-- `[ ]` means unfinished, subject to any explicit deferred, gated, or unverified label.
-- Ideas remain provisional; their presence does not settle their design or priority.
-- Preserve the ask ledger's status and provenance: `agent:inferred` is a derivation,
-  while `user:verbatim` requires the exact quote. Never promote an inference to a ruling.
-- A conflict keeps both claims and their evidence until a current ruling or implementation
-  resolves it. See [reconciliation](reconciliation.md) for the initial source comparison.
+`.ace/save.md` holds session context; `.ace/save.ledger.md` preserves in-flight asks
+and links to Outline owners. Neither is a replacement task tracker.
 
-`.ace/save.md` holds session context; `.ace/save.ledger.md` links in-flight asks to these
-owners. Long-lived task details belong here. Research stays in its existing document,
-linked from the task; it is not a second checklist.
-
-Outline and Linear are historical sources, not active ACE trackers. Outline source
-documents remain intact; each imported page records its source revision. The collection's
-skill-discovery reference is covered by the existing
-[discovery specification](../spec/skills/model.md#discovery-cascade), not another backlog
-page. Source coverage and unresolved discrepancies are listed in
-[reconciliation](reconciliation.md).
+The former local epic and roadmap files are navigation pointers. Their task content was
+reconciled into Outline on 2026-09-23 under Chakrit’s instruction, “Move tasks to Outline”.
+The [reconciliation record](reconciliation.md) preserves migration evidence and the
+historical source comparison. Legacy Linear PROD9 numbers remain search handles.

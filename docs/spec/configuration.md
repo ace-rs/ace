@@ -62,8 +62,10 @@ Project layer is skipped entirely, including explicit trust values.
 ## Connected sessions (planned)
 
 `[connect]` is a planned configuration surface, pending **connect-core** in
-[M — Managed sessions](../backlog/m-sessions.md). It is not supported by current
-`ace config get` or `ace config set`; the following describes the intended contract.
+[M — Managed sessions][managed-tasks]. It is not supported by current `ace config get`
+or `ace config set`; the following describes the intended contract.
+
+[managed-tasks]: https://outline.prodigy9.co/doc/m-managed-sessions-connect-workspaces-FdFXj4qMEO
 
 ```toml
 [connect]

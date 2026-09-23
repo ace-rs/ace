@@ -6,7 +6,7 @@ but no storage or deletion policy has been ruled -->
 Research for the ACE maintainer deciding how imported skills retain source ownership,
 surface update conflicts, and track upstream deletions without versioning Markdown.
 
-Task owner: [backlog C, provenance research](../backlog/c-imports.md#provenance-research).
+Task owner: [backlog C, provenance research](https://outline.prodigy9.co/doc/c-skill-imports-supply-chain-AMblsRDACh).
 The model and acceptance shape below remain proposed, including all five open rulings.
 
 ## Conclusion

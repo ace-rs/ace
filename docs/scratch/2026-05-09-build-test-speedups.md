@@ -1,12 +1,12 @@
-# Build & test speedup backlog
+# Build & test speedup research
 
 Not spec/decision because: it's a menu of unmeasured options, not a ruling on which
 to take.
 
-Task owner: [backlog I, build-speedups](../backlog/i-quality.md#local-records).
+Task owner: [backlog I, build-speedups](https://outline.prodigy9.co/doc/i-quality-testing-internals-GDgCsAPMPB).
 This note holds candidate rationale and historical measurements, not a separate queue.
 
-Captured from session memory before repo move. Ranked menu of remaining wins
+Captured from session memory before repo move. Historical candidate ranking
 after the 2026-04-22 build-all.sh rework (commits 7253dd2, 2d89be1: zig 0.14
 pin, multi-target groups, sccache opt-in).
 
@@ -14,27 +14,27 @@ pin, multi-target groups, sccache opt-in).
 rest; see [prior-art](prior-art.md) § Test-suite speedup audit. What survives below is
 the **build** menu.
 
-Baseline:
+Historical baseline:
 - `build-all.sh` clean: ~1m 55s for all 7 targets
 - `build-all.sh` no-op: ~3.3s
 
-Pick from this menu later without re-deriving. Don't bundle into one PR — each
-is independently measurable.
+These candidates and estimates have not been revalidated against the current build.
+Each needs independent measurement before adoption; priority belongs to the task owner.
 
 ## Builds
 
 ### Tier 1 — low effort, real impact
 
-1. **Add `[profile.release]` to `Cargo.toml`** — currently absent, all 7
-   targets build with stock defaults:
+1. **Add `[profile.release]` to `Cargo.toml`** — absent when recorded; all 7
+   targets then built with stock defaults:
    - `strip = "symbols"` — smaller binaries, slightly faster link
    - Try `opt-level = 2` and measure — for a CLI like ACE, ~20% compile
      speedup with no measurable runtime hit
    - Add `[profile.release-fast]` inheriting from release with
      `lto = false, opt-level = 2` for iteration
 2. **`cargo build --timings`** on a clean build to identify dep bottlenecks.
-   Common offenders: `serde_derive`, `clap_derive`, `regex`. ACE already
-   disables default features on `ureq`/`inquire`/`indicatif`/`gif`. Worth
+   Common offenders: `serde_derive`, `clap_derive`, `regex`. ACE then
+   disabled default features on `ureq`/`inquire`/`indicatif`/`gif`. Worth
    auditing `console`'s default features.
 3. **Portable registry caching** if build-all runs in CI: preserve Cargo registry and
    Git dependency caches through the build environment's storage contract.
@@ -60,8 +60,8 @@ chakrit; `cargo test --release` was skipped (ACE's integration tests exec `ace` 
 subprocess, so binary mode matters more than harness mode). Details and the
 deliberately-unpursued list: [prior-art](prior-art.md) § Test-suite speedup audit.
 
-## Next up
+## Original candidate to measure first
 
-`[profile.release] strip = "symbols"` — still absent from `Cargo.toml`, so this is the
-one unclaimed low-effort win. Optionally spend 30 min checking whether `mold` can be
-forced through zigbuild.
+The original recommendation was to measure `[profile.release] strip = "symbols"`,
+then investigate whether `mold` could work through zigbuild. This records the research
+sequence proposed at the time, not a current implementation instruction.

@@ -14,6 +14,10 @@ the judgment a script can't — preconditions, decision points, what to check af
 procedure an agent re-runs by hand each time is a latent mistake; the script runs it the
 same way every time.
 
+## Index
+
+- [Releasing ACE](release.md) — release prerequisites, scripts, publication, and checks.
+
 ## Format
 
 One file per task: `<slug>.md` (no date prefix — a guide describes a task, not a moment).

@@ -92,14 +92,19 @@ codex queue --remote unix:///path/to/socket --thread <ID> --message "..."
 The endpoint and fixed primary ID come from recipient discovery. Pass the message as
 one process argument, preserve executable/wrapper configuration, and report command
 failure without retrying. Codex owns the app-server transport. The command is confirmed
-by installed Codex 0.154.0 help; delivery through it remains untested.
+by installed Codex 0.154.0 help; successful delivery through it remains unverified.
 
 The planned controller distinguishes server readiness from recipient readiness. For fresh
 startup it waits for app-server readiness, starts the native terminal to create the
 primary, discovers its initial ID on the dedicated server, and retains that fixed target.
 Only then may connect publish the endpoint and primary ID as an available recipient.
-The sanctioned CLI route for readiness and primary-ID inspection remains unresolved;
+Server readiness and the practical primary-target handoff remain unresolved;
 `codex queue` consumes the known ID and does not establish those startup facts.
+Minimize coupling to Codex while using its CLI for delivery. Necessary harness-specific
+interaction through sanctioned surfaces is permitted for target acquisition; it need not
+be a CLI inspection query or a separate discovery subsystem. Select the simplest reliable
+handoff without implementing Codex's exact WebSocket protocol in ACE. The tested hook
+candidate failed the pre-turn requirement, as recorded below; no replacement is selected.
 This follows the
 [verified native-client-created primary](#verified-managed-session-integration)
 without a setup message or model response. Later terminal conversation selection does
@@ -121,11 +126,11 @@ request must carry its control endpoint and topology requirement by construction
 
 ## Verified managed-session integration
 
-Recorded 2026-09-13 against installed Codex 0.154.0. These are backend integration
-results, not evidence that ACE session or connect commands are implemented or that the
-selected `codex queue` invocation has been tested. Checks used
-public app-server APIs and the native terminal; no backend rollout files were inspected
-or manufactured.
+Recorded 2026-09-13 against installed Codex 0.154.0, with the target-handoff checkpoint
+saved on 2026-09-14. These are historical backend integration results, not evidence that
+ACE session or connect commands are implemented. Successful delivery used direct public
+app-server APIs; subsequent CLI and hook probes did not verify successful `codex queue`
+delivery. No backend rollout files were inspected or manufactured.
 
 ### Empty-recipient delivery and fresh startup
 
@@ -175,9 +180,48 @@ Observed boundaries and unsuccessful attempts:
   terminal displayed the response. The final assertion checked the rendered assistant
   response and terminal liveness, rejecting prompt or test-log matches.
 
+### CLI targeting and trusted-hook results
+
+The later probes tested whether startup could supply a target to `codex queue` without
+ACE implementing the app-server wire protocol. Omitting `--thread` failed with exit 2
+because the argument is required. Against an isolated server with a fresh native
+terminal, `--thread 0` failed with exit 1 and
+`No active session found matching '0'.` These results do not rule out exact session names
+or establish successful delivery to a valid target.
+
+A SessionStart hook was installed with matcher `^(startup|resume)$`, timeout 2 seconds,
+and a command saving only `session_id` and `source` from its JSON input. Invocation-only
+trust bypass attempts left the hook installed but inactive. Chakrit then explicitly
+approved trusting this single test hook through `/hooks`; the UI reported it trusted.
+A fresh native client showed SessionStart Installed 1, Active 1, but produced no target
+file before any model prompt. Restarting the dedicated server and opening another fresh
+client without bypass flags produced the same result. Queue delivery and resume-target
+checks were not attempted because the hook supplied no ID.
+
+The tested trusted-hook setup therefore failed the pre-turn target-handoff requirement.
+This does not establish when hooks execute or diagnose a Codex defect; repeating the
+same probe needs a changed premise. The approved personal trust record persisted, but
+no permanent hook definition was installed. An isolated-home probe had stopped at login
+without copying credentials. A separate raw JSONL proxy probe ended with exit 1 and a
+broken pipe, without an initialization response; no JSONL-to-WebSocket conversion was
+established.
+
+These probes used Luna, low effort, standard tier, and fast mode disabled; no successful
+model turn occurred. All probe-owned processes exited. Supplementary captures were
+recorded under `/tmp/ace-hook-queue-uTfqPO/`, `/tmp/ace-queue-target.uRgAjT/`, and
+`/tmp/ace-queue-hook.4aUfuQ/`; this account preserves the decisive results independently
+of those temporary files.
+
+The next planning step is to choose a practical sanctioned target handoff with minimal
+coupling, then verify CLI delivery. Exact-name targeting, manual ID handoff, and
+noninteractive startup were considered but neither approved nor established as automatic
+replacements for the required native startup. The hook proposal was an agent candidate,
+not an approved working design; the runtime scope and CLI delivery choice remain intact.
+
 ### Test conditions and planning handoff
 
-Completed runs used `gpt-5.6-luna`, standard service tier, and fast mode disabled.
+The successful direct-protocol runs used `gpt-5.6-luna`, standard service tier, and fast
+mode disabled.
 Fresh terminal runs displayed medium effort. Low effort was requested afterward;
 scripts now set `model_reasoning_effort="low"` and turn `effort="low"`, but those setting
 changes were not used to repeat the successful live checks. Future test sessions must

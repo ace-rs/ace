@@ -1,8 +1,79 @@
 # Backlog source reconciliation
 
+## Current task ownership — 2026-09-23
+
+Outline is the task tracker; the [local index](README.md) links the owning epics.
+Authority: Chakrit answered “Move tasks to Outline” when asked where consolidated tasks
+should live. Specifications, decisions, research, and guides stay in this repository.
+
+The 17 Outline ACE documents were read before migration; their revisions still matched
+those imported on September 5. The 13 epics, roadmap, cancelled record, and School page
+were reconciled with local records through `f3382f8`, the September 14 checkpoint, and
+the September 22 Archify ask. The Skill discovery cascade reference was left intact.
+All 16 updated task documents were fetched again and compared with the prepared content,
+accounting for Outline’s Markdown formatting normalization; task content and links matched.
+Local task lists were replaced with pointers only after that verification.
+
+### Consolidation outcomes
+
+- M retains the September 13 implementation approval and records the unresolved practical
+  primary-target handoff. Necessary harness-specific acquisition is permitted while
+  minimizing coupling; no replacement route or transport dependency is approved.
+  [Codex integration evidence](../spec/backends/codex.md#cli-targeting-and-trusted-hook-results)
+  now preserves the trusted-hook failure and unsuccessful CLI/proxy probes. Prior direct
+  delivery successes do not establish successful `codex queue` delivery.
+- H preserves config completion at `e2caae9` and `544434f`, validation, and authorization.
+  The latter follows v0.9.3, so the bare-config output migration note remains unreleased.
+- C owns **subpath-skill-md-support**, including the exact Archify/Hermes PR reference.
+  School owns the proposed **toml-edit-key-format-guidance** record; its actual school
+  checkout and implementation authority remain unresolved.
+- Existing gates, cancellations, legacy issue numbers, and single-owner relationships
+  remain intact. This consolidation did not re-audit old application behavior or close
+  unresolved product decisions.
+- Repository task links point to Outline. Historical research now distinguishes prior
+  behavior and candidate priorities from current contracts; artifact indexes expose the
+  existing guides, vendor references, and research.
+
+### Publication evidence
+
+“Imported” is the source revision from September 5, unchanged at the September 23 read.
+“Published” is the revision read back after this migration, not a permanent current-version
+claim. The School formatting correction preserves the reproduction command as inline code.
+
+| Document                                   | Imported | Published |
+| ------------------------------------------ | -------- | --------- |
+| Cancelled / superseded                     | 10       | 11        |
+| M — Managed sessions, connect & workspaces | 12       | 13        |
+| I — Quality — testing & internals          | 4        | 5         |
+| B — MCP provisioning                       | 13       | 14        |
+| D — Resource sync generalisation (gated)   | 4        | 5         |
+| K — Research spikes (go/no-go gate)        | 3        | 4         |
+| L — Big bets / out-of-core                 | 3        | 5         |
+| H — CLI ergonomics & inspection            | 17       | 18        |
+| F — School lifecycle, setup & env health   | 8        | 9         |
+| Roadmap                                    | 31       | 32        |
+| A — Backends                               | 39       | 40        |
+| School                                     | 7        | 10        |
+| G — Entrypoints & headless                 | 6        | 7         |
+| E — Skill selection & learn                | 7        | 8         |
+| J — Docs & templates                       | 4        | 5         |
+| C — Skill imports & supply chain           | 20       | 21        |
+
+### Evidence retention
+
+Pre-migration Outline content, local task content, session records, and publication
+readbacks were captured under `tmp/docs-consolidation-2026-09-23/` during the session.
+These are supplementary captures, not a second task tracker. The original checkpoint is
+also retained in `.ace/archive/2026-09-14-session-trail.md` before shortening active
+continuity. Durable task status and authority live in Outline; product evidence lives
+in the linked specifications. No build, model run, dependency change, or push was needed.
+
+## Historical comparison — 2026-09-05
+
+The following records the original import, not current task ownership or a fresh audit.
 Evidence cutoff: repository `9df624a`; Outline ACE collection read on 2026-09-05.
-This record is for the maintainer or a fresh agent checking why a task has its status.
-The epic files own current status; this page records source coverage and discrepancies.
+This record is for the maintainer or a fresh agent checking why a task had its status.
+Outline’s epic pages now own current status; this section preserves source discrepancies.
 
 ## Source coverage
 

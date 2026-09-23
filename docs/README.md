@@ -5,9 +5,12 @@ yes. The bottom (`scratch/`) charges a toll, so nothing lands there by default.
 
 ## Where does this go?
 
-Tasks, epics, priority ordering, and unresolved asks → [`backlog/`](backlog/README.md).
+Tasks, epics, priority ordering, and unresolved asks → [Outline’s ACE collection][tasks].
+The [local task index](backlog/README.md) links its roadmap and owning epics.
 Give each task one owner; link supporting research or specifications rather than copying
 their content into a second task list. For other durable artifacts, use the gate below.
+
+[tasks]: https://outline.prodigy9.co/collection/ace-hbmmUqagR9
 
 1. A ruling you'd defend if someone reopened it? → [`decisions/`](decisions/) — dated,
    never edited.

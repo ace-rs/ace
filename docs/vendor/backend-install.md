@@ -2,9 +2,10 @@
 
 # Backend install and upgrade
 
-How each backend ACE dispatches to gets onto a machine, and how it moves versions.
-ACE never installs a backend; this is here so a version question has an answer without
-re-deriving it from `which` output.
+Installation and upgrade observations for supported backends and Hermes, captured on
+2026-08-01. Hermes is a researched integration, not a supported ACE backend; see the
+[backend contract](../spec/backend.md) for supported kinds and the
+[Hermes reference](hermes.md) for research. ACE never installs a backend.
 
 Each backend owns its own update story, and they disagree — two self-update in place,
 two are managed by a package manager. That mismatch matters whenever a backend's
@@ -43,5 +44,5 @@ running code sits in a clone, so detection reports `git` and `hermes update` pul
 clone. `uv tool upgrade hermes-agent` is the wrong lever — it would rebuild the shim
 against the same checkout.
 
-Consequence for ACE: a hermes version can change under a running session with no package
-manager involved, and `hermes --version` describes whichever copy was invoked.
+Integration consideration: a Hermes version can change under a running session with no
+package manager involved, and `hermes --version` describes whichever copy was invoked.

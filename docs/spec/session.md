@@ -155,9 +155,13 @@ thread ID before publishing recipient readiness; later terminal conversation sel
 does not change that target. Publication makes the endpoint and fixed target discoverable
 to `ace connect send`. It requires no setup message or model response.
 Codex delivery uses the [CLI invocation in the connect spec](connect.md#codex).
-That invocation consumes the primary ID; the sanctioned CLI route for establishing
-readiness and inspecting the initial primary remains to be identified before startup
-implementation can satisfy this boundary.
+That invocation consumes the primary ID; server readiness and a reliable primary-target
+handoff remain to be established before startup implementation can satisfy this boundary.
+Target acquisition may use necessary harness-specific interaction through sanctioned
+surfaces, minimizing coupling without implementing Codex's exact WebSocket protocol.
+It does not require a CLI inspection query. The
+[recorded target-handoff probes](backends/codex.md#cli-targeting-and-trusted-hook-results)
+failed to supply an ID before a model turn; no replacement handoff is selected.
 The controlled OpenCode path constructs the same roles with a concrete loopback HTTP
 endpoint:
 `opencode serve --hostname 127.0.0.1 --port ...` followed by `opencode attach ...`.

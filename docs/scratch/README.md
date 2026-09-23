@@ -18,6 +18,23 @@ intended design (including our own exact surface) is `../spec/`; third-party loo
 If you cannot write that line honestly, the artifact belongs in one of those folders — put
 it there instead.
 
+## Index
+
+Research supports task decisions; these notes are not an independent work queue.
+
+- [Build and test speedups](2026-05-09-build-test-speedups.md) — historical measurements
+  and build candidates; the recorded test work is closed.
+- [School capability catalog](2026-05-30-school-instructions-catalog.md) — unsettled
+  instructions and CLI-guidance proposal.
+- [School skill provenance](2026-08-25-school-skill-provenance.md) — import and ownership
+  research.
+- [Codebase audit](2026-06-10-codebase-audit.md) — historical findings requiring
+  revalidation before fixes.
+- [Skill lifecycle visual](2026-06-01-skill-lifecycle.html) — retained decision companion.
+- [Skill model rearchitecture](2026-06-02-skill-model-rearchitect.md) — completed design
+  exploration retained as decision provenance.
+- [Prior art digest](prior-art.md) — absorbed research and links to its durable outcomes.
+
 ## Format
 
 One file per artifact: `YYYY-MM-DD-slug.md` (the date matters — scratch is about the moment

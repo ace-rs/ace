@@ -132,9 +132,14 @@ the command once; Codex owns communication with app-server. The sender receives 
 command's success or failure, not an acknowledgement from the receiving model.
 
 The command and options were confirmed with `codex queue --help` in Codex 0.154.0.
-Delivery through this invocation has not yet been tested. Server readiness and primary-ID
-discovery remain separate startup requirements; this command accepts an ID, it does not
-discover one. Their sanctioned CLI inspection route remains to be established.
+Successful delivery through this invocation remains unverified; the
+[targeting probes](backends/codex.md#cli-targeting-and-trusted-hook-results) recorded
+argument and target rejection. Server readiness and primary-target handoff remain
+separate startup requirements; this command accepts an ID, it does not discover one.
+Choose the simplest reliable handoff through sanctioned surfaces, allowing necessary
+harness-specific interaction while minimizing coupling. CLI delivery remains selected;
+target acquisition need not be a CLI query, and ACE must not implement Codex's exact
+WebSocket protocol. No replacement for the failed pre-turn hook candidate is selected.
 
 ACE may list backend-native child threads for inspection, but the relay does not address
 them. Plain interactive Codex has no external receive endpoint and is therefore not a

@@ -5,8 +5,8 @@ Not spec/decision because: explicitly undecided — the review it needs never ha
 Captured 2026-05-30. Draft / research. Full review + decisions deferred to a fresh
 session. Do **not** treat anything here as ruled.
 
-Task owner: [backlog J, item 200](../backlog/j-docs.md#local-records); the conditional
-closure of PROD9-13 stays with [H](../backlog/h-cli.md). The research and open questions
+Task owner: [backlog J, item 200](https://outline.prodigy9.co/doc/j-docs-templates-DydKB3lN3f); the conditional
+closure of PROD9-13 stays with [H](https://outline.prodigy9.co/doc/h-cli-ergonomics-inspection-QD9m16mtOX). The research and open questions
 below support those entries, not a separate task queue.
 
 ## Origin

@@ -14,7 +14,7 @@ stands, **except step 6 (the spec sweep), which was done on 2026-07-22** — sha
 refs, index path, validate exit code, `ace --new`, `ace skills add`, learn's `ace*` append,
 and Droid's status (dropped; `backends/droid.md` deleted) are all corrected in `docs/spec/`.
 Current task ownership and known closures are in
-[backlog I](../backlog/i-quality.md#local-records) and
+[backlog I](https://outline.prodigy9.co/doc/i-quality-testing-internals-GDgCsAPMPB) and
 [the source reconciliation](../backlog/reconciliation.md#historical-audit-coverage).
 The findings below are historical evidence requiring revalidation before fixes.
 
