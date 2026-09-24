@@ -126,8 +126,12 @@ impl CmdError {
             Self::Start(error) => error.hint().map(str::to_string).into_iter().collect(),
             Self::School(error) => error.hint().map(str::to_string).into_iter().collect(),
             Self::Migrate(error) => error.hint().map(str::to_string).into_iter().collect(),
-            Self::Prepare(error) => error.hint().map(str::to_string).into_iter().collect(),
-            Self::Prompt(error) => error.hint().map(str::to_string).into_iter().collect(),
+            Self::Prepare(error) | Self::Setup(SetupError::Prepare(error)) => {
+                error.hint().map(str::to_string).into_iter().collect()
+            }
+            Self::Prompt(error) | Self::Setup(SetupError::Prompt(error)) => {
+                error.hint().map(str::to_string).into_iter().collect()
+            }
             Self::Adhoc { hints, .. } => hints.clone(),
             _ => Vec::new(),
         }
@@ -239,18 +243,22 @@ fn skill_exit_code(error: &crate::skills::SkillError) -> ExitCode {
 fn setup_exit_code(error: &SetupError) -> ExitCode {
     match error {
         SetupError::Config(config) => config_exit_code(config),
-        SetupError::NotInGitRepo => ExitCode::Unavailable,
+        SetupError::Prepare(error) => prepare_exit_code(error),
+        SetupError::Prompt(error) => io_exit_code(error),
         SetupError::AlreadySetUp => ExitCode::Usage,
     }
 }
 
 fn prepare_exit_code(error: &PrepareError) -> ExitCode {
     match error {
+        PrepareError::Cancelled => ExitCode::Cancelled,
         PrepareError::Config(config) => config_exit_code(config),
         PrepareError::Backend(error) => backend_exit_code(error),
         PrepareError::School(error) => school_exit_code(error),
         PrepareError::RegisterMcp(error) => mcp_register_exit_code(error),
-        PrepareError::Clone(_) | PrepareError::Write(_) => ExitCode::Operational,
+        PrepareError::Clone(_) | PrepareError::RepositoryAccess(_) | PrepareError::Write(_) => {
+            ExitCode::Operational
+        }
         // The tree is intact; it is waiting on a decision only the user can make.
         PrepareError::BlockedLinks(_) => ExitCode::Unavailable,
     }
@@ -415,10 +423,6 @@ mod tests {
         );
         assert_eq!(
             CmdError::Backend(crate::backend::BackendError::Unknown("x".into())).exit_code(),
-            ExitCode::Unavailable
-        );
-        assert_eq!(
-            CmdError::Setup(SetupError::NotInGitRepo).exit_code(),
             ExitCode::Unavailable
         );
         assert_eq!(

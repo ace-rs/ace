@@ -29,15 +29,6 @@ fn unknown_config_key_exits_usage() {
 }
 
 #[test]
-fn not_in_git_repo_exits_unavailable() {
-    let env = TestEnv::new();
-    env.write_file("school.toml", "name = \"test-school\"\n");
-
-    // Precondition (a git repo) is absent — Unavailable, not Usage.
-    env.ace().args(["setup", "."]).assert().code(2);
-}
-
-#[test]
 fn missing_school_exits_unavailable() {
     let env = TestEnv::new();
     env.git_init();

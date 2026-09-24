@@ -48,7 +48,7 @@ pub fn propagate_exit_status(status: ExitStatus) {
 }
 
 #[cfg(unix)]
-fn exit_code(status: ExitStatus) -> i32 {
+pub fn exit_code(status: ExitStatus) -> i32 {
     use std::os::unix::process::ExitStatusExt;
 
     status
@@ -58,7 +58,7 @@ fn exit_code(status: ExitStatus) -> i32 {
 }
 
 #[cfg(windows)]
-fn exit_code(status: ExitStatus) -> i32 {
+pub fn exit_code(status: ExitStatus) -> i32 {
     status.code().unwrap_or(1)
 }
 

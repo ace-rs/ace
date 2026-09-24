@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 
+pub mod access;
+
 #[derive(Debug, thiserror::Error)]
 pub enum GitError {
     #[error("invalid import source `{raw}`: expected owner/repo or a git URL")]
@@ -15,15 +17,16 @@ pub enum GitError {
     },
 }
 
-/// Build a `git` Command with non-interactive env so we fail fast instead of hanging
-/// on credential or known_hosts prompts. Credential helpers (keychain, gh, etc.) still work.
+/// Disable credential interaction while retaining Git's configured credential helpers.
 fn git_command() -> Command {
     let mut cmd = Command::new("git");
-    cmd.env("GIT_TERMINAL_PROMPT", "0");
-    cmd.env(
-        "GIT_SSH_COMMAND",
-        "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new",
-    );
+    // Force OpenSSH away from /dev/tty; an empty askpass cannot launch a prompt.
+    cmd.env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_ASKPASS", "")
+        .env("SSH_ASKPASS", "")
+        .env("SSH_ASKPASS_REQUIRE", "force")
+        .env("GCM_INTERACTIVE", "0")
+        .stdin(Stdio::null());
     cmd
 }
 
@@ -173,7 +176,14 @@ impl<'a> Git<'a> {
     fn run(&self, args: &[&str]) -> Result<(), GitError> {
         let cmd_str = args.join(" ");
 
-        let out = git_command()
+        let mut command = match args {
+            ["fetch", ..] => access::unattended_command(
+                self.repo,
+                std::time::Instant::now() + std::time::Duration::from_secs(5),
+            )?,
+            _ => git_command(),
+        };
+        let out = command
             .args(args)
             .current_dir(self.repo)
             .stdout(Stdio::null())
@@ -337,26 +347,12 @@ pub fn normalize_source(source: &str) -> String {
 /// Standalone — no repo context needed.
 /// Performs a full clone (no `--depth`).
 pub fn clone_repo(url: &str, dest: &Path) -> Result<(), GitError> {
-    let cmd_str = format!("clone --no-tags {url}");
-
-    let out = git_command()
-        .args(["clone", "--no-tags", url])
-        .arg(dest)
-        .stdout(Stdio::null())
-        .output()
-        .map_err(|e| GitError::Exec {
-            cmd: cmd_str.clone(),
-            source: e,
-        })?;
-
-    if !out.status.success() {
-        return Err(GitError::Exit {
-            cmd: cmd_str,
-            status: out.status,
-            stderr: String::from_utf8_lossy(&out.stderr).trim().to_string(),
-        });
+    access::Clone {
+        url,
+        dest,
+        interaction: access::Interaction::Unattended,
     }
-    Ok(())
+    .run(Path::new("."))
 }
 
 #[cfg(test)]
@@ -383,16 +379,10 @@ mod tests {
         let prompt = envs.iter().find(|(k, _)| k == "GIT_TERMINAL_PROMPT");
         assert_eq!(prompt.map(|(_, v)| v.as_str()), Some("0"));
 
-        let ssh = envs.iter().find(|(k, _)| k == "GIT_SSH_COMMAND");
-        let ssh_val = ssh.map(|(_, v)| v.as_str()).unwrap_or("");
-        assert!(
-            ssh_val.contains("BatchMode=yes"),
-            "GIT_SSH_COMMAND: {ssh_val}"
-        );
-        assert!(
-            ssh_val.contains("StrictHostKeyChecking=accept-new"),
-            "GIT_SSH_COMMAND: {ssh_val}"
-        );
+        let askpass = envs.iter().find(|(k, _)| k == "GIT_ASKPASS");
+        assert_eq!(askpass.map(|(_, v)| v.as_str()), Some(""));
+        let credential_manager = envs.iter().find(|(k, _)| k == "GCM_INTERACTIVE");
+        assert_eq!(credential_manager.map(|(_, v)| v.as_str()), Some("0"));
     }
 
     fn parse(raw: &str) -> Source {

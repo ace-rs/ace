@@ -375,13 +375,8 @@ impl TestEnv {
         )
         .expect("write index.toml");
 
-        // insteadOf redirect so any re-clone (self-heal path) goes through
-        // the sandbox origin instead of github.com.
-        append_gitconfig_redirect(
-            &self.path(".gitconfig"),
-            &format!("https://github.com/{specifier}.git"),
-            &origin,
-        );
+        // Redirect both GitHub transports so access probes and re-clones stay local.
+        append_gitconfig_redirect(&self.path(".gitconfig"), specifier, &origin);
 
         self.git_init();
         self.write_file(
@@ -443,21 +438,7 @@ impl TestEnv {
         self.git_in(&work, &["push", "--quiet"]);
         std::fs::remove_dir_all(&work).expect("remove work dir");
 
-        // gitconfig redirect: https://github.com/<specifier>.git → file://origin
-        // Using insteadOf on the full URL avoids interfering with any other
-        // GitHub access the test might make.
-        let gh_url = format!("https://github.com/{specifier}.git");
-        let file_url = format!("file://{}", origin.display());
-        let config_block = format!("[url \"{file_url}\"]\n\tinsteadOf = {gh_url}\n");
-
-        let gitconfig_path = self.path(".gitconfig");
-        if gitconfig_path.exists() {
-            let mut existing = std::fs::read_to_string(&gitconfig_path).expect("read gitconfig");
-            existing.push_str(&config_block);
-            std::fs::write(&gitconfig_path, existing).expect("append gitconfig");
-        } else {
-            std::fs::write(&gitconfig_path, config_block).expect("write gitconfig");
-        }
+        append_gitconfig_redirect(&self.path(".gitconfig"), specifier, &origin);
     }
 
     /// Set up an embedded school with flaude backend. Common fixture for
@@ -481,20 +462,15 @@ impl TestEnv {
         let tpl = ace_school_template();
         let dest = self.path("cache/ace/imports/github.com/ace-rs/school");
         copy_tree(&tpl.root, &dest);
-        append_gitconfig_redirect(
-            &self.path(".gitconfig"),
-            "https://github.com/ace-rs/school.git",
-            &tpl.root,
-        );
+        append_gitconfig_redirect(&self.path(".gitconfig"), "ace-rs/school", &tpl.root);
     }
 
-    /// Redirect `https://github.com/<source>.git` to a known-nonexistent
-    /// local path so `git clone` fails immediately instead of hitting the
-    /// network. Used by tests that assert on clone-failure paths.
+    /// Redirect both GitHub transports to a known-nonexistent local path so access
+    /// probes and cloning fail immediately without network access.
     pub fn redirect_to_invalid(&self, source: &str) {
         append_gitconfig_redirect(
             &self.path(".gitconfig"),
-            &format!("https://github.com/{source}.git"),
+            source,
             Path::new("/nonexistent/path"),
         );
     }
@@ -672,9 +648,9 @@ fn copy_tree(src: &Path, dst: &Path) {
     }
 }
 
-fn append_gitconfig_redirect(path: &Path, gh_url: &str, origin: &Path) {
+fn append_gitconfig_redirect(path: &Path, source: &str, origin: &Path) {
     let block = format!(
-        "[url \"file://{}\"]\n\tinsteadOf = {gh_url}\n",
+        "[url \"file://{}\"]\n\tinsteadOf = https://github.com/{source}.git\n\tinsteadOf = git@github.com:{source}.git\n",
         origin.display(),
     );
     if path.exists() {

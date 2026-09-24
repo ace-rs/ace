@@ -23,6 +23,10 @@ pub enum PrepareError {
     RegisterMcp(#[from] RegisterMcpError),
     #[error("clone failed: {0}")]
     Clone(String),
+    #[error("{0}")]
+    RepositoryAccess(String),
+    #[error("school acquisition cancelled")]
+    Cancelled,
     #[error("write failed: {0}")]
     Write(std::io::Error),
     #[error("skills blocked by leftover links: {}", .0.join(", "))]
@@ -34,11 +38,15 @@ impl PrepareError {
     pub fn hint(&self) -> Option<&'static str> {
         match self {
             Self::BlockedLinks(_) => Some("run `ace link --force` to replace them"),
+            Self::RepositoryAccess(_) => Some(
+                "check the repository address and Git credentials; for first setup, rerun `ace setup <owner/repo>` in a terminal to enter credentials",
+            ),
             Self::Config(_)
             | Self::Backend(_)
             | Self::School(_)
             | Self::RegisterMcp(_)
             | Self::Clone(_)
+            | Self::Cancelled
             | Self::Write(_) => None,
         }
     }
@@ -60,7 +68,7 @@ pub struct PrepareResult {
 impl Prepare<'_> {
     pub fn run(&self, ace: &mut Ace) -> Result<PrepareResult, PrepareError> {
         let project_dir = ace.project_dir().to_path_buf();
-        let preliminary_backend = ace.backend()?.clone();
+        ace.backend()?;
         let school = LinkedSchool::resolve(&project_dir, self.specifier)?;
 
         // Decide install-vs-update by on-disk state, not the index.
@@ -82,6 +90,31 @@ impl Prepare<'_> {
                 _ => (Vec::new(), false, false),
             }
         };
+
+        self.finish(
+            ace,
+            PrepareResult {
+                changes,
+                school_is_dirty,
+            },
+            school_updated,
+        )
+    }
+
+    /// Link and configure a school already acquired and validated by setup.
+    pub fn run_acquired(&self, ace: &mut Ace) -> Result<PrepareResult, PrepareError> {
+        self.finish(ace, PrepareResult::default(), true)
+    }
+
+    fn finish(
+        &self,
+        ace: &mut Ace,
+        prepared_result: PrepareResult,
+        school_updated: bool,
+    ) -> Result<PrepareResult, PrepareError> {
+        let project_dir = ace.project_dir().to_path_buf();
+        let preliminary_backend = ace.backend()?.clone();
+        let school = LinkedSchool::resolve(&project_dir, self.specifier)?;
 
         // Resolve which skills to link before constructing Link.
         let tree = ace.require_tree()?.clone();
@@ -124,11 +157,6 @@ impl Prepare<'_> {
         .run(ace)
         .map_err(PrepareError::Write)?;
 
-        let result = PrepareResult {
-            changes,
-            school_is_dirty,
-        };
-
         if school_updated {
             ace.invalidate_school_caches();
         }
@@ -147,6 +175,6 @@ impl Prepare<'_> {
         let local_path = ace.paths().local.clone();
         register_missing_mcp(ace, &backend, &entries, &project_dir, &local_path)?;
 
-        Ok(result)
+        Ok(prepared_result)
     }
 }

@@ -24,10 +24,11 @@ same-repo school from `ace setup` is a separate, undesigned feature (use
 
 ## Guards
 
-Setup fails immediately if:
+Setup fails immediately if **`ace.toml` already exists**, with
+`already set up, use 'ace' to run`.
 
-- **Not in a git repo** — error: `not in git repo, git init?`
-- **`ace.toml` already exists** — error: `already set up, use 'ace' to run`
+Outside a Git repository, setup warns and continues. It does not run `git init` or
+require confirmation to continue. Remote school acquisition still requires Git.
 
 ## Specifier Resolution
 
@@ -46,11 +47,23 @@ specifier.
 
 ## Setup Steps
 
-1. Write `ace.toml` with `school = "<owner/repo>"`.
-2. Call **Prepare** (see below).
+1. Check the project guards and resolve the linked school.
+2. Acquire an uncached school, or update a cached remote school through Pull.
+3. Validate `school.toml`, then write `ace.toml` with `school = "<owner/repo>"`.
+4. Link and configure the acquired school through Prepare without fetching it again.
 
-Setup's only unique responsibility is writing `ace.toml`. Everything else is delegated to
-Prepare, which is shared with the normal `ace` run.
+Authentication, clone, and school-validation failures leave `ace.toml` unwritten, so
+setup can be retried. Embedded schools are validated in place.
+
+For an uncached GitHub school, check access to the requested repository over SSH first,
+then HTTPS with existing credentials. Each probe is bounded to five seconds. The first
+successful transport supplies the clone URL, which Git retains for subsequent pulls.
+An occupied invalid cache path is reported and preserved for inspection.
+
+If neither transport succeeds, show both diagnostics. In an attended setup, offer one
+HTTPS clone with Git's native credential prompts; explain token creation before giving
+Git the terminal. This path requires no GitHub CLI. Cancellation and unattended behavior
+are specified in [authentication.md](authentication.md#school-repository-authentication).
 
 Narrowing a large school's `skills` list is not ACE's job — see
 [../decisions/2026-07-22-learn-leaves-the-binary.md](../decisions/2026-07-22-learn-leaves-the-binary.md).
@@ -60,9 +73,10 @@ Narrowing a large school's `skills` list is not ACE's job — see
 Prepare ensures the school is ready to use. It is called by both `ace setup` and normal
 `ace` runs.
 
-1. **Is school cloned?** (check `index.toml` for matching specifier)
+1. **Is school cloned?** (check the resolved clone directory for a Git repository;
+   setup has already completed acquisition and skips this step)
    - **No** → **Clone**: `git clone --no-tags` into `~/.local/share/ace/<owner>/<repo>/`
-     (XDG_DATA_HOME), write `index.toml` entry, parse `school.toml`, register MCP servers.
+     (XDG_DATA_HOME), validate `school.toml`, write `index.toml` entry.
    - **Yes** → **Pull**: `git pull --ff-only` on the cached repo.
 2. **Link**: sync school folders into `<project>/<backend_dir>/`. Two shapes:
    - `skills/` becomes a real directory with per-skill symlinks (one per Included skill
@@ -101,16 +115,16 @@ All consumer-side actions live in `src/actions/project/` (see
 
 | Action          | Responsibility                                          | When                        |
 | --------------- | ------------------------------------------------------- | --------------------------- |
-| Setup           | Guard checks, write `ace.toml`, call Prepare            | `ace setup <spec>`          |
-| Prepare         | Orchestrate Clone/Pull + Link + UpdateGitignore         | Setup and normal `ace`      |
-| Clone           | `git clone`, index, register MCP                        | School not in cache         |
-| Pull            | `git pull --ff-only` on cached repo                     | School already cached       |
-| Link            | Symlink school folders from cache into project          | Always (after clone/pull)   |
+| Setup           | Acquire/validate school, then publish `ace.toml`        | `ace setup <spec>`          |
+| Prepare         | Acquire when needed, link, gitignore, MCP registration  | Setup and normal `ace`      |
+| Clone           | Choose transport, clone, validate, index                | School not in cache         |
+| Pull            | Fetch and fast-forward cached repository                | School already cached       |
+| Link            | Symlink school folders from cache into project          | After acquisition/update    |
 | UpdateGitignore | Re-sync the ACE-managed block in `<project>/.gitignore` | End of Prepare; school init |
 
 ## Error Cases
 
-- **Not in git repo** — hard error.
+- **Not in git repo** — warning; setup continues without initializing Git.
 - **Already set up** — hard error, use `ace` to run.
 - **No network** — Clone/Pull fail with clear message.
 - **Invalid school** — fail if not git-cloneable or `school.toml` missing/invalid.

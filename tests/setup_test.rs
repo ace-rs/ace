@@ -21,16 +21,79 @@ fn setup_embedded_school() {
 }
 
 #[test]
-fn setup_not_in_git_repo() {
+fn setup_outside_git_warns_and_continues() {
     let env = TestEnv::new();
-    // No git init — should fail.
     env.write_file("school.toml", "name = \"test-school\"\n");
 
     env.ace()
         .args(["setup", "."])
         .assert()
-        .failure()
-        .stderr(predicates::str::contains("git"));
+        .success()
+        .stderr(predicates::str::contains("not a Git repository"));
+    env.assert_exists("ace.toml");
+    assert!(!env.path(".git").exists(), "setup must not initialize Git");
+}
+
+#[test]
+fn setup_missing_embedded_school_leaves_configuration_unpublished() {
+    let env = TestEnv::new();
+    env.git_init();
+
+    env.ace().args(["setup", "."]).assert().failure();
+    assert!(
+        !env.path("ace.toml").exists(),
+        "failed setup must be retryable"
+    );
+
+    env.write_file("school.toml", "name = \"test-school\"\n");
+    env.ace().args(["setup", "."]).assert().success();
+}
+
+#[test]
+fn setup_invalid_embedded_school_leaves_configuration_unpublished() {
+    let env = TestEnv::new();
+    env.git_init();
+    env.write_file("school.toml", "name = [");
+
+    env.ace().args(["setup", "."]).assert().failure();
+    assert!(
+        !env.path("ace.toml").exists(),
+        "invalid school must not be linked"
+    );
+}
+
+#[test]
+fn setup_failed_clone_leaves_configuration_unpublished() {
+    let env = TestEnv::new();
+    env.git_init();
+    env.write_executable("bin/git", "#!/bin/sh\nexit 1\n");
+
+    env.ace_with_path_prefix(&env.path("bin"))
+        .args(["setup", "example/private-school"])
+        .assert()
+        .failure();
+    assert!(
+        !env.path("ace.toml").exists(),
+        "failed clone must be retryable"
+    );
+}
+
+#[test]
+fn setup_cached_school_update_failure_leaves_configuration_unpublished() {
+    let env = TestEnv::new();
+    env.git_init();
+    env.mkdir("data/ace/example/school/.git");
+    env.write_file("data/ace/example/school/school.toml", "name = \"School\"\n");
+    env.write_executable(
+        "bin/git",
+        "#!/bin/sh\ncase \"$*\" in\n  *--abbrev-ref*) printf 'main\\n' ;;\n  *status*) exit 0 ;;\n  *rev-parse*) printf '123\\n' ;;\n  *) exit 1 ;;\nesac\n",
+    );
+
+    env.ace_with_path_prefix(&env.path("bin"))
+        .args(["setup", "example/school"])
+        .assert()
+        .failure();
+    env.assert_not_exists("ace.toml");
 }
 
 #[test]

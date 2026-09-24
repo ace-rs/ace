@@ -126,6 +126,9 @@ pub struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Set up a school (clone + auth + config)
+    ///
+    /// Uses existing Git credentials or offers token entry in an interactive terminal.
+    /// Outside a Git repository, warns and continues without running git init.
     Setup {
         /// School specifier (`owner/repo`, or the `owner repo` typo).
         /// Omit to link a cached school.

@@ -25,12 +25,12 @@ fn run_inner(ace: &mut Ace, specifier: Option<&str>) -> Result<(), CmdError> {
     }
     .run(ace)?;
 
-    // Prepare school (install/update/link + MCP).
+    // Setup already acquired and validated the school; link it without another fetch.
     ace.require_config()?;
     (Prepare {
         specifier: &resolved,
     })
-    .run(ace)?;
+    .run_acquired(ace)?;
 
     // Post-prepare setup: instructions file. Gitignore refresh runs inside Prepare.
     let backend = ace.backend()?.clone();

@@ -143,17 +143,26 @@ fn bare_ace_reclones_when_clone_dir_missing() {
 }
 
 #[test]
-fn bare_ace_reclones_when_git_dir_missing() {
+fn bare_ace_preserves_school_files_when_git_dir_missing() {
     let env = TestEnv::new();
     let school = env.setup_remote_school("test/school");
+    let local_file = school.cache.join("local-notes.md");
+    std::fs::write(&local_file, "uncommitted user notes").expect("write local notes");
 
     std::fs::remove_dir_all(school.cache.join(".git")).expect("remove .git");
 
-    env.ace().assert().success();
+    env.ace()
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("inspect its contents"));
 
     assert!(
-        school.cache.join(".git").exists(),
-        "ace should have re-cloned the school",
+        !school.cache.join(".git").exists(),
+        "ace must not replace an occupied school cache",
+    );
+    assert_eq!(
+        std::fs::read_to_string(&local_file).expect("read local notes"),
+        "uncommitted user notes",
     );
 }
 

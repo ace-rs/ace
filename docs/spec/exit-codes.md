@@ -80,24 +80,26 @@ Wrapper variants (`#[error("{0}")]` around `ConfigError`/`GitError`/`IoError`/�
 e.g. `PrepareError::Config(ConfigError::Parse)` is `Usage`, `PrepareError::Clone` is
 `Operational`.
 
-| Leaf error                          | → code                                        |
-| ----------------------------------- | --------------------------------------------- |
-| `ConfigError::Parse/Encode/Traversal*` | `Usage`                                    |
-| `ConfigError::NoConfig/NoConfigDir/NoCacheDir/NoDataDir` | `Unavailable`             |
-| `ConfigError::Io`                   | `Operational`                                 |
-| `SchoolError::NoSpecifier/NotInitialized/NotCloned/NoSchool` | `Unavailable`        |
-| `BackendError::Unknown`             | `Unavailable` (borderline, see above)         |
-| `BackendError::Unresolvable/KindMismatch` | `Usage`                                 |
-| `SetupError::NotInGitRepo`          | `Unavailable`                                 |
-| `SetupError::AlreadySetUp` / `InitError::AlreadyExists` | `Usage`                    |
-| `GitError::*`                       | `Operational`                                 |
-| `PrepareError::Clone/Write`         | `Operational`                                 |
-| `AddImport::NoSkills/SkillNotFound` | `Usage`                                       |
-| `AddImport::Clone` / `PullImports::Git` | `Operational`                             |
-| `PullImports::InvalidDecl`          | `Usage`                                       |
-| `*::RejectedImports` (inadmissible skills) | `Operational`                          |
-| `SkillError::Discovery`             | `Operational`                                 |
-| `IoError::Cancelled`                | `Cancelled`                                   |
+| Leaf error                                                   | → code                                        |
+| ------------------------------------------------------------ | --------------------------------------------- |
+| `ConfigError::Parse/Encode/Traversal*`                       | `Usage`                                       |
+| `ConfigError::NoConfig/NoConfigDir/NoCacheDir/NoDataDir`     | `Unavailable`                                 |
+| `ConfigError::Io`                                            | `Operational`                                 |
+| `SchoolError::NoSpecifier/NotInitialized/NotCloned/NoSchool` | `Unavailable`                                 |
+| `BackendError::Unknown`                                      | `Unavailable` (borderline, see above)         |
+| `BackendError::Unresolvable/KindMismatch`                    | `Usage`                                       |
+| `SetupError::Prepare`                                        | Delegate to the contained preparation error   |
+| `SetupError::Prompt`                                         | Delegate to the contained prompt error        |
+| `SetupError::AlreadySetUp` / `InitError::AlreadyExists`      | `Usage`                                       |
+| `GitError::*`                                                | `Operational`                                 |
+| `PrepareError::Clone/RepositoryAccess/Write`                 | `Operational`                                 |
+| `PrepareError::Cancelled`                                    | `Cancelled`                                   |
+| `AddImport::NoSkills/SkillNotFound`                          | `Usage`                                       |
+| `AddImport::Clone` / `PullImports::Git`                      | `Operational`                                 |
+| `PullImports::InvalidDecl`                                   | `Usage`                                       |
+| `*::RejectedImports` (inadmissible skills)                   | `Operational`                                 |
+| `SkillError::Discovery`                                      | `Operational`                                 |
+| `IoError::Cancelled`                                         | `Cancelled`                                   |
 
 \* Traversal is a fail-closed rejection of untrusted config content — the user
 authored a bad path, so `Usage`.
