@@ -1,7 +1,10 @@
 use std::collections::HashSet;
 use std::process::{Command, Output, Stdio};
 
-use super::{McpDecl, McpStatus, OneShotRequest, PromptInput, SessionRequest};
+use super::{
+    Invocation, McpDecl, McpInventory, McpRemoval, McpStatus, OneShotRequest, PromptInput,
+    SessionRequest,
+};
 use crate::config::ace_toml::Trust;
 use crate::session::{ResumeMode, SessionProcess};
 
@@ -133,24 +136,26 @@ fn build_one_shot_args(
     args
 }
 
-pub(super) fn mcp_list(_project_dir: &std::path::Path) -> HashSet<String> {
-    let Some(home) = crate::paths::home_dir() else {
-        return HashSet::new();
-    };
-
-    let path = home.join(".claude.json");
+pub(super) fn mcp_list(context: &Invocation) -> Result<McpInventory, String> {
+    let path = context.home_dir()?.join(".claude.json");
     let content = match std::fs::read_to_string(&path) {
         Ok(c) => c,
-        Err(_) => return HashSet::new(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(McpInventory::new());
+        }
+        Err(error) => return Err(format!("read {}: {error}", path.display())),
     };
 
-    parse_mcp_names(&content)
+    let names =
+        parse_mcp_names(&content).map_err(|error| format!("{}: {error}", path.display()))?;
+    Ok(names.into_iter().map(|name| (name, path.clone())).collect())
 }
 
-pub(super) fn mcp_add(entry: &McpDecl, _project_dir: &std::path::Path) -> Result<(), String> {
+pub(super) fn mcp_add(entry: &McpDecl, context: &Invocation) -> Result<(), String> {
     let args = build_mcp_add_args(entry);
 
-    let output = Command::new("claude")
+    let output = context
+        .process()
         .args(&args)
         .output()
         .map_err(|e| e.to_string())?;
@@ -163,10 +168,11 @@ pub(super) fn mcp_add(entry: &McpDecl, _project_dir: &std::path::Path) -> Result
     Ok(())
 }
 
-pub(super) fn mcp_remove(name: &str, _project_dir: &std::path::Path) -> Result<(), String> {
+pub(super) fn mcp_remove(name: &str, context: &Invocation) -> Result<McpRemoval, String> {
     let args = build_mcp_remove_args(name);
 
-    let output = Command::new("claude")
+    let output = context
+        .process()
         .args(&args)
         .output()
         .map_err(|e| e.to_string())?;
@@ -176,13 +182,10 @@ pub(super) fn mcp_remove(name: &str, _project_dir: &std::path::Path) -> Result<(
         return Err(stderr.trim().to_string());
     }
 
-    Ok(())
+    Ok(McpRemoval::Removed)
 }
 
-pub(super) fn mcp_check(
-    names: &[String],
-    _project_dir: &std::path::Path,
-) -> Result<Vec<McpStatus>, String> {
+pub(super) fn mcp_check(names: &[String], context: &Invocation) -> Result<Vec<McpStatus>, String> {
     let prompt = format!(
         "You have MCP servers registered. For each of the following, call any tool to verify \
          it responds. Reply with only a JSON object matching this shape: \
@@ -190,7 +193,14 @@ pub(super) fn mcp_check(
         names.join(", ")
     );
 
-    let output = Command::new("claude")
+    let mut process = context.process();
+    if let Some(model) = &context.model {
+        process.args(["--model", model]);
+    }
+    if let Some(effort) = &context.effort {
+        process.args(["--effort", effort]);
+    }
+    let output = process
         .args([
             "-p",
             &prompt,
@@ -199,6 +209,7 @@ pub(super) fn mcp_check(
             "--json-schema",
             CHECK_SCHEMA,
         ])
+        .args(&context.extra_args)
         .output()
         .map_err(|e| format!("claude: {e}"))?;
 
@@ -209,17 +220,15 @@ pub(super) fn mcp_check(
     parse_check_output(&stdout)
 }
 
-fn parse_mcp_names(json: &str) -> HashSet<String> {
-    let parsed: serde_json::Value = match serde_json::from_str(json) {
-        Ok(v) => v,
-        Err(_) => return HashSet::new(),
-    };
+fn parse_mcp_names(json: &str) -> Result<HashSet<String>, String> {
+    let parsed: serde_json::Value =
+        serde_json::from_str(json).map_err(|error| error.to_string())?;
 
-    parsed
+    Ok(parsed
         .get("mcpServers")
         .and_then(|v| v.as_object())
         .map(|obj| obj.keys().cloned().collect())
-        .unwrap_or_default()
+        .unwrap_or_default())
 }
 
 fn build_mcp_add_args(entry: &McpDecl) -> Vec<String> {
@@ -404,7 +413,7 @@ mod tests {
                 "github": {"type": "http", "url": "https://api.githubcopilot.com/mcp/"}
             }
         }"#;
-        let names = parse_mcp_names(json);
+        let names = parse_mcp_names(json).expect("valid MCP configuration");
         assert_eq!(names.len(), 2);
         assert!(
             names.contains("linear-server"),
@@ -415,20 +424,19 @@ mod tests {
 
     #[test]
     fn parse_mcp_names_missing_field() {
-        let names = parse_mcp_names(r#"{"something": "else"}"#);
+        let names = parse_mcp_names(r#"{"something": "else"}"#).expect("valid MCP configuration");
         assert!(names.is_empty());
     }
 
     #[test]
     fn parse_mcp_names_empty_servers() {
-        let names = parse_mcp_names(r#"{"mcpServers": {}}"#);
+        let names = parse_mcp_names(r#"{"mcpServers": {}}"#).expect("valid MCP configuration");
         assert!(names.is_empty());
     }
 
     #[test]
     fn parse_mcp_names_invalid_json() {
-        let names = parse_mcp_names("not json");
-        assert!(names.is_empty());
+        assert!(parse_mcp_names("not json").is_err());
     }
 
     #[test]

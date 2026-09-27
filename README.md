@@ -90,7 +90,9 @@ coding tools. When you run `ace`, it:
 4. Launches the configured backend with the school's session prompt
 
 Backend selection can also be overridden per invocation with `-b`, `--backend`,
-`--claude`, `--codex`, or `--opencode`.
+`--claude`, `--codex`, `--opencode`, or `--pi`.
+Pi requires `pi install npm:pi-mcp-adapter@3`; ACE reports missing prerequisites before
+provisioning the project.
 
 ## School workflow
 

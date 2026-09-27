@@ -32,7 +32,7 @@ for `SKILL.md` files. First-found wins on collisions across stages.
 3. `skills/.experimental/` — experimental tier
 4. `skills/.system/` — system tier
 5. Backend-specific dirs (**fallback only** — used when 1–4 yield nothing):
-   `.claude/skills/`, `.codex/skills/`, `.agents/skills/`, `.opencode/skills/`,
+   `.claude/skills/`, `.codex/skills/`, `.agents/skills/`, `.opencode/skills/`, `.pi/skills/`,
    `.cursor/skills/`, … (skills.sh's full priority list)
 
 Backend-specific dirs are a fallback so a repo that ships only in `.claude/skills/` still

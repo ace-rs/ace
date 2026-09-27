@@ -39,7 +39,7 @@ pub struct Cli {
     command: Option<Command>,
 
     /// Override the configured backend for this command invocation.
-    /// Built-ins: claude, codex. Custom names from `[[backends]]`
+    /// Built-ins: claude, codex, opencode, pi. Custom names from `[[backends]]`
     /// declarations are also accepted; resolved against the registry.
     #[arg(short = 'b', long, global = true)]
     backend: Option<String>,
@@ -55,6 +55,10 @@ pub struct Cli {
     /// Shortcut for `--backend opencode`
     #[arg(long, global = true)]
     opencode: bool,
+
+    /// Shortcut for `--backend pi`
+    #[arg(long, global = true)]
+    pi: bool,
 
     /// Shortcut for `--backend flaude` — test-only fixture backend, dev builds only.
     #[cfg(debug_assertions)]
@@ -118,7 +122,7 @@ pub struct Cli {
     #[arg(short = 'y', long, global = true)]
     pub yes: bool,
 
-    /// Extra arguments passed through to the backend (claude/codex), after --
+    /// Extra arguments passed through to the backend, after --
     #[arg(last = true)]
     backend_args: Vec<String>,
 }
@@ -454,6 +458,9 @@ fn backend_override_flags(cli: &Cli) -> Vec<String> {
     }
     if cli.codex {
         selected.push(crate::backend::Kind::Codex.into());
+    }
+    if cli.pi {
+        selected.push(crate::backend::Kind::Pi.into());
     }
     if cli.opencode {
         selected.push(crate::backend::Kind::OpenCode.into());

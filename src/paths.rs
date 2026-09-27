@@ -32,7 +32,7 @@ pub fn user_data_dir() -> Option<PathBuf> {
 // -- inner fns (env injected for tests) --
 
 #[cfg(unix)]
-fn home_dir_from<F: Fn(&str) -> Option<OsString>>(get: F) -> Option<PathBuf> {
+pub(crate) fn home_dir_from<F: Fn(&str) -> Option<OsString>>(get: F) -> Option<PathBuf> {
     non_empty(get("HOME")).map(PathBuf::from)
 }
 
@@ -58,7 +58,7 @@ fn user_data_dir_from<F: Fn(&str) -> Option<OsString>>(get: F) -> Option<PathBuf
 }
 
 #[cfg(windows)]
-fn home_dir_from<F: Fn(&str) -> Option<OsString>>(get: F) -> Option<PathBuf> {
+pub(crate) fn home_dir_from<F: Fn(&str) -> Option<OsString>>(get: F) -> Option<PathBuf> {
     non_empty(get("USERPROFILE")).map(PathBuf::from)
 }
 

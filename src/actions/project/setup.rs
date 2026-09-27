@@ -12,6 +12,10 @@ use crate::school::{linked::LinkedSchool, toml as school_toml};
 #[derive(Debug, thiserror::Error)]
 pub enum SetupError {
     #[error("{0}")]
+    Backend(#[from] crate::backend::BackendError),
+    #[error("{0}")]
+    Preflight(#[from] crate::backend::PreflightError),
+    #[error("{0}")]
     Config(#[from] config::ConfigError),
     #[error("{0}")]
     Prepare(#[from] PrepareError),
@@ -41,17 +45,23 @@ impl Setup<'_> {
         }
 
         let school = LinkedSchool::resolve(self.project_dir, self.specifier)?;
-        if school.needs_clone() {
-            self.acquire_school(ace, &school)?;
-        } else if school.clone_path.is_some() {
-            let outcome = Pull {
-                school: &school,
-                force: false,
-            }
-            .run(ace)?;
-            outcome.emit(ace);
-        }
-        school_toml::load(&school.toml_path())?;
+        let requested_content = self.prepare_school(ace, &school)?;
+
+        let mut pending = match ace.require_tree() {
+            Ok(tree) => tree.clone(),
+            Err(config::ConfigError::NoConfig) => config::tree::Tree::default(),
+            Err(error) => return Err(error.into()),
+        };
+        pending.project.get_or_insert_default().school = self.specifier.to_string();
+        let effective_specifier = pending.specifier().expect("pending project school");
+        let effective_school = LinkedSchool::resolve(self.project_dir, &effective_specifier)?;
+        let content = if effective_school.root == school.root {
+            requested_content
+        } else {
+            self.prepare_school(ace, &effective_school)?
+        };
+        let invocation = ace.pending_invocation(&pending, &content, &effective_school.root)?;
+        ace.preflight(&invocation)?;
 
         EditConfig {
             path: &ace_paths.project,
@@ -59,6 +69,24 @@ impl Setup<'_> {
         }
         .run(ace)?;
         Ok(())
+    }
+
+    fn prepare_school(
+        &self,
+        ace: &mut Ace,
+        school: &LinkedSchool,
+    ) -> Result<school_toml::SchoolToml, SetupError> {
+        if school.needs_clone() {
+            self.acquire_school(ace, school)?;
+        } else if school.clone_path.is_some() {
+            let outcome = Pull {
+                school,
+                force: false,
+            }
+            .run(ace)?;
+            outcome.emit(ace);
+        }
+        Ok(school_toml::load(&school.toml_path())?)
     }
 
     fn acquire_school(&self, ace: &mut Ace, school: &LinkedSchool) -> Result<(), SetupError> {

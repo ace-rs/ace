@@ -30,6 +30,8 @@ impl ExitCode {
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum CmdError {
     #[error("{0}")]
+    Preflight(#[from] crate::backend::PreflightError),
+    #[error("{0}")]
     Start(#[from] StartError),
     #[error("{0}")]
     Io(#[from] std::io::Error),
@@ -142,6 +144,7 @@ impl CmdError {
     pub fn exit_code(&self) -> ExitCode {
         match self {
             Self::Adhoc { code, .. } => *code,
+            Self::Preflight(error) => preflight_exit_code(error),
             Self::Start(error) => start_exit_code(error),
             Self::Prompt(error) => io_exit_code(error),
             Self::Io(_) | Self::Git(_) => ExitCode::Operational,
@@ -240,18 +243,31 @@ fn skill_exit_code(error: &crate::skills::SkillError) -> ExitCode {
     }
 }
 
+fn preflight_exit_code(error: &crate::backend::PreflightError) -> ExitCode {
+    use crate::backend::PreflightError;
+    match error {
+        PreflightError::Unavailable(_) => ExitCode::Unavailable,
+        PreflightError::Failed(_) => ExitCode::Operational,
+        PreflightError::InvalidArguments(_) => ExitCode::Usage,
+    }
+}
+
 fn setup_exit_code(error: &SetupError) -> ExitCode {
     match error {
         SetupError::Config(config) => config_exit_code(config),
         SetupError::Prepare(error) => prepare_exit_code(error),
         SetupError::Prompt(error) => io_exit_code(error),
         SetupError::AlreadySetUp => ExitCode::Usage,
+        SetupError::Backend(error) => backend_exit_code(error),
+        SetupError::Preflight(error) => preflight_exit_code(error),
     }
 }
 
 fn prepare_exit_code(error: &PrepareError) -> ExitCode {
     match error {
         PrepareError::Cancelled => ExitCode::Cancelled,
+        PrepareError::Prompt(error) => io_exit_code(error),
+        PrepareError::Preflight(error) => preflight_exit_code(error),
         PrepareError::Config(config) => config_exit_code(config),
         PrepareError::Backend(error) => backend_exit_code(error),
         PrepareError::School(error) => school_exit_code(error),

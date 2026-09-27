@@ -1,3 +1,7 @@
+mod store_prompt;
+
+pub(crate) use store_prompt::StorePrompt;
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::{Command, ExitStatus};
@@ -44,7 +48,7 @@ impl SessionProcess {
         command
     }
 
-    fn wait(self) -> std::io::Result<ExitStatus> {
+    pub(crate) fn wait(self) -> std::io::Result<ExitStatus> {
         let _supervision = crate::platform::begin_child_supervision();
         let mut child = self.command().spawn()?;
         child.wait()

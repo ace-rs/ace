@@ -2,7 +2,10 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
-use super::{McpDecl, McpStatus, OneShotRequest, PromptInput, SessionRequest};
+use super::{
+    Invocation, McpDecl, McpInventory, McpRemoval, McpStatus, OneShotRequest, PromptInput,
+    SessionRequest,
+};
 use crate::config::ace_toml::Trust;
 use crate::session::{ResumeMode, SessionProcess};
 
@@ -166,28 +169,26 @@ fn trust_args(trust: Trust) -> &'static [&'static str] {
     }
 }
 
-pub(super) fn mcp_list(_project_dir: &std::path::Path) -> HashSet<String> {
-    // Best-effort: create home dir so CLI commands work.
-    let _ = ensure_home_dir();
+pub(super) fn mcp_list(context: &Invocation) -> Result<McpInventory, String> {
+    let path = config_path(context)?;
+    let output = context.process().args(["mcp", "list", "--json"]).output();
 
-    let output = Command::new("codex")
-        .args(["mcp", "list", "--json"])
-        .output();
-
-    match output {
+    let names = match output {
         Ok(output) if output.status.success() => {
             let stdout = String::from_utf8_lossy(&output.stdout);
-            parse_list_output(&stdout)
+            parse_list_output(&stdout)?
         }
-        _ => list_from_config(),
-    }
+        _ => list_from_config(context)?,
+    };
+    Ok(names.into_iter().map(|name| (name, path.clone())).collect())
 }
 
-pub(super) fn mcp_add(entry: &McpDecl, _project_dir: &std::path::Path) -> Result<(), String> {
-    ensure_home_dir()?;
+pub(super) fn mcp_add(entry: &McpDecl, context: &Invocation) -> Result<(), String> {
+    ensure_home_dir(context)?;
 
     if let Some(args) = build_mcp_add_args(entry) {
-        let output = Command::new("codex")
+        let output = context
+            .process()
             .args(&args)
             .output()
             .map_err(|e| format!("codex: {e}"))?;
@@ -200,33 +201,33 @@ pub(super) fn mcp_add(entry: &McpDecl, _project_dir: &std::path::Path) -> Result
         return Err(stderr.trim().to_string());
     }
 
-    add_to_config(entry)
+    add_to_config(entry, context)
 }
 
-pub(super) fn mcp_remove(name: &str, _project_dir: &std::path::Path) -> Result<(), String> {
-    ensure_home_dir()?;
+pub(super) fn mcp_remove(name: &str, context: &Invocation) -> Result<McpRemoval, String> {
+    ensure_home_dir(context)?;
 
     let args = build_mcp_remove_args(name);
-    let output = Command::new("codex").args(&args).output();
+    let output = context.process().args(&args).output();
 
     let output = match output {
         Ok(o) => o,
-        Err(_) => return remove_from_config(name),
+        Err(_) => {
+            remove_from_config(name, context)?;
+            return Ok(McpRemoval::Removed);
+        }
     };
 
     if output.status.success() {
-        return Ok(());
+        return Ok(McpRemoval::Removed);
     }
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     Err(stderr.trim().to_string())
 }
 
-pub(super) fn mcp_check(
-    names: &[String],
-    _project_dir: &std::path::Path,
-) -> Result<Vec<McpStatus>, String> {
-    ensure_home_dir()?;
+pub(super) fn mcp_check(names: &[String], context: &Invocation) -> Result<Vec<McpStatus>, String> {
+    ensure_home_dir(context)?;
 
     let prompt = build_check_prompt(names);
 
@@ -236,8 +237,22 @@ pub(super) fn mcp_check(
     let output_file =
         tempfile::NamedTempFile::new().map_err(|e| format!("output temp file: {e}"))?;
 
-    let output = Command::new("codex")
+    let mut process = context.process();
+    if let Some(model) = &context.model {
+        process.args(["--model", model]);
+    }
+    if let Some(effort) = &context.effort {
+        process.args([
+            "-c",
+            &format!(
+                "model_reasoning_effort={}",
+                toml::Value::String(effort.clone())
+            ),
+        ]);
+    }
+    let output = process
         .args(build_check_args(schema.path(), output_file.path(), &prompt))
+        .args(&context.extra_args)
         .output()
         .map_err(|e| format!("codex: {e}"))?;
 
@@ -262,38 +277,43 @@ fn home_dir() -> Option<PathBuf> {
         .or_else(|| crate::paths::home_dir().map(|h| h.join(".codex")))
 }
 
-fn config_path() -> Option<PathBuf> {
-    home_dir().map(|d| d.join("config.toml"))
+fn config_path(context: &Invocation) -> Result<PathBuf, String> {
+    let home = match context.env_value("CODEX_HOME") {
+        Some(home) => PathBuf::from(home),
+        None => context.home_dir()?.join(".codex"),
+    };
+    Ok(home.join("config.toml"))
 }
 
 fn ensure_dir(path: &Path) -> Result<(), String> {
     std::fs::create_dir_all(path).map_err(|e| format!("create {}: {e}", path.display()))
 }
 
-fn ensure_home_dir() -> Result<PathBuf, String> {
-    let home = home_dir().ok_or("cannot resolve Codex home".to_string())?;
+fn ensure_home_dir(context: &Invocation) -> Result<PathBuf, String> {
+    let config = config_path(context)?;
+    let home = config
+        .parent()
+        .ok_or("cannot resolve Codex home")?
+        .to_path_buf();
     ensure_dir(&home)?;
     Ok(home)
 }
 
-fn list_from_config() -> HashSet<String> {
-    let Some(path) = config_path() else {
-        return HashSet::new();
-    };
+fn list_from_config(context: &Invocation) -> Result<HashSet<String>, String> {
+    let path = config_path(context)?;
 
     let content = match std::fs::read_to_string(&path) {
         Ok(c) => c,
-        Err(_) => return HashSet::new(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(HashSet::new()),
+        Err(error) => return Err(format!("read {}: {error}", path.display())),
     };
     parse_mcp_names(&content)
 }
 
-fn add_to_config(entry: &McpDecl) -> Result<(), String> {
+fn add_to_config(entry: &McpDecl, context: &Invocation) -> Result<(), String> {
     use std::io::Write;
 
-    let Some(path) = config_path() else {
-        return Err("cannot resolve Codex config path".to_string());
-    };
+    let path = config_path(context)?;
 
     let existing = if path.exists() {
         std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?
@@ -358,29 +378,29 @@ fn build_check_prompt(names: &[String]) -> String {
     )
 }
 
-fn parse_list_output(output: &str) -> HashSet<String> {
-    let parsed: serde_json::Value = match serde_json::from_str(output) {
-        Ok(v) => v,
-        Err(_) => return HashSet::new(),
-    };
-
-    let Some(entries) = parsed.as_array() else {
-        return HashSet::new();
-    };
+fn parse_list_output(output: &str) -> Result<HashSet<String>, String> {
+    let parsed: serde_json::Value = serde_json::from_str(output)
+        .map_err(|error| format!("invalid Codex MCP inventory: {error}"))?;
+    let entries = parsed
+        .as_array()
+        .ok_or("Codex MCP inventory is not an array")?;
 
     entries
         .iter()
-        .filter_map(|entry| entry.get("name").and_then(|v| v.as_str()))
-        .map(ToString::to_string)
+        .map(|entry| {
+            entry
+                .get("name")
+                .and_then(|value| value.as_str())
+                .map(ToString::to_string)
+                .ok_or_else(|| "Codex MCP inventory entry has no name".to_string())
+        })
         .collect()
 }
 
-fn remove_from_config(name: &str) -> Result<(), String> {
+fn remove_from_config(name: &str, context: &Invocation) -> Result<(), String> {
     use std::io::Write;
 
-    let Some(path) = config_path() else {
-        return Ok(());
-    };
+    let path = config_path(context)?;
 
     let existing = if path.exists() {
         std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?
@@ -402,21 +422,18 @@ fn remove_from_config(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn parse_mcp_names(toml_text: &str) -> HashSet<String> {
-    let parsed: toml::Value = match toml::from_str(toml_text) {
-        Ok(v) => v,
-        Err(_) => return HashSet::new(),
-    };
+fn parse_mcp_names(toml_text: &str) -> Result<HashSet<String>, String> {
+    let parsed: toml::Value = toml::from_str(toml_text).map_err(|error| error.to_string())?;
 
     let Some(servers) = parsed.get("mcp_servers").and_then(|v| v.as_table()) else {
-        return HashSet::new();
+        return Ok(HashSet::new());
     };
 
-    servers
+    Ok(servers
         .iter()
         .filter(|(_, cfg)| cfg.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true))
         .map(|(name, _)| name.clone())
-        .collect()
+        .collect())
 }
 
 fn merge_mcp_entry(existing_toml: &str, entry: &McpDecl) -> Result<String, String> {
@@ -654,7 +671,7 @@ url = "https://mcp.linear.app/mcp"
 url = "https://api.githubcopilot.com/mcp/"
 "#;
 
-        let names = parse_mcp_names(toml);
+        let names = parse_mcp_names(toml).expect("valid MCP configuration");
         assert_eq!(names.len(), 2);
         assert!(names.contains("linear"));
         assert!(names.contains("github"));
@@ -662,14 +679,13 @@ url = "https://api.githubcopilot.com/mcp/"
 
     #[test]
     fn parse_mcp_names_ignores_missing_section() {
-        let names = parse_mcp_names("model = \"gpt-5\"");
+        let names = parse_mcp_names("model = \"gpt-5\"").expect("valid MCP configuration");
         assert!(names.is_empty());
     }
 
     #[test]
-    fn parse_mcp_names_invalid_toml_returns_empty() {
-        let names = parse_mcp_names("not valid = = toml");
-        assert!(names.is_empty());
+    fn parse_mcp_names_invalid_toml_returns_error() {
+        assert!(parse_mcp_names("not valid = = toml").is_err());
     }
 
     #[test]
@@ -730,16 +746,17 @@ url = "https://api.githubcopilot.com/mcp/"
   }
 ]"#;
 
-        let names = parse_list_output(output);
+        let names = parse_list_output(output).expect("valid inventory");
         assert_eq!(names.len(), 2);
         assert!(names.contains("linear"));
         assert!(names.contains("github"));
     }
 
     #[test]
-    fn parse_list_output_invalid_returns_empty() {
-        assert!(parse_list_output("not json").is_empty());
-        assert!(parse_list_output("{}").is_empty());
+    fn parse_list_output_invalid_returns_error() {
+        assert!(parse_list_output("not json").is_err());
+        assert!(parse_list_output("{}").is_err());
+        assert!(parse_list_output("[{}]").is_err());
     }
 
     #[test]
@@ -795,7 +812,7 @@ url = "https://api.githubcopilot.com/mcp/"
 "#;
 
         let output = remove_mcp_entry(existing, "linear").expect("should remove");
-        let names = parse_mcp_names(&output);
+        let names = parse_mcp_names(&output).expect("valid MCP configuration");
         assert!(!names.contains("linear"));
         assert!(names.contains("github"));
     }

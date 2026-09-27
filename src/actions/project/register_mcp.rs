@@ -3,7 +3,7 @@ use std::path::Path;
 
 use crate::ace::{Ace, IoError, partition_picked};
 use crate::actions::project::edit_mcp_config::{EditMcpConfig, Op};
-use crate::backend::{Backend, Kind};
+use crate::backend::{Invocation, Kind};
 use crate::config::ConfigError;
 use crate::school::toml::McpDecl;
 use crate::templates::Template;
@@ -23,16 +23,16 @@ pub enum RegisterMcpError {
 /// `exclude_mcp` in `ace.local.toml` so future runs stop asking.
 pub fn register_missing(
     ace: &mut Ace,
-    backend: &Backend,
+    invocation: &Invocation,
     entries: &[McpDecl],
-    project_dir: &Path,
     local_path: &Path,
 ) -> Result<(), RegisterMcpError> {
     if entries.is_empty() {
         return Ok(());
     }
 
-    let registered = backend.mcp_list(project_dir);
+    let registered = invocation.mcp_list().map_err(RegisterMcpError::Register)?;
+    let registered = registered.into_keys().collect();
     let missing: Vec<McpDecl> = unregistered(entries, &registered)
         .into_iter()
         .cloned()
@@ -53,9 +53,8 @@ pub fn register_missing(
     }
 
     RegisterMcp {
-        backend,
+        invocation,
         entries: &chosen,
-        project_dir,
     }
     .run(ace)
 }
@@ -81,9 +80,8 @@ fn exclude_all(ace: &mut Ace, local_path: &Path, declined: &[McpDecl]) -> Result
 }
 
 pub struct RegisterMcp<'a> {
-    pub backend: &'a Backend,
+    pub invocation: &'a Invocation,
     pub entries: &'a [McpDecl],
-    pub project_dir: &'a std::path::Path,
 }
 
 impl RegisterMcp<'_> {
@@ -95,7 +93,11 @@ impl RegisterMcp<'_> {
         // -- check which servers are already registered --
 
         ace.progress("Checking MCP servers...");
-        let registered = self.backend.mcp_list(self.project_dir);
+        let registered = self
+            .invocation
+            .mcp_list()
+            .map_err(RegisterMcpError::Register)?;
+        let registered = registered.into_keys().collect();
 
         // -- register missing servers --
 
@@ -105,12 +107,12 @@ impl RegisterMcp<'_> {
             }
             let resolved = resolve_headers(entry, ace)?;
 
-            self.backend
-                .mcp_add(&resolved, self.project_dir)
+            self.invocation
+                .mcp_add(&resolved)
                 .map_err(|e| RegisterMcpError::Register(format!("{}: {e}", entry.name)))?;
 
             let msg =
-                registration_message(self.backend.kind, &entry.name, entry.headers.is_empty());
+                registration_message(self.invocation.kind, &entry.name, entry.headers.is_empty());
             ace.done(&msg);
         }
 
@@ -129,6 +131,11 @@ fn unregistered<'a>(entries: &'a [McpDecl], registered: &HashSet<String>) -> Vec
 fn registration_message(backend: Kind, name: &str, no_headers: bool) -> String {
     if backend == Kind::Codex {
         return format!("Registered MCP server '{name}' — use /mcp inside Codex to finish setup");
+    }
+    if backend == Kind::Pi {
+        return format!(
+            "Registered MCP server '{name}' — use /mcp-adapter inside Pi to approve the server; for OAuth, run /mcp-auth {name}"
+        );
     }
 
     if no_headers {

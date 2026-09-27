@@ -1,8 +1,13 @@
 mod claude;
 mod codex;
 mod flaude;
+mod invocation;
 mod opencode;
+mod pi;
+mod pi_mcp;
 pub mod registry;
+
+pub use invocation::{Invocation, McpInventory, McpRemoval, PreflightError};
 
 use crate::config::ConfigError;
 use crate::session::ResumeMode;
@@ -28,7 +33,7 @@ pub enum BackendError {
     },
 }
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Output;
 
@@ -97,6 +102,7 @@ pub enum Kind {
     Codex,
     Flaude,
     OpenCode,
+    Pi,
 }
 
 /// Dispatch a method call to the matching backend module's free function.
@@ -107,6 +113,7 @@ macro_rules! dispatch {
             Kind::Codex => codex::$method($($arg),*),
             Kind::Flaude => flaude::$method($($arg),*),
             Kind::OpenCode => opencode::$method($($arg),*),
+            Kind::Pi => pi::$method($($arg),*),
         }
     };
 }
@@ -117,10 +124,16 @@ impl Kind {
     /// the enum so internal code paths still compile, but it is unreachable
     /// via name lookup or the registry in `cargo build --release`.
     #[cfg(debug_assertions)]
-    pub const ALL: &'static [Kind] = &[Kind::Claude, Kind::Codex, Kind::OpenCode, Kind::Flaude];
+    pub const ALL: &'static [Kind] = &[
+        Kind::Claude,
+        Kind::Codex,
+        Kind::OpenCode,
+        Kind::Pi,
+        Kind::Flaude,
+    ];
 
     #[cfg(not(debug_assertions))]
-    pub const ALL: &'static [Kind] = &[Kind::Claude, Kind::Codex, Kind::OpenCode];
+    pub const ALL: &'static [Kind] = &[Kind::Claude, Kind::Codex, Kind::OpenCode, Kind::Pi];
 
     /// Canonical name. Doubles as registry key for built-in entries and as the
     /// default `cmd[0]` (the binary name) when no override is provided.
@@ -130,6 +143,7 @@ impl Kind {
             Kind::Codex => "codex",
             Kind::Flaude => "flaude",
             Kind::OpenCode => "opencode",
+            Kind::Pi => "pi",
         }
     }
 
@@ -143,13 +157,14 @@ impl Kind {
             Kind::Claude | Kind::Flaude => ".claude",
             Kind::Codex => ".agents",
             Kind::OpenCode => ".opencode",
+            Kind::Pi => ".pi",
         }
     }
 
     pub fn instructions_file(&self) -> &'static str {
         match self {
             Kind::Claude | Kind::Flaude => "CLAUDE.md",
-            Kind::Codex | Kind::OpenCode => "AGENTS.md",
+            Kind::Codex | Kind::OpenCode | Kind::Pi => "AGENTS.md",
         }
     }
 
@@ -158,7 +173,7 @@ impl Kind {
     pub fn features(&self) -> u32 {
         match self {
             Kind::Claude | Kind::Flaude => 0,
-            Kind::Codex | Kind::OpenCode => FEATURE_NESTED_SKILLS,
+            Kind::Codex | Kind::OpenCode | Kind::Pi => FEATURE_NESTED_SKILLS,
         }
     }
 
@@ -202,29 +217,6 @@ impl Kind {
     #[allow(dead_code)]
     pub fn is_ready(&self) -> bool {
         dispatch!(self, is_ready)
-    }
-
-    pub fn mcp_list(&self, project_dir: &Path) -> HashSet<String> {
-        dispatch!(self, mcp_list, project_dir)
-    }
-
-    pub fn mcp_remove(&self, name: &str, project_dir: &Path) -> Result<(), String> {
-        dispatch!(self, mcp_remove, name, project_dir)
-    }
-
-    pub fn mcp_check(
-        &self,
-        names: &[String],
-        project_dir: &Path,
-    ) -> Result<Vec<McpStatus>, String> {
-        if names.is_empty() {
-            return Ok(Vec::new());
-        }
-        dispatch!(self, mcp_check, names, project_dir)
-    }
-
-    pub fn mcp_add(&self, entry: &McpDecl, project_dir: &Path) -> Result<(), String> {
-        dispatch!(self, mcp_add, entry, project_dir)
     }
 }
 
@@ -274,6 +266,24 @@ pub struct Backend {
 }
 
 impl Backend {
+    pub fn invocation(
+        &self,
+        project_dir: &Path,
+        mut env: HashMap<String, String>,
+        extra_args: Vec<String>,
+    ) -> Invocation {
+        env.extend(self.env.clone());
+        Invocation {
+            kind: self.kind,
+            command: self.cmd.clone(),
+            project_dir: project_dir.to_path_buf(),
+            env,
+            model: self.model.clone(),
+            effort: self.effort.clone(),
+            extra_args,
+        }
+    }
+
     pub fn backend_dir(&self) -> &'static str {
         self.kind.backend_dir()
     }
@@ -287,48 +297,27 @@ impl Backend {
     }
 
     pub fn exec_session(&self, mut request: SessionRequest) -> Result<(), std::io::Error> {
-        // per-backend env merges over global env (later wins on collision).
-        for (k, v) in &self.env {
-            request.env.insert(k.clone(), v.clone());
-        }
+        let invocation = self.invocation(&request.project_dir, request.env, request.extra_args);
+        request.env = invocation.env;
+        request.extra_args = invocation.extra_args;
         self.kind.exec_session(
-            &self.cmd,
-            self.model.as_deref(),
-            self.effort.as_deref(),
+            &invocation.command,
+            invocation.model.as_deref(),
+            invocation.effort.as_deref(),
             request,
         )
     }
 
     pub fn exec_one_shot(&self, mut request: OneShotRequest) -> Result<Output, std::io::Error> {
-        for (k, v) in &self.env {
-            request.env.insert(k.clone(), v.clone());
-        }
+        let invocation = self.invocation(&request.project_dir, request.env, request.extra_args);
+        request.env = invocation.env;
+        request.extra_args = invocation.extra_args;
         self.kind.exec_one_shot(
-            &self.cmd,
-            self.model.as_deref(),
-            self.effort.as_deref(),
+            &invocation.command,
+            invocation.model.as_deref(),
+            invocation.effort.as_deref(),
             request,
         )
-    }
-
-    pub fn mcp_list(&self, project_dir: &Path) -> HashSet<String> {
-        self.kind.mcp_list(project_dir)
-    }
-
-    pub fn mcp_remove(&self, name: &str, project_dir: &Path) -> Result<(), String> {
-        self.kind.mcp_remove(name, project_dir)
-    }
-
-    pub fn mcp_check(
-        &self,
-        names: &[String],
-        project_dir: &Path,
-    ) -> Result<Vec<McpStatus>, String> {
-        self.kind.mcp_check(names, project_dir)
-    }
-
-    pub fn mcp_add(&self, entry: &McpDecl, project_dir: &Path) -> Result<(), String> {
-        self.kind.mcp_add(entry, project_dir)
     }
 }
 

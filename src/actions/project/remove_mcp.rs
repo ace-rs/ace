@@ -1,18 +1,21 @@
 use crate::ace::Ace;
-use crate::backend::Backend;
+use crate::backend::{Invocation, McpRemoval};
 
 pub struct RemoveMcp<'a> {
-    pub backend: &'a Backend,
+    pub invocation: &'a Invocation,
     pub names: &'a [String],
-    pub project_dir: &'a std::path::Path,
 }
 
 impl RemoveMcp<'_> {
     pub fn run(&self, ace: &mut Ace) -> Result<(), String> {
         for name in self.names {
-            match self.backend.mcp_remove(name, self.project_dir) {
-                Ok(()) => ace.done(&format!("Removed MCP server '{name}'")),
-                Err(e) => ace.warn(&format!("Failed to remove '{name}': {e}")),
+            match self.invocation.mcp_remove(name) {
+                Ok(McpRemoval::Removed) => ace.done(&format!("Removed MCP server '{name}'")),
+                Ok(McpRemoval::StillRegistered { source }) => ace.warn(&format!(
+                    "MCP server '{name}' remains registered by {}; edit that source to remove it",
+                    source.display(),
+                )),
+                Err(e) => return Err(format!("Failed to remove '{name}': {e}")),
             }
         }
         Ok(())

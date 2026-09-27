@@ -46,14 +46,16 @@ pub fn run(ace: &mut Ace, command: Option<Command>) {
 fn run_list(ace: &mut Ace) -> Result<(), CmdError> {
     ace.require_config()?;
 
-    let backend = ace.backend()?.clone();
+    let invocation = ace.invocation()?;
+    ace.preflight(&invocation)?;
     let declared = match ace.school() {
         Ok(s) => s.mcp.clone(),
         Err(e) if e.is_absent() => Vec::new(),
         Err(e) => return Err(e.into()),
     };
     let excluded = ace.excluded_mcp()?;
-    let registered = backend.mcp_list(ace.project_dir());
+    let registered = invocation.mcp_list().map_err(CmdError::failed)?;
+    let registered = registered.into_keys().collect();
 
     for row in inventory(&declared, &excluded, &registered) {
         ace.data(&format!("{}\t{}", row.name, row.state.label()));
@@ -131,13 +133,18 @@ fn inventory(
 fn run_check(ace: &mut Ace) -> Result<(), CmdError> {
     ace.require_config()?;
 
-    let (backend, entries, project_dir) = load_school_mcp(ace)?;
+    let (invocation, entries) = load_school_mcp(ace)?;
     if entries.is_empty() {
         ace.info("no MCP servers defined in school");
         return Ok(());
     }
 
-    let registered = backend.mcp_list(&project_dir);
+    ace.preflight(&invocation)?;
+    let registered: HashSet<String> = invocation
+        .mcp_list()
+        .map_err(CmdError::failed)?
+        .into_keys()
+        .collect();
     let school_names: HashSet<&str> = entries.iter().map(|e| e.name.as_str()).collect();
 
     // -- report missing --
@@ -162,14 +169,19 @@ fn run_check(ace: &mut Ace) -> Result<(), CmdError> {
 
     if !check_names.is_empty() {
         ace.progress("Checking MCP server health...");
-        match backend.mcp_check(&check_names, &project_dir) {
-            Err(e) => ace.warn(&format!("health check failed: {e}")),
+        match invocation.mcp_check(&check_names) {
+            Err(e) => return Err(CmdError::failed(format!("health check failed: {e}"))),
             Ok(statuses) if statuses.is_empty() => {
                 for name in &check_names {
                     ace.done(&format!("{name} (registered)"));
                 }
             }
-            Ok(statuses) => report_statuses(ace, &statuses),
+            Ok(statuses) => {
+                report_statuses(ace, invocation.kind, &statuses);
+                if statuses.iter().any(|status| !status.ok) {
+                    return Err(CmdError::failed("one or more MCP servers are unhealthy"));
+                }
+            }
         }
     }
 
@@ -188,8 +200,13 @@ fn run_check(ace: &mut Ace) -> Result<(), CmdError> {
 fn run_reset(ace: &mut Ace) -> Result<(), CmdError> {
     ace.require_config()?;
 
-    let (backend, entries, project_dir) = load_school_mcp(ace)?;
-    let registered = backend.mcp_list(&project_dir);
+    let (invocation, entries) = load_school_mcp(ace)?;
+    ace.preflight(&invocation)?;
+    let registered: HashSet<String> = invocation
+        .mcp_list()
+        .map_err(CmdError::failed)?
+        .into_keys()
+        .collect();
 
     let names: Vec<String> = entries
         .iter()
@@ -203,9 +220,8 @@ fn run_reset(ace: &mut Ace) -> Result<(), CmdError> {
     }
 
     RemoveMcp {
-        backend: &backend,
+        invocation: &invocation,
         names: &names,
-        project_dir: &project_dir,
     }
     .run(ace)
     .map_err(CmdError::failed)
@@ -215,17 +231,21 @@ fn run_reset(ace: &mut Ace) -> Result<(), CmdError> {
 fn run_unregister(ace: &mut Ace, name: String) -> Result<(), CmdError> {
     ace.require_config()?;
 
-    let (backend, _, project_dir) = load_school_mcp(ace)?;
+    let (invocation, _) = load_school_mcp(ace)?;
 
-    if !backend.mcp_list(&project_dir).contains(&name) {
+    ace.preflight(&invocation)?;
+    if !invocation
+        .mcp_list()
+        .map_err(CmdError::failed)?
+        .contains_key(&name)
+    {
         ace.info(&format!("'{name}' is not registered, nothing to remove"));
         return Ok(());
     }
 
     RemoveMcp {
-        backend: &backend,
+        invocation: &invocation,
         names: &[name],
-        project_dir: &project_dir,
     }
     .run(ace)
     .map_err(CmdError::failed)
@@ -235,8 +255,7 @@ fn run_unregister(ace: &mut Ace, name: String) -> Result<(), CmdError> {
 fn run_register(ace: &mut Ace, name: String) -> Result<(), CmdError> {
     ace.require_config()?;
 
-    let backend = ace.backend()?.clone();
-    let project_dir = ace.project_dir().to_path_buf();
+    let invocation = ace.invocation()?;
 
     // Look up the school entry by name (do not apply the exclude filter — we
     // want this to work even when the entry is currently excluded). An absent
@@ -255,6 +274,8 @@ fn run_register(ace: &mut Ace, name: String) -> Result<(), CmdError> {
                 .with_hint("run `ace mcp`")
         })?;
 
+    ace.preflight(&invocation)?;
+    invocation.mcp_list().map_err(CmdError::failed)?;
     let local_path = ace.paths().local.clone();
     EditMcpConfig {
         path: &local_path,
@@ -264,21 +285,27 @@ fn run_register(ace: &mut Ace, name: String) -> Result<(), CmdError> {
 
     let entries = vec![entry];
     RegisterMcp {
-        backend: &backend,
+        invocation: &invocation,
         entries: &entries,
-        project_dir: &project_dir,
     }
     .run(ace)?;
     Ok(())
 }
 
-fn report_statuses(ace: &mut Ace, statuses: &[McpStatus]) {
+fn report_statuses(ace: &mut Ace, kind: crate::backend::Kind, statuses: &[McpStatus]) {
     for status in statuses {
         if status.ok {
             ace.done(&status.name);
         } else {
             ace.error(&format!("{} (unhealthy)", status.name));
-            ace.hint("try /mcp");
+            if kind == crate::backend::Kind::Pi {
+                ace.hint(&format!(
+                    "inside Pi, run /mcp-adapter status; for OAuth, run /mcp-auth {}",
+                    status.name
+                ));
+            } else {
+                ace.hint("try /mcp");
+            }
         }
     }
 }
@@ -288,8 +315,8 @@ fn report_statuses(ace: &mut Ace, statuses: &[McpStatus]) {
 /// before returning.
 pub(super) fn load_school_mcp(
     ace: &Ace,
-) -> Result<(crate::backend::Backend, Vec<McpDecl>, std::path::PathBuf), CmdError> {
-    let backend = ace.backend()?.clone();
+) -> Result<(crate::backend::Invocation, Vec<McpDecl>), CmdError> {
+    let invocation = ace.invocation()?;
     let raw = match ace.school() {
         Ok(s) => s.mcp.clone(),
         Err(e) if e.is_absent() => Vec::new(),
@@ -297,8 +324,7 @@ pub(super) fn load_school_mcp(
     };
     let excluded = ace.excluded_mcp()?;
     let entries = filter_excluded(raw, &excluded);
-    let project_dir = ace.project_dir().to_path_buf();
-    Ok((backend, entries, project_dir))
+    Ok((invocation, entries))
 }
 
 /// Drop entries whose name appears in `excluded`. Order-preserving.

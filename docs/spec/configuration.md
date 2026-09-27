@@ -24,7 +24,7 @@ Each layer can set:
 - `school` — school specifier (last non-empty wins)
 - `backend` — backend name (highest-priority `Some` wins: local → project → user →
   school's `school.toml` → fallback `claude`). Built-ins: `"claude"`, `"codex"`,
-  `"opencode"` (plus the debug-only `"flaude"` test fixture, absent from release builds).
+  `"opencode"`, `"pi"` (plus the debug-only `"flaude"` test fixture, absent from release builds).
   Custom names are valid when declared in `[backends.<name>]` (see
   [Custom backends](#custom-backends)). See [backend.md](backend.md).
 - `session_prompt` — additional prompt text (last present wins). An explicit empty string
@@ -83,7 +83,7 @@ tmux names, and process IDs are runtime state rather than user configuration.
 ## Custom backends
 
 `[backends.<name>]` tables seed or augment the backend registry. Built-ins (`claude`,
-`codex`, `opencode`, and the debug-only `flaude`) are pre-registered; matching keys
+`codex`, `opencode`, `pi`, and the debug-only `flaude`) are pre-registered; matching keys
 override their settings, while new keys reuse an existing built-in's behavior (its
 *kind*). The legacy `[[backends]]` array shape is not accepted.
 
@@ -91,7 +91,7 @@ override their settings, while new keys reuse an existing built-in's behavior (i
 
 - Table key — registry key. May match a built-in (override) or be new. Quote names that
   are not bare TOML keys, for example `[backends."bedrock-claude"]`.
-- `kind` — built-in name whose behavior to reuse (`"claude"`, `"codex"`, `"opencode"`).
+- `kind` — built-in name whose behavior to reuse (`"claude"`, `"codex"`, `"opencode"`, `"pi"`).
   Optional.
 - `cmd` — argv for launching the binary. `cmd[0]` is the program; `cmd[1..]` are prepended
   to runtime args. Optional.

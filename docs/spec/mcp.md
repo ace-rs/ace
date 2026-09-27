@@ -74,22 +74,24 @@ across user, project, and local `ace.toml` scopes (same merge as `exclude_skills
 
 `ace mcp register <name>` is the un-skip path: it removes `<name>` from `exclude_mcp` (in
 `ace.local.toml`) and registers that single school-defined entry. Use it when a server was
-previously declined and now needs to be added back. The command errors cleanly if `<name>`
-is not declared in the linked school.
+previously declined and now needs to be added back. Required backend prerequisites and
+fallible inventory are checked before clearing that exclusion. The command errors cleanly
+if `<name>` is not declared in the linked school.
 
 `include_mcp` and a user/local `[[mcp]]` section are intentionally not implemented. Both
 require user-scoped MCP definitions, which is a separate planned feature.
 
 ## Authentication
 
-Handled entirely by the backend. When the backend connects to a remote MCP endpoint and
-receives a 401, it initiates OAuth discovery and prompts the user to authorize in the
-browser. Tokens are stored by the backend (keychain, auth files, etc.).
+Handled entirely by the backend. Authorization may begin automatically on a 401 or
+require an explicit in-session command, depending on the backend. The backend owns
+OAuth discovery, authorization, token storage, and refresh.
 
-| Backend | Auth behavior                 | Token storage                      |
-| ------- | ----------------------------- | ---------------------------------- |
-| Claude  | Auto-prompts on 401           | System keychain                    |
-| Codex   | Managed in-session via `/mcp` | `~/.codex/auth.json` or OS keyring |
+| Backend | Auth behavior                        | Token storage                      |
+| ------- | ------------------------------------ | ---------------------------------- |
+| Claude  | Auto-prompts on 401                  | System keychain                    |
+| Codex   | Managed in-session via `/mcp`        | `~/.codex/auth.json` or OS keyring |
+| Pi      | Manual `/mcp-auth <name>` by default | Adapter-owned OS credential store  |
 
 ACE does not implement OAuth, store tokens, or manage token refresh.
 
@@ -98,13 +100,16 @@ ACE does not implement OAuth, store tokens, or manage token refresh.
 After registering MCP entries, ACE should prompt the user to authenticate any servers that
 haven't been authorized yet. For Claude this happens automatically on first use (401
 triggers OAuth inline). For Codex, MCP auth and management happen inside the backend via
-`/mcp`.
+`/mcp`. Pi uses `/mcp-auth <name>`; its adapter initiates OAuth automatically only when
+the user enables `settings.autoAuth`.
 
 ACE detects newly registered entries (entries added since last run) and prints a message:
 
 - Claude:
   `"New MCP server '<name>' registered — you'll be prompted to authorize on first use."`
 - Codex: `"New MCP server '<name>' registered — use /mcp inside Codex to finish setup."`
+- Pi: guidance to use `/mcp-adapter` inside Pi for approval and `/mcp-auth <name>`
+  for OAuth.
 
 This is informational only — ACE does not block on auth completion.
 
@@ -161,8 +166,14 @@ structured result interpretation happens without suppressing that live output. S
 a check costs a backend subprocess round-trip per server, which is too slow to sit on
 startup or on an inspection command.
 
+Pi uses its required adapter for connection and live tool discovery through a model
+session. The prompt requests read-only discovery and forbids arbitrary server-tool calls.
+Missing, malformed, or incomplete model reports fail explicitly; these checks are
+model-mediated evidence, not a standalone deterministic server probe.
+
 Repairing a broken server is `ace mcp unregister <name>` followed by
-`ace mcp register <name>`.
+`ace mcp register <name>`. Pi removal edits only the selected user-scope adapter file;
+if another layer still defines the server, ACE reports that source and retains it.
 
 ## Transport
 

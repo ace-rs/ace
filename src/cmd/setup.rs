@@ -26,9 +26,14 @@ fn run_inner(ace: &mut Ace, specifier: Option<&str>) -> Result<(), CmdError> {
     .run(ace)?;
 
     // Setup already acquired and validated the school; link it without another fetch.
-    ace.require_config()?;
+    let effective_specifier = ace
+        .require_config()?
+        .school_specifier
+        .value
+        .clone()
+        .ok_or(crate::school::SchoolError::NoSpecifier)?;
     (Prepare {
-        specifier: &resolved,
+        specifier: &effective_specifier,
     })
     .run_acquired(ace)?;
 

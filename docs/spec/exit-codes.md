@@ -18,7 +18,8 @@ enum models only the four *error* classes (an error that is "Ok" is
 unrepresentable).
 
 Two bypasses: the one-shot child exit code (`ace -p`) passes the backend child's
-code through directly (`one_shot_exit_code_propagates`), and SIGINT keeps its
+code through directly (`one_shot_exit_code_propagates`), including `128 + signal` for
+Unix signal termination, and SIGINT keeps its
 direct `exit(130)` in the Ctrl+C handler.
 
 ## The classification rule
@@ -35,14 +36,16 @@ how*:
 
 - **`Unavailable` (2)** — an ambient precondition ACE needs is missing. No school
   configured, school not initialized, not in a git repo, no user config/cache/data
-  directory, a selected backend name that resolves to nothing. Fix: set it up
+  directory, a selected backend name that resolves to nothing, or a missing Pi executable
+  or supported adapter installation. Fix: set it up
   (`ace setup`, `git init`, `ace school init`), not re-type the command.
 
 - **`Operational` (3)** — input was valid and the precondition was met, but the
   operation failed anyway. Clone/fetch, file write, download/install, backend spawn
   or non-zero exit, git exec/exit, MCP registration, skill-discovery I/O. Also the
   "completed but found problems" outcomes: `ace school validate` reporting N issues,
-  and import/pull rejecting inadmissible skills. Fix: address the underlying failure
+  import/pull rejecting inadmissible skills, and unhealthy or malformed MCP health reports.
+  A failed Pi installation probe is distinct from a missing installation and exits 3. Fix: address the underlying failure
   (network, disk, the reported issues).
 
 - **`Cancelled` (130)** — the user aborted. Prompt cancel (`IoError::Cancelled`) and

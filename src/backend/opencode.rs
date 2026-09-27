@@ -2,7 +2,9 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::process::Output;
 
-use super::{McpDecl, McpStatus, OneShotRequest, SessionRequest};
+use super::{
+    Invocation, McpDecl, McpInventory, McpRemoval, McpStatus, OneShotRequest, SessionRequest,
+};
 use crate::config::ace_toml::Trust;
 use crate::session::{ResumeMode, SessionProcess};
 
@@ -73,19 +75,24 @@ pub(super) fn exec_one_shot(
     cmd.output()
 }
 
-pub(super) fn mcp_list(project_dir: &Path) -> HashSet<String> {
+pub(super) fn mcp_list(context: &Invocation) -> Result<McpInventory, String> {
+    let project_dir = &context.project_dir;
     let path = project_dir.join("opencode.json");
     let content = match std::fs::read_to_string(&path) {
         Ok(c) => c,
-        Err(_) => {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             warn_jsonc(project_dir);
-            return HashSet::new();
+            return Ok(McpInventory::new());
         }
+        Err(error) => return Err(format!("read {}: {error}", path.display())),
     };
-    parse_mcp_names(&content)
+    let names =
+        parse_mcp_names(&content).map_err(|error| format!("{}: {error}", path.display()))?;
+    Ok(names.into_iter().map(|name| (name, path.clone())).collect())
 }
 
-pub(super) fn mcp_add(entry: &McpDecl, project_dir: &Path) -> Result<(), String> {
+pub(super) fn mcp_add(entry: &McpDecl, context: &Invocation) -> Result<(), String> {
+    let project_dir = &context.project_dir;
     let path = project_dir.join("opencode.json");
     let existing = if path.exists() {
         std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?
@@ -102,21 +109,26 @@ pub(super) fn mcp_add(entry: &McpDecl, project_dir: &Path) -> Result<(), String>
     std::fs::write(&path, output).map_err(|e| format!("write {}: {e}", path.display()))
 }
 
-pub(super) fn mcp_remove(name: &str, project_dir: &Path) -> Result<(), String> {
+pub(super) fn mcp_remove(name: &str, context: &Invocation) -> Result<McpRemoval, String> {
+    let project_dir = &context.project_dir;
     let path = project_dir.join("opencode.json");
     if !path.exists() {
-        return Ok(());
+        return Ok(McpRemoval::Removed);
     }
 
     let existing =
         std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
 
     let output = remove_mcp_entry(&existing, name)?;
-    std::fs::write(&path, output).map_err(|e| format!("write {}: {e}", path.display()))
+    std::fs::write(&path, output).map_err(|e| format!("write {}: {e}", path.display()))?;
+    Ok(McpRemoval::Removed)
 }
 
 /// Best-effort — OpenCode has no structured MCP health check surface.
-pub(super) fn mcp_check(_names: &[String], _project_dir: &Path) -> Result<Vec<McpStatus>, String> {
+pub(super) fn mcp_check(
+    _names: &[String],
+    _context: &Invocation,
+) -> Result<Vec<McpStatus>, String> {
     Ok(Vec::new())
 }
 
@@ -220,18 +232,16 @@ fn build_one_shot_args(
     args
 }
 
-fn parse_mcp_names(json: &str) -> HashSet<String> {
-    let parsed: serde_json::Value = match serde_json::from_str(json) {
-        Ok(v) => v,
-        Err(_) => return HashSet::new(),
-    };
+fn parse_mcp_names(json: &str) -> Result<HashSet<String>, String> {
+    let parsed: serde_json::Value =
+        serde_json::from_str(json).map_err(|error| error.to_string())?;
 
     // opencode.json uses "mcpServers" key (same as Claude's .claude.json shape)
-    parsed
+    Ok(parsed
         .get("mcpServers")
         .and_then(|v| v.as_object())
         .map(|obj| obj.keys().cloned().collect())
-        .unwrap_or_default()
+        .unwrap_or_default())
 }
 
 fn merge_mcp_entry(existing_json: &str, entry: &McpDecl) -> Result<String, String> {
@@ -424,7 +434,7 @@ mod tests {
                 "github": {"url": "https://api.githubcopilot.com/mcp/"}
             }
         }"#;
-        let names = parse_mcp_names(json);
+        let names = parse_mcp_names(json).expect("valid MCP configuration");
         assert_eq!(names.len(), 2);
         assert!(names.contains("linear"));
         assert!(names.contains("github"));
@@ -432,17 +442,25 @@ mod tests {
 
     #[test]
     fn parse_mcp_names_missing_field() {
-        assert!(parse_mcp_names(r#"{"something": "else"}"#).is_empty());
+        assert!(
+            parse_mcp_names(r#"{"something": "else"}"#)
+                .expect("valid JSON")
+                .is_empty()
+        );
     }
 
     #[test]
     fn parse_mcp_names_empty_servers() {
-        assert!(parse_mcp_names(r#"{"mcpServers": {}}"#).is_empty());
+        assert!(
+            parse_mcp_names(r#"{"mcpServers": {}}"#)
+                .expect("valid JSON")
+                .is_empty()
+        );
     }
 
     #[test]
     fn parse_mcp_names_invalid_json() {
-        assert!(parse_mcp_names("not json").is_empty());
+        assert!(parse_mcp_names("not json").is_err());
     }
 
     // -- merge_mcp_entry --
@@ -514,7 +532,7 @@ mod tests {
     fn remove_existing() {
         let existing = r#"{"mcpServers":{"linear":{"url":"https://mcp.linear.app/mcp"},"github":{"url":"https://github.com/mcp"}}}"#;
         let output = remove_mcp_entry(existing, "linear").expect("should remove");
-        let names = parse_mcp_names(&output);
+        let names = parse_mcp_names(&output).expect("valid MCP configuration");
         assert!(!names.contains("linear"));
         assert!(names.contains("github"));
     }
@@ -523,7 +541,7 @@ mod tests {
     fn remove_nonexistent_is_ok() {
         let existing = r#"{"mcpServers":{"linear":{"url":"https://mcp.linear.app/mcp"}}}"#;
         let output = remove_mcp_entry(existing, "unknown").expect("should succeed");
-        let names = parse_mcp_names(&output);
+        let names = parse_mcp_names(&output).expect("valid MCP configuration");
         assert!(names.contains("linear"));
     }
 
@@ -542,7 +560,15 @@ mod tests {
             instructions: String::new(),
         };
 
-        let err = mcp_add(&entry, &project_dir).expect_err("should reject jsonc");
+        let err = mcp_add(
+            &entry,
+            &crate::backend::Backend::from(crate::backend::Kind::OpenCode).invocation(
+                &project_dir,
+                HashMap::new(),
+                vec![],
+            ),
+        )
+        .expect_err("should reject jsonc");
         assert!(err.contains("opencode.jsonc"), "error should mention jsonc");
     }
 
@@ -556,7 +582,14 @@ mod tests {
         )
         .expect("write");
 
-        let names = mcp_list(&project_dir);
+        let names = mcp_list(
+            &crate::backend::Backend::from(crate::backend::Kind::OpenCode).invocation(
+                &project_dir,
+                HashMap::new(),
+                vec![],
+            ),
+        )
+        .expect("read inventory");
         assert!(
             names.is_empty(),
             "should return empty when only jsonc exists"

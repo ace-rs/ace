@@ -1,8 +1,10 @@
-use std::collections::HashSet;
 use std::path::PathBuf;
 use std::process::Output;
 
-use super::{McpDecl, McpStatus, OneShotRequest, PromptInput, SessionRequest};
+use super::{
+    Invocation, McpDecl, McpInventory, McpRemoval, McpStatus, OneShotRequest, PromptInput,
+    SessionRequest,
+};
 use crate::config::ace_toml::Trust;
 use crate::session::ResumeMode;
 
@@ -119,27 +121,29 @@ fn synthesize_status(code: i32) -> Result<std::process::ExitStatus, std::io::Err
     Ok(std::process::ExitStatus::from_raw(code as u32))
 }
 
-pub(super) fn mcp_list(_project_dir: &std::path::Path) -> HashSet<String> {
-    let Some(path) = mcp_list_path() else {
-        return HashSet::new();
-    };
+pub(super) fn mcp_list(context: &Invocation) -> Result<McpInventory, String> {
+    let path = context.home_dir()?.join(".flaude-mcp-list");
 
     let content = match std::fs::read_to_string(&path) {
         Ok(c) => c,
-        Err(_) => return HashSet::new(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(McpInventory::new());
+        }
+        Err(error) => return Err(format!("read {}: {error}", path.display())),
     };
 
-    content
+    Ok(content
         .lines()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
-        .collect()
+        .map(|name| (name, path.clone()))
+        .collect())
 }
 
-pub(super) fn mcp_add(entry: &McpDecl, _project_dir: &std::path::Path) -> Result<(), String> {
+pub(super) fn mcp_add(entry: &McpDecl, context: &Invocation) -> Result<(), String> {
     use std::io::Write;
 
-    let record_path = mcp_record_path().ok_or_else(|| "HOME not set".to_string())?;
+    let record_path = context.home_dir()?.join(".flaude-mcp-records.jsonl");
 
     let mut headers: Vec<(&String, &String)> = entry.headers.iter().collect();
     headers.sort_by_key(|(k, _)| k.as_str());
@@ -163,12 +167,12 @@ pub(super) fn mcp_add(entry: &McpDecl, _project_dir: &std::path::Path) -> Result
     Ok(())
 }
 
-pub(super) fn mcp_remove(name: &str, _project_dir: &std::path::Path) -> Result<(), String> {
+pub(super) fn mcp_remove(name: &str, context: &Invocation) -> Result<McpRemoval, String> {
     use std::io::Write;
 
     // -- append removal record --
 
-    let record_path = mcp_record_path().ok_or_else(|| "HOME not set".to_string())?;
+    let record_path = context.home_dir()?.join(".flaude-mcp-records.jsonl");
 
     let record = serde_json::json!({
         "action": "mcp_remove",
@@ -185,11 +189,14 @@ pub(super) fn mcp_remove(name: &str, _project_dir: &std::path::Path) -> Result<(
 
     // -- update list file --
 
-    let Some(list_path) = mcp_list_path() else {
-        return Ok(());
+    let list_path = context.home_dir()?.join(".flaude-mcp-list");
+    let existing = match std::fs::read_to_string(&list_path) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(McpRemoval::Removed);
+        }
+        Err(error) => return Err(format!("read {}: {error}", list_path.display())),
     };
-
-    let existing = std::fs::read_to_string(&list_path).unwrap_or_default();
     let updated: Vec<&str> = existing
         .lines()
         .map(|s| s.trim())
@@ -199,13 +206,10 @@ pub(super) fn mcp_remove(name: &str, _project_dir: &std::path::Path) -> Result<(
     std::fs::write(&list_path, updated.join("\n"))
         .map_err(|e| format!("write {}: {e}", list_path.display()))?;
 
-    Ok(())
+    Ok(McpRemoval::Removed)
 }
 
-pub(super) fn mcp_check(
-    names: &[String],
-    _project_dir: &std::path::Path,
-) -> Result<Vec<McpStatus>, String> {
+pub(super) fn mcp_check(names: &[String], _context: &Invocation) -> Result<Vec<McpStatus>, String> {
     Ok(names
         .iter()
         .map(|n| McpStatus {
@@ -218,14 +222,4 @@ pub(super) fn mcp_check(
 /// Flaude exec records file.
 fn exec_record_path() -> Option<PathBuf> {
     crate::paths::home_dir().map(|h| h.join(".flaude-exec-records.jsonl"))
-}
-
-/// Flaude record file for MCP registrations.
-fn mcp_record_path() -> Option<PathBuf> {
-    crate::paths::home_dir().map(|h| h.join(".flaude-mcp-records.jsonl"))
-}
-
-/// Flaude MCP list file — one server name per line.
-fn mcp_list_path() -> Option<PathBuf> {
-    crate::paths::home_dir().map(|h| h.join(".flaude-mcp-list"))
 }

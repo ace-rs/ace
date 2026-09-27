@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use once_cell::unsync::OnceCell;
 
 use crate::backend::registry::TemplateCtx;
-use crate::backend::{Backend, BackendError, Kind, registry};
+use crate::backend::{Backend, BackendError, Invocation, Kind, registry};
 use crate::config::ace_toml::AceToml;
 use crate::config::paths::AcePaths;
 use crate::config::resolve;
@@ -45,6 +45,7 @@ pub struct Ace {
     overrides: AceToml,
     scope_override: Option<Scope>,
     backend_args: Vec<String>,
+    verified_invocation: Option<Invocation>,
     io: Io,
 }
 
@@ -66,6 +67,7 @@ impl Ace {
             overrides: AceToml::default(),
             scope_override: None,
             backend_args: Vec::new(),
+            verified_invocation: None,
             io,
         }
     }
@@ -180,6 +182,54 @@ impl Ace {
             let resolved = self.require_config()?;
             registry::bind(resolved, &self.template_ctx())
         })
+    }
+
+    /// Resolve one invocation for prerequisite checks, MCP operations, and launch.
+    pub fn invocation(&self) -> Result<Invocation, BackendError> {
+        let env = self
+            .require_config()?
+            .env
+            .iter()
+            .map(|(key, value)| (key.clone(), value.value.clone()))
+            .collect();
+        Ok(self
+            .backend()?
+            .invocation(&self.project_dir, env, self.backend_args.clone()))
+    }
+
+    /// A successful prerequisite check applies only to its exact invocation context.
+    pub fn preflight(
+        &mut self,
+        invocation: &Invocation,
+    ) -> Result<(), crate::backend::PreflightError> {
+        if self.verified_invocation.as_ref() == Some(invocation) {
+            return Ok(());
+        }
+        invocation.preflight()?;
+        self.verified_invocation = Some(invocation.clone());
+        Ok(())
+    }
+
+    /// Bind a prospective configuration without publishing it or replacing cached state.
+    pub fn pending_invocation(
+        &self,
+        tree: &Tree,
+        school: &SchoolToml,
+        school_root: &Path,
+    ) -> Result<Invocation, BackendError> {
+        let resolved = resolve::merge(tree, Some(school), &self.overrides);
+        let context = TemplateCtx {
+            school_dir: school_root.display().to_string(),
+            project_dir: self.project_dir.display().to_string(),
+            home: std::env::var("HOME").unwrap_or_default(),
+        };
+        let backend = registry::bind(&resolved, &context)?;
+        let env = resolved
+            .env
+            .into_iter()
+            .map(|(key, value)| (key, value.value))
+            .collect();
+        Ok(backend.invocation(&self.project_dir, env, self.backend_args.clone()))
     }
 
     /// Names that resolve as a backend selector: built-ins plus every

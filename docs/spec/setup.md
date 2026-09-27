@@ -49,11 +49,15 @@ specifier.
 
 1. Check the project guards and resolve the linked school.
 2. Acquire an uncached school, or update a cached remote school through Pull.
-3. Validate `school.toml`, then write `ace.toml` with `school = "<owner/repo>"`.
-4. Link and configure the acquired school through Prepare without fetching it again.
+3. Validate `school.toml` and merge the pending school assignment in memory, including
+   any local school override; acquire that effective school if different.
+4. Check the effective backend prerequisites, then write `ace.toml` with
+   `school = "<owner/repo>"`. A missing Pi adapter leaves this file unwritten.
+5. Link and configure the effective acquired school without fetching it again.
 
 Authentication, clone, and school-validation failures leave `ace.toml` unwritten, so
-setup can be retried. Embedded schools are validated in place.
+setup can be retried. Embedded schools are validated in place. Successful prerequisite
+checks are reused only while the complete invocation context remains identical.
 
 For an uncached GitHub school, check access to the requested repository over SSH first,
 then HTTPS with existing credentials. Each probe is bounded to five seconds. The first
@@ -78,7 +82,10 @@ Prepare ensures the school is ready to use. It is called by both `ace setup` and
    - **No** → **Clone**: `git clone --no-tags` into `~/.local/share/ace/<owner>/<repo>/`
      (XDG_DATA_HOME), validate `school.toml`, write `index.toml` entry.
    - **Yes** → **Pull**: `git pull --ff-only` on the cached repo.
-2. **Link**: sync school folders into `<project>/<backend_dir>/`. Two shapes:
+2. **Bind and check**: invalidate school-derived caches after acquisition or Pull,
+   including branch-switch outcomes. Bind the final school-selected backend and verify
+   its prerequisites before project links or configuration writes.
+3. **Link**: sync school folders into `<project>/<backend_dir>/`. Two shapes:
    - `skills/` becomes a real directory with per-skill symlinks (one per Included skill
      from the resolution — see [skills/sync.md](skills/sync.md#skill-selection) and
      [configuration.md](configuration.md#skills-selection)).
@@ -88,7 +95,7 @@ Prepare ensures the school is ready to use. It is called by both `ace setup` and
      foreign entries directly.
 
    Folders absent from the school are skipped.
-3. **Refresh `.gitignore` **: re-sync the ACE-managed block in `<project>/.gitignore`.
+4. **Refresh `.gitignore` **: re-sync the ACE-managed block in `<project>/.gitignore`.
    Block contents are the complete on-disk paths ACE may link for every built-in backend
    kind (for example `.claude/skills` and `.agents/skills`) plus `ace.local.toml`.
    Paths come from the backend path surface, including any backend-specific folder mapping;
@@ -106,7 +113,7 @@ When the user runs `ace` (no subcommand) in a project that already has `ace.toml
 1. Load state from `ace.toml`.
 2. Call **Prepare** (install-if-needed / update-if-cached, then link).
 3. Build system prompt from school config.
-4. Detect and exec backend (Claude Code / Codex).
+4. Execute the resolved backend (Claude Code, Codex, OpenCode, or Pi).
 
 ## Actions Summary
 

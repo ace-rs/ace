@@ -1,5 +1,5 @@
-use crate::ace::Ace;
-use crate::backend::BackendError;
+use crate::ace::{Ace, IoError};
+use crate::backend::{Backend, BackendError};
 use crate::config::ConfigError;
 use crate::config::paths::ace_data_dir;
 use crate::school::SchoolError;
@@ -13,6 +13,10 @@ use super::{
 
 #[derive(Debug, thiserror::Error)]
 pub enum PrepareError {
+    #[error("{0}")]
+    Prompt(#[from] IoError),
+    #[error("{0}")]
+    Preflight(#[from] crate::backend::PreflightError),
     #[error("{0}")]
     Config(#[from] ConfigError),
     #[error("{0}")]
@@ -37,11 +41,13 @@ impl PrepareError {
     /// Recovery hint, per `docs/spec/ux.md` §3.
     pub fn hint(&self) -> Option<&'static str> {
         match self {
+            Self::Prompt(error) => error.hint(),
             Self::BlockedLinks(_) => Some("run `ace link --force` to replace them"),
             Self::RepositoryAccess(_) => Some(
                 "check the repository address and Git credentials; for first setup, rerun `ace setup <owner/repo>` in a terminal to enter credentials",
             ),
             Self::Config(_)
+            | Self::Preflight(_)
             | Self::Backend(_)
             | Self::School(_)
             | Self::RegisterMcp(_)
@@ -68,15 +74,14 @@ pub struct PrepareResult {
 impl Prepare<'_> {
     pub fn run(&self, ace: &mut Ace) -> Result<PrepareResult, PrepareError> {
         let project_dir = ace.project_dir().to_path_buf();
-        ace.backend()?;
         let school = LinkedSchool::resolve(&project_dir, self.specifier)?;
 
         // Decide install-vs-update by on-disk state, not the index.
         // A stale index entry (clone dir deleted, pre-XDG upgrade, etc.) would
         // otherwise route us into Pull and hit "school not installed".
-        let (changes, school_is_dirty, school_updated) = if school.needs_clone() {
+        let (changes, school_is_dirty) = if school.needs_clone() {
             CloneSchool { school: &school }.run(ace)?;
-            (Vec::new(), false, true)
+            (Vec::new(), false)
         } else {
             let outcome = (Pull {
                 school: &school,
@@ -85,9 +90,9 @@ impl Prepare<'_> {
             .run(ace)?;
             outcome.emit(ace);
             match outcome {
-                PullOutcome::Dirty { .. } => (Vec::new(), true, false),
-                PullOutcome::Updated { changes } => (changes, false, true),
-                _ => (Vec::new(), false, false),
+                PullOutcome::Dirty { .. } => (Vec::new(), true),
+                PullOutcome::Updated { changes } => (changes, false),
+                _ => (Vec::new(), false),
             }
         };
 
@@ -97,35 +102,37 @@ impl Prepare<'_> {
                 changes,
                 school_is_dirty,
             },
-            school_updated,
         )
     }
 
     /// Link and configure a school already acquired and validated by setup.
     pub fn run_acquired(&self, ace: &mut Ace) -> Result<PrepareResult, PrepareError> {
-        self.finish(ace, PrepareResult::default(), true)
+        self.finish(ace, PrepareResult::default())
     }
 
     fn finish(
         &self,
         ace: &mut Ace,
         prepared_result: PrepareResult,
-        school_updated: bool,
     ) -> Result<PrepareResult, PrepareError> {
         let project_dir = ace.project_dir().to_path_buf();
-        let preliminary_backend = ace.backend()?.clone();
+        // Pull can switch branches without reporting an Updated outcome.
+        ace.invalidate_school_caches();
+        let backend = resolve_backend(ace)?;
+        let invocation = ace.invocation()?;
+        ace.preflight(&invocation)?;
         let school = LinkedSchool::resolve(&project_dir, self.specifier)?;
 
         // Resolve which skills to link before constructing Link.
         let tree = ace.require_tree()?.clone();
-        let prepared = link_skills::prepare(&school.root, &tree, preliminary_backend.features())
+        let prepared = link_skills::prepare(&school.root, &tree, backend.features())
             .map_err(PrepareError::Write)?;
         let ace_data_root = ace_data_dir()?;
 
         let result = Link {
             school_root: &school.root,
             project_dir: &project_dir,
-            backend_dir: preliminary_backend.backend_dir(),
+            backend_dir: backend.backend_dir(),
             skills: &prepared.desired,
             ace_data_root: &ace_data_root,
             // Only `ace link --force` carries that authorization; every other
@@ -138,13 +145,13 @@ impl Prepare<'_> {
                 ace.done(&format!("Moved previous {0} to previous-{0}/", folder.name));
             }
             if folder.linked {
-                if preliminary_backend.kind.is_folder_supported(folder.name) {
+                if backend.kind.is_folder_supported(folder.name) {
                     ace.done(&format!("Linked {}", folder.name));
                 } else {
                     ace.warn(&format!(
                         "Linked {0}/ — not natively supported by {1} (linked for future compatibility)",
                         folder.name,
-                        preliminary_backend.name,
+                        backend.name,
                     ));
                 }
             }
@@ -157,11 +164,6 @@ impl Prepare<'_> {
         .run(ace)
         .map_err(PrepareError::Write)?;
 
-        if school_updated {
-            ace.invalidate_school_caches();
-        }
-
-        let backend = ace.backend()?.clone();
         let raw_entries = match ace.school() {
             Ok(school) => school.mcp.clone(),
             Err(error) if error.is_absent() => Vec::new(),
@@ -173,8 +175,30 @@ impl Prepare<'_> {
             .filter(|entry| !excluded.contains(&entry.name))
             .collect::<Vec<_>>();
         let local_path = ace.paths().local.clone();
-        register_missing_mcp(ace, &backend, &entries, &project_dir, &local_path)?;
+        register_missing_mcp(ace, &invocation, &entries, &local_path)?;
 
         Ok(prepared_result)
     }
+}
+
+/// Select against the acquired school's declarations, never a stale registry.
+fn resolve_backend(ace: &mut Ace) -> Result<Backend, PrepareError> {
+    let attempted = match ace.backend() {
+        Ok(backend) => return Ok(backend.clone()),
+        Err(BackendError::Unknown(name)) => name,
+        Err(error) => return Err(error.into()),
+    };
+    if !ace.can_ask() {
+        ace.hint(&format!(
+            "to fix: ace config set backend <name> (registry has no `{attempted}`)"
+        ));
+        return Err(BackendError::Unknown(attempted).into());
+    }
+    let names = ace.known_backend_names()?;
+    ace.warn(&format!("backend `{attempted}` is not in the registry"));
+    let pick = ace.prompt_select("Pick a backend for this session:", names)?;
+    ace.override_backend(pick.clone());
+    let backend = ace.backend()?.clone();
+    ace.hint(&format!("to make permanent: ace config set backend {pick}"));
+    Ok(backend)
 }

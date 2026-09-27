@@ -47,7 +47,7 @@ impl StartError {
 
 impl Ace {
     pub fn start(&mut self, mode: StartMode) -> Result<(), StartError> {
-        self.require_config_or_recover()?;
+        self.require_config()?;
 
         let (specifier, school_from) = {
             let resolved = self.require_config()?;
@@ -136,9 +136,7 @@ impl Ace {
 
         std::io::stdout().write_all(&output.stdout)?;
         std::io::stderr().write_all(&output.stderr)?;
-        if !output.status.success() {
-            std::process::exit(output.status.code().unwrap_or(1));
-        }
+        crate::platform::propagate_exit_status(output.status);
 
         Ok(())
     }
@@ -166,32 +164,6 @@ impl Ace {
 
         backend.exec_session(request)?;
 
-        Ok(())
-    }
-
-    fn require_config_or_recover(&mut self) -> Result<(), StartError> {
-        self.require_config()?;
-        match self.backend() {
-            Ok(_) => Ok(()),
-            Err(BackendError::Unknown(name)) => self.recover_backend(&name),
-            Err(error) => Err(error.into()),
-        }
-    }
-
-    fn recover_backend(&mut self, attempted: &str) -> Result<(), StartError> {
-        if !self.can_ask() {
-            self.hint(&format!(
-                "to fix: ace config set backend <name> (registry has no `{attempted}`)"
-            ));
-            return Err(BackendError::Unknown(attempted.to_string()).into());
-        }
-
-        let names = self.known_backend_names()?;
-        self.warn(&format!("backend `{attempted}` is not in the registry"));
-        let pick = self.prompt_select("Pick a backend for this session:", names)?;
-        self.override_backend(pick.clone());
-        self.backend()?;
-        self.hint(&format!("to make permanent: ace config set backend {pick}"));
         Ok(())
     }
 }

@@ -7,18 +7,20 @@
 | `claude`   | `claude`   | `.claude`   | `CLAUDE.md`       | [backends/claude.md](backends/claude.md)     |
 | `codex`    | `codex`    | `.agents`   | `AGENTS.md`       | [backends/codex.md](backends/codex.md)       |
 | `opencode` | `opencode` | `.opencode` | `AGENTS.md`       | [backends/opencode.md](backends/opencode.md) |
+| `pi`       | `pi`       | `.pi`       | `AGENTS.md`       | [backends/pi.md](backends/pi.md)             |
 | `flaude`   | `flaude`   | `.claude`   | `CLAUDE.md`       | Test-only fixture backend (see testing.md)   |
 
 ### Project path surface
 
 The backend root is only the first component of ACE's project path surface:
 
-| Backend kind | Root | ACE-linked project folders | Backend-native folders ACE does not link |
-| ------------ | ---- | -------------------------- | ----------------------------------------- |
-| `claude` | `.claude` | `skills/`, `rules/`, `commands/`, `agents/` | — |
-| `codex` | `.agents` | canonical school folders for compatibility; Codex natively consumes `skills/` | user/config rules, prompts, and agents |
-| `opencode` | `.opencode` | `skills/`, `commands/`, `agents/` | `rules/` |
-| `flaude` | `.claude` | same project paths as Claude | — |
+| Backend kind | Root        | ACE-linked project folders                                                    | Backend-native folders ACE does not link  |
+| ------------ | ----------- | ----------------------------------------------------------------------------- | ----------------------------------------- |
+| `claude`     | `.claude`   | `skills/`, `rules/`, `commands/`, `agents/`                                   | —                                         |
+| `codex`      | `.agents`   | canonical school folders for compatibility; Codex natively consumes `skills/` | user/config rules, prompts, and agents    |
+| `opencode`   | `.opencode` | `skills/`, `commands/`, `agents/`                                             | `rules/`                                  |
+| `pi`         | `.pi`       | canonical school folders; Pi natively consumes nested `skills/`               | extensions and themes                     |
+| `flaude`     | `.claude`   | same project paths as Claude                                                  | —                                         |
 
 These are on-disk names, not capability labels. A future backend-specific rename must be
 exposed by the backend path surface and consumed by linking, discovery, and gitignore
@@ -38,7 +40,7 @@ and `school.toml` (top-level field, not a `[school]` table).
 First `Some` wins in this priority order (highest to lowest):
 
 1. CLI override — `ace --backend <name>`, `ace -b <name>`, or convenience flags such as
-   `ace --claude` / `ace --codex`
+   `ace --claude` / `ace --codex` / `ace --opencode` / `ace --pi`
 2. Local — `ace.local.toml`
 3. Project — `ace.toml`
 4. User — `~/.config/ace/ace.toml`
@@ -80,14 +82,19 @@ Each backend must provide:
   non-zero exits. `ace -p` uses this captured form; model-driven backend operations that
   require live diagnostics must use an execution path that preserves terminal output.
   See § Intent Mapping below.
-- **`mcp_list()`** — list currently registered MCP server names.
+- **`mcp_list()`** — fallible inventory of registered names and their source paths.
 - **`mcp_add(entry)`** — register a remote MCP server.
-- **`mcp_remove(name)`** — unregister a remote MCP server by name.
+- **`mcp_remove(name)`** — remove the owned registration, reporting any remaining layer.
 - **`mcp_check(names)`** — runtime usability check for registered MCP servers. This is not
   a static config parse — the backend executes a one-shot prompt that exercises each
   server from inside the backend's own environment (auth state, token storage, MCP
-  client). Returns a list of name/ok pairs. Best-effort: returns empty on failure or if
-  unsupported.
+  client). Returns a list of name/ok pairs or a diagnostic error; unsupported legacy
+  backends may return an empty list. Pi requires a complete response for every name.
+
+`Backend::invocation` owns the effective command, prefix, project directory, environment,
+model, effort, and passthrough arguments. Environment precedence is inherited process,
+resolved ACE environment, then backend environment. Prerequisite checks, MCP operations,
+and launch consume that context; MCP operations never substitute a built-in executable.
 
 See per-backend specs for implementation details.
 
@@ -149,7 +156,7 @@ OneShot is non-interactive — approval modes don't apply.
 
 ### Prompt Source
 
-`OneShotRequest.prompt: PromptInput` is `Inline(String)` for argv-passed prompts, `Stdin`
+`OneShotRequest.prompt: PromptInput` is `Inline(String)` for literal prompts, `Stdin`
 for piped stdin. Backends translate per the table above. When `Stdin`, the spawned child
 inherits the parent's stdin (`Stdio::inherit()`); the caller must arrange the piped data
 themselves.

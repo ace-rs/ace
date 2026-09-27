@@ -49,6 +49,7 @@ pub const BACKEND_DIRS: &[&str] = &[
     ".claude/skills",
     ".codex/skills",
     ".opencode/skills",
+    ".pi/skills",
     ".cursor/skills",
     ".windsurf/skills",
     ".kiro/skills",
