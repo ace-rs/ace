@@ -25,6 +25,7 @@ ace.local.toml
 
 # Session scratch
 .tasks.md
+/tmp/
 
 # Added by cargo
 /target
