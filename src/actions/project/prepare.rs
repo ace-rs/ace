@@ -1,5 +1,5 @@
 use crate::ace::{Ace, IoError};
-use crate::backend::{Backend, BackendError};
+use crate::backend::{Backend, BackendError, McpInventory};
 use crate::config::ConfigError;
 use crate::config::paths::ace_data_dir;
 use crate::school::SchoolError;
@@ -123,6 +123,22 @@ impl Prepare<'_> {
         ace.preflight(&invocation)?;
         let school = LinkedSchool::resolve(&project_dir, self.specifier)?;
 
+        let raw_entries = match ace.school() {
+            Ok(school) => school.mcp.clone(),
+            Err(error) if error.is_absent() => Vec::new(),
+            Err(error) => return Err(error.into()),
+        };
+        let excluded = ace.excluded_mcp()?;
+        let entries = raw_entries
+            .into_iter()
+            .filter(|entry| !excluded.contains(&entry.name))
+            .collect::<Vec<_>>();
+        let registered = if entries.is_empty() {
+            McpInventory::new()
+        } else {
+            invocation.mcp_list().map_err(RegisterMcpError::from)?
+        };
+
         // Resolve which skills to link before constructing Link.
         let tree = ace.require_tree()?.clone();
         let prepared = link_skills::prepare(&school.root, &tree, backend.features())
@@ -164,18 +180,8 @@ impl Prepare<'_> {
         .run(ace)
         .map_err(PrepareError::Write)?;
 
-        let raw_entries = match ace.school() {
-            Ok(school) => school.mcp.clone(),
-            Err(error) if error.is_absent() => Vec::new(),
-            Err(error) => return Err(error.into()),
-        };
-        let excluded = ace.excluded_mcp()?;
-        let entries = raw_entries
-            .into_iter()
-            .filter(|entry| !excluded.contains(&entry.name))
-            .collect::<Vec<_>>();
         let local_path = ace.paths().local.clone();
-        register_missing_mcp(ace, &invocation, &entries, &local_path)?;
+        register_missing_mcp(ace, &invocation, &entries, &local_path, registered)?;
 
         Ok(prepared_result)
     }

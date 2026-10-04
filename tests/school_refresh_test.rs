@@ -89,3 +89,78 @@ fn setup_links_the_effective_local_school_it_verified() {
     env.assert_not_exists(".claude/skills/maverick");
     env.assert_contains("CLAUDE.md", "effective");
 }
+
+#[test]
+fn setup_checks_mcp_from_the_effective_local_school_before_publishing() {
+    let env = TestEnv::new();
+    env.setup_embedded_school("requested");
+    env.write_file(
+        "school.toml",
+        "name = \"requested\"\nbackend = \"flaude\"\n",
+    );
+    env.write_file("other/school.toml", "name = \"effective\"\nbackend = \"flaude\"\n[[mcp]]\nname = \"sample\"\nurl = \"https://example.com/mcp\"\n");
+    env.write_file("ace.local.toml", "school = \".:other\"\n");
+    env.mkdir(".flaude-mcp-list");
+
+    env.ace()
+        .args(["setup", "."])
+        .assert()
+        .code(3)
+        .stderr(predicate::str::contains(".flaude-mcp-list"));
+
+    env.assert_not_exists("ace.toml");
+    env.assert_not_exists(".claude");
+    env.assert_not_exists(".gitignore");
+    assert_eq!(env.read_file("ace.local.toml"), "school = \".:other\"\n");
+}
+
+#[test]
+fn branch_switch_checks_final_school_mcp_before_linking() {
+    let env = TestEnv::new();
+    let remote = env.setup_remote_school("test/mcp-refresh");
+    env.write_file("ace.toml", "school = \"test/mcp-refresh\"\n");
+    env.write_file("data/ace/test/mcp-refresh/school.toml", "name = \"main\"\nbackend = \"flaude\"\n[[mcp]]\nname = \"sample\"\nurl = \"https://example.com/mcp\"\n");
+    env.git_in(&remote.cache, &["add", "school.toml"]);
+    env.git_in(
+        &remote.cache,
+        &[
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "-m",
+            "main requires MCP",
+        ],
+    );
+    env.git_in(&remote.cache, &["checkout", "-b", "alternate"]);
+    env.write_file(
+        "data/ace/test/mcp-refresh/school.toml",
+        "name = \"alternate\"\nbackend = \"flaude\"\n",
+    );
+    env.git_in(&remote.cache, &["add", "school.toml"]);
+    env.git_in(
+        &remote.cache,
+        &[
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "-m",
+            "alternate has no MCP",
+        ],
+    );
+    env.write_file("data/ace/test/mcp-refresh/.git/FETCH_HEAD", "fresh\n");
+    env.mkdir(".flaude-mcp-list");
+
+    env.ace()
+        .args(["-p", "hello"])
+        .assert()
+        .code(3)
+        .stderr(predicate::str::contains(".flaude-mcp-list"));
+
+    env.assert_not_exists(".claude");
+    env.assert_not_exists(".gitignore");
+    env.assert_not_exists(".flaude-exec-records.jsonl");
+}

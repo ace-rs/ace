@@ -15,12 +15,30 @@ pub(super) fn launch_options(context: &Invocation) -> Result<arguments::Options,
     arguments::parse(context)
 }
 
+pub(super) fn validate_mcp_arguments(context: &Invocation) -> Result<(), PreflightError> {
+    let options = launch_options(context)?;
+    if let Some(argument) = &options.extension_disabling_flag {
+        return Err(PreflightError::InvalidArguments(format!(
+            "Pi MCP operations require pi-mcp-adapter; remove `{argument}` from launch arguments. \
+             Use Pi's `config` command to inspect extension filtering."
+        )));
+    }
+
+    Ok(())
+}
+
 pub(super) fn preflight(context: &Invocation) -> Result<(), PreflightError> {
-    let packages = actions::ListPackages.run(context)?;
-    match packages::installation(&packages) {
+    launch_options(context).map(|_| ())
+}
+
+fn verify_installation(
+    context: &Invocation,
+    packages: &[packages::Package],
+) -> Result<(), PreflightError> {
+    match packages::installation(packages) {
         packages::Installation::Installed => Ok(()),
         packages::Installation::Missing => Err(PreflightError::Unavailable(format!(
-            "Pi requires a user-scope pi-mcp-adapter installation, but it was not found. Project-only installations are not verified by ACE. Run `{}` and retry ACE. If already installed, use `{} config` to inspect package filtering.",
+            "Pi MCP operations require a user-scope pi-mcp-adapter installation, but it was not found. Project-only installations are not verified by ACE. Run `{}` and retry ACE. If already installed, use `{} config` to inspect package filtering.",
             recovery_command(context, "install npm:pi-mcp-adapter@3")?,
             recovery_command(context, "")?.trim(),
         ))),
@@ -31,15 +49,23 @@ pub(super) fn preflight(context: &Invocation) -> Result<(), PreflightError> {
     }
 }
 
+fn installed_paths(
+    context: &Invocation,
+    packages: Vec<packages::Package>,
+) -> Result<Vec<PathBuf>, PreflightError> {
+    verify_installation(context, &packages)?;
+    Ok(packages
+        .into_iter()
+        .filter_map(|package| package.installed_path)
+        .collect())
+}
+
 pub(super) fn installed_package_paths(
     context: &Invocation,
 ) -> Result<Vec<PathBuf>, PreflightError> {
-    actions::ListPackages.run(context).map(|packages| {
-        packages
-            .into_iter()
-            .filter_map(|package| package.installed_path)
-            .collect()
-    })
+    validate_mcp_arguments(context)?;
+    let packages = actions::ListPackages.run(context)?;
+    installed_paths(context, packages)
 }
 
 pub(super) fn exec_session(
@@ -126,9 +152,7 @@ fn model_args(model: Option<&str>, effort: Option<&str>) -> Vec<String> {
 }
 
 fn recovery_command(context: &Invocation, operation: &str) -> Result<String, PreflightError> {
-    let options = launch_options(context)?;
-    let command = options
-        .probe_command
+    let command = arguments::probe_command(context)?
         .iter()
         .map(|word| shell_word(word))
         .collect::<Vec<_>>()
@@ -181,6 +205,77 @@ fn shell_word(value: &str) -> String {
 mod tests {
     use super::*;
     use std::collections::HashMap;
+
+    fn pi_context(command: &[&str], extra_args: &[&str]) -> Invocation {
+        Invocation {
+            kind: super::super::Kind::Pi,
+            command: command.iter().map(|word| (*word).into()).collect(),
+            project_dir: "/project".into(),
+            env: HashMap::from([("HOME".into(), "/selected-home".into())]),
+            model: None,
+            effort: None,
+            extra_args: extra_args.iter().map(|word| (*word).into()).collect(),
+        }
+    }
+
+    #[test]
+    fn ordinary_launch_validates_without_requiring_an_adapter_or_executable() {
+        for (command, args) in [
+            (vec!["/nonexistent/pi"], vec![]),
+            (vec!["/nonexistent/pi"], vec!["--no-extensions"]),
+            (
+                vec!["/nonexistent/pi", "--model", "provider/model"],
+                vec!["--mode", "json"],
+            ),
+            (vec!["/nonexistent/pi", "hello"], vec![]),
+        ] {
+            preflight(&pi_context(&command, &args)).expect("ordinary launch needs no MCP adapter");
+        }
+        assert!(matches!(
+            preflight(&pi_context(&[], &[])),
+            Err(PreflightError::InvalidArguments(_))
+        ));
+        assert!(matches!(
+            preflight(&pi_context(&["pi"], &["--mode", "invalid"])),
+            Err(PreflightError::InvalidArguments(_))
+        ));
+    }
+
+    #[test]
+    fn mcp_inventory_requires_its_own_installed_adapter_and_preserves_package_paths() {
+        let context = pi_context(&["wrapper", "pi-instance"], &[]);
+        let missing = installed_paths(&context, vec![]).expect_err("missing MCP adapter");
+        assert!(matches!(missing, PreflightError::Unavailable(_)));
+        assert!(missing.to_string().contains("PI_CODING_AGENT_DIR=/selected-home/.pi/agent wrapper pi-instance install npm:pi-mcp-adapter@3"));
+
+        let declared_only = packages::inventory(
+            "User packages:\n  npm:pi-mcp-adapter@3\n  npm:other\n    /other\n",
+        )
+        .expect("declarations");
+        assert!(matches!(
+            installed_paths(&context, declared_only),
+            Err(PreflightError::Unavailable(_))
+        ));
+
+        let installed = packages::inventory(
+            "User packages:\n  npm:pi-mcp-adapter@3\n    /adapter\n  npm:other\n    /other\n",
+        )
+        .expect("installed packages");
+        assert_eq!(
+            installed_paths(&context, installed).expect("supported installation"),
+            [PathBuf::from("/adapter"), PathBuf::from("/other")]
+        );
+    }
+
+    #[test]
+    fn mcp_inventory_cannot_treat_unknown_adapter_sources_as_installation() {
+        let context = pi_context(&["pi"], &[]);
+        let packages = packages::inventory("User packages:\n  git:example/adapter\n    /adapter\n")
+            .expect("Git source");
+        let error = installed_paths(&context, packages).expect_err("unrecognized adapter source");
+        assert!(matches!(error, PreflightError::Failed(_)));
+        assert!(error.to_string().contains("Git or local package sources"));
+    }
 
     fn session() -> SessionRequest {
         SessionRequest {
@@ -266,15 +361,15 @@ mod tests {
             extra_args: vec!["--no-extensions".into()],
         };
         assert!(matches!(
-            launch_options(&context),
+            validate_mcp_arguments(&context),
             Err(PreflightError::InvalidArguments(_))
         ));
         context.extra_args = vec!["--model".into(), "--no-extensions".into()];
-        assert!(launch_options(&context).is_ok());
+        assert!(validate_mcp_arguments(&context).is_ok());
         context.extra_args = vec!["--".into(), "--no-extensions".into()];
-        assert!(launch_options(&context).is_ok());
+        assert!(validate_mcp_arguments(&context).is_ok());
         context.command.push("-ne".into());
-        assert!(launch_options(&context).is_err());
+        assert!(validate_mcp_arguments(&context).is_err());
     }
 
     #[test]
@@ -299,7 +394,7 @@ mod tests {
                 effort: None,
                 extra_args: Vec::new(),
             };
-            assert!(launch_options(&context).is_err(), "{prefix}");
+            assert!(arguments::probe_command(&context).is_err(), "{prefix}");
         }
     }
 }

@@ -7,7 +7,7 @@ mod pi;
 mod pi_mcp;
 pub mod registry;
 
-pub use invocation::{Invocation, McpInventory, McpRemoval, PreflightError};
+pub use invocation::{Invocation, McpError, McpInventory, McpRemoval, PreflightError};
 
 use crate::config::ConfigError;
 use crate::session::ResumeMode;

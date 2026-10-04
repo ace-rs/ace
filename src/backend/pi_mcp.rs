@@ -9,10 +9,10 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Map, Value};
 
-use super::{Invocation, McpDecl, McpInventory, McpRemoval, McpStatus};
+use super::{Invocation, McpDecl, McpError, McpInventory, McpRemoval, McpStatus};
 use actions::{RunMcpCheck, WriteAdapterConfig};
 
-pub(super) fn mcp_list(context: &Invocation) -> Result<McpInventory, String> {
+pub(super) fn mcp_list(context: &Invocation) -> Result<McpInventory, McpError> {
     let configuration = Configuration::load(context)?;
     let (inventory, definitions) = configuration.inventory();
     for (name, definition) in definitions {
@@ -25,21 +25,27 @@ pub(super) fn mcp_list(context: &Invocation) -> Result<McpInventory, String> {
     Ok(inventory)
 }
 
-pub(super) fn mcp_add(entry: &McpDecl, context: &Invocation) -> Result<(), String> {
-    Configuration::load(context)?.add(entry)
+pub(super) fn mcp_add(entry: &McpDecl, context: &Invocation) -> Result<(), McpError> {
+    Configuration::load(context)?.add(entry).map_err(Into::into)
 }
 
-pub(super) fn mcp_remove(name: &str, context: &Invocation) -> Result<McpRemoval, String> {
-    Configuration::load(context)?.remove(name)
+pub(super) fn mcp_remove(name: &str, context: &Invocation) -> Result<McpRemoval, McpError> {
+    Configuration::load(context)?
+        .remove(name)
+        .map_err(Into::into)
 }
 
-pub(super) fn mcp_check(names: &[String], context: &Invocation) -> Result<Vec<McpStatus>, String> {
+pub(super) fn mcp_check(
+    names: &[String],
+    context: &Invocation,
+) -> Result<Vec<McpStatus>, McpError> {
     if names.is_empty() {
         return Ok(Vec::new());
     }
+    Configuration::load(context)?;
     let prompt = health::prompt(names)?;
     let output = RunMcpCheck { prompt }.run(context)?;
-    health::parse_statuses(&output, names)
+    health::parse_statuses(&output, names).map_err(Into::into)
 }
 
 struct Document {
@@ -75,17 +81,19 @@ struct Configuration {
 }
 
 impl Configuration {
-    fn load(context: &Invocation) -> Result<Self, String> {
+    fn load(context: &Invocation) -> Result<Self, McpError> {
+        super::pi::validate_mcp_arguments(context)?;
         let (home, user_path) = Self::configuration_paths(context)?;
-        let packages =
-            super::pi::installed_package_paths(context).map_err(|error| error.to_string())?;
-        Self::load_documents(&context.project_dir, &home, user_path, &packages)
+        let packages = super::pi::installed_package_paths(context)?;
+        Self::load_documents(&context.project_dir, &home, user_path, &packages).map_err(Into::into)
     }
 
-    fn configuration_paths(context: &Invocation) -> Result<(PathBuf, PathBuf), String> {
-        let home = context.home_dir()?;
+    fn configuration_paths(context: &Invocation) -> Result<(PathBuf, PathBuf), McpError> {
+        let home = context
+            .home_dir()
+            .map_err(super::PreflightError::InvalidArguments)?;
         validate_environment(context)?;
-        let agent = super::pi::agent_dir(context).map_err(|error| error.to_string())?;
+        let agent = super::pi::agent_dir(context)?;
         let user_path = selected_config(context, &agent)?;
         reject_project_packages(context)?;
         Ok((home, user_path))
@@ -320,8 +328,8 @@ fn validate_environment(context: &Invocation) -> Result<(), String> {
     Ok(())
 }
 
-fn selected_config(context: &Invocation, agent: &Path) -> Result<PathBuf, String> {
-    let options = super::pi::launch_options(context).map_err(|error| error.to_string())?;
+fn selected_config(context: &Invocation, agent: &Path) -> Result<PathBuf, McpError> {
+    let options = super::pi::launch_options(context)?;
     Ok(options
         .mcp_config
         .unwrap_or_else(|| agent.join("mcp-adapter.json")))
@@ -527,6 +535,100 @@ mod adapter_tests;
 mod tests {
     use super::*;
     use std::collections::HashMap;
+
+    #[cfg(unix)]
+    #[test]
+    fn missing_invocation_home_is_an_invalid_argument_before_mcp_io() {
+        let context = Invocation {
+            kind: super::super::Kind::Pi,
+            command: vec!["pi".into()],
+            project_dir: "/nonexistent/project".into(),
+            env: HashMap::from([("HOME".into(), String::new())]),
+            model: None,
+            effort: None,
+            extra_args: Vec::new(),
+        };
+
+        let result = Configuration::configuration_paths(&context);
+
+        assert!(
+            matches!(
+                result,
+                Err(McpError::Prerequisite(
+                    super::super::PreflightError::InvalidArguments(_)
+                ))
+            ),
+            "{result:?}"
+        );
+    }
+    #[test]
+    fn selected_config_preserves_invalid_argument_classification() {
+        let context = Invocation {
+            kind: super::super::Kind::Pi,
+            command: vec!["pi".into()],
+            project_dir: "/project".into(),
+            env: HashMap::new(),
+            model: None,
+            effort: None,
+            extra_args: vec!["--mcp-config".into()],
+        };
+
+        let result = selected_config(&context, Path::new("/agent"));
+
+        assert!(
+            matches!(
+                result,
+                Err(McpError::Prerequisite(
+                    super::super::PreflightError::InvalidArguments(_)
+                ))
+            ),
+            "{result:?}"
+        );
+    }
+
+    #[test]
+    fn health_checks_require_mcp_prerequisites_before_a_model_session() {
+        let context = Invocation {
+            kind: super::super::Kind::Pi,
+            command: vec!["/nonexistent/pi".into()],
+            project_dir: "/nonexistent/project".into(),
+            env: HashMap::from([("HOME".into(), "/nonexistent/home".into())]),
+            model: None,
+            effort: None,
+            extra_args: vec!["--no-extensions".into()],
+        };
+
+        let result = mcp_check(&["example".into()], &context);
+
+        assert!(
+            matches!(
+                result,
+                Err(McpError::Prerequisite(
+                    super::super::PreflightError::InvalidArguments(_)
+                ))
+            ),
+            "{result:?}"
+        );
+    }
+
+    #[test]
+    fn empty_health_check_needs_no_arguments_installation_or_model_session() {
+        let context = Invocation {
+            kind: super::super::Kind::Pi,
+            command: Vec::new(),
+            project_dir: "/nonexistent/project".into(),
+            env: HashMap::new(),
+            model: None,
+            effort: None,
+            extra_args: Vec::new(),
+        };
+
+        assert!(
+            mcp_check(&[], &context)
+                .expect("empty check is a no-op")
+                .is_empty()
+        );
+    }
 
     #[test]
     fn malformed_documents_are_not_empty_inventory() {

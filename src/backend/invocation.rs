@@ -23,6 +23,31 @@ pub enum PreflightError {
     InvalidArguments(String),
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum McpError {
+    #[error(transparent)]
+    Prerequisite(#[from] PreflightError),
+    #[error("{0}")]
+    Failed(String),
+    #[error("MCP server '{name}': {source}")]
+    Server { name: String, source: Box<McpError> },
+}
+
+impl McpError {
+    pub fn at_server(self, name: &str) -> Self {
+        Self::Server {
+            name: name.into(),
+            source: Box::new(self),
+        }
+    }
+}
+
+impl From<String> for McpError {
+    fn from(message: String) -> Self {
+        Self::Failed(message)
+    }
+}
+
 /// Effective backend instance shared by checks, provisioning, and launch.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Invocation {
@@ -44,45 +69,45 @@ impl Invocation {
         }
     }
 
-    pub fn mcp_list(&self) -> Result<McpInventory, String> {
+    pub fn mcp_list(&self) -> Result<McpInventory, McpError> {
         match self.kind {
-            Kind::Claude => claude::mcp_list(self),
-            Kind::Codex => codex::mcp_list(self),
+            Kind::Claude => claude::mcp_list(self).map_err(McpError::from),
+            Kind::Codex => codex::mcp_list(self).map_err(McpError::from),
             Kind::Flaude => flaude::mcp_list(self),
-            Kind::OpenCode => opencode::mcp_list(self),
+            Kind::OpenCode => opencode::mcp_list(self).map_err(McpError::from),
             Kind::Pi => pi_mcp::mcp_list(self),
         }
     }
 
-    pub fn mcp_add(&self, entry: &McpDecl) -> Result<(), String> {
+    pub fn mcp_add(&self, entry: &McpDecl) -> Result<(), McpError> {
         match self.kind {
-            Kind::Claude => claude::mcp_add(entry, self),
-            Kind::Codex => codex::mcp_add(entry, self),
-            Kind::Flaude => flaude::mcp_add(entry, self),
-            Kind::OpenCode => opencode::mcp_add(entry, self),
+            Kind::Claude => claude::mcp_add(entry, self).map_err(McpError::from),
+            Kind::Codex => codex::mcp_add(entry, self).map_err(McpError::from),
+            Kind::Flaude => flaude::mcp_add(entry, self).map_err(McpError::from),
+            Kind::OpenCode => opencode::mcp_add(entry, self).map_err(McpError::from),
             Kind::Pi => pi_mcp::mcp_add(entry, self),
         }
     }
 
-    pub fn mcp_remove(&self, name: &str) -> Result<McpRemoval, String> {
+    pub fn mcp_remove(&self, name: &str) -> Result<McpRemoval, McpError> {
         match self.kind {
-            Kind::Claude => claude::mcp_remove(name, self),
-            Kind::Codex => codex::mcp_remove(name, self),
-            Kind::Flaude => flaude::mcp_remove(name, self),
-            Kind::OpenCode => opencode::mcp_remove(name, self),
+            Kind::Claude => claude::mcp_remove(name, self).map_err(McpError::from),
+            Kind::Codex => codex::mcp_remove(name, self).map_err(McpError::from),
+            Kind::Flaude => flaude::mcp_remove(name, self).map_err(McpError::from),
+            Kind::OpenCode => opencode::mcp_remove(name, self).map_err(McpError::from),
             Kind::Pi => pi_mcp::mcp_remove(name, self),
         }
     }
 
-    pub fn mcp_check(&self, names: &[String]) -> Result<Vec<McpStatus>, String> {
+    pub fn mcp_check(&self, names: &[String]) -> Result<Vec<McpStatus>, McpError> {
         if names.is_empty() {
             return Ok(Vec::new());
         }
         match self.kind {
-            Kind::Claude => claude::mcp_check(names, self),
-            Kind::Codex => codex::mcp_check(names, self),
-            Kind::Flaude => flaude::mcp_check(names, self),
-            Kind::OpenCode => opencode::mcp_check(names, self),
+            Kind::Claude => claude::mcp_check(names, self).map_err(McpError::from),
+            Kind::Codex => codex::mcp_check(names, self).map_err(McpError::from),
+            Kind::Flaude => flaude::mcp_check(names, self).map_err(McpError::from),
+            Kind::OpenCode => opencode::mcp_check(names, self).map_err(McpError::from),
             Kind::Pi => pi_mcp::mcp_check(names, self),
         }
     }
@@ -217,7 +242,7 @@ mod tests {
         let error = invocation
             .mcp_list()
             .expect_err("malformed config must fail");
-        assert!(!error.is_empty());
+        assert!(!error.to_string().is_empty());
     }
 
     #[cfg(unix)]

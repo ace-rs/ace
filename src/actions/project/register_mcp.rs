@@ -3,7 +3,7 @@ use std::path::Path;
 
 use crate::ace::{Ace, IoError, partition_picked};
 use crate::actions::project::edit_mcp_config::{EditMcpConfig, Op};
-use crate::backend::{Invocation, Kind};
+use crate::backend::{Invocation, Kind, McpError, McpInventory};
 use crate::config::ConfigError;
 use crate::school::toml::McpDecl;
 use crate::templates::Template;
@@ -11,7 +11,7 @@ use crate::templates::Template;
 #[derive(Debug, thiserror::Error)]
 pub enum RegisterMcpError {
     #[error("mcp register failed: {0}")]
-    Register(String),
+    Mcp(#[from] McpError),
     #[error("{0}")]
     Io(#[from] IoError),
     #[error("{0}")]
@@ -26,12 +26,12 @@ pub fn register_missing(
     invocation: &Invocation,
     entries: &[McpDecl],
     local_path: &Path,
+    registered: McpInventory,
 ) -> Result<(), RegisterMcpError> {
     if entries.is_empty() {
         return Ok(());
     }
 
-    let registered = invocation.mcp_list().map_err(RegisterMcpError::Register)?;
     let registered = registered.into_keys().collect();
     let missing: Vec<McpDecl> = unregistered(entries, &registered)
         .into_iter()
@@ -93,10 +93,7 @@ impl RegisterMcp<'_> {
         // -- check which servers are already registered --
 
         ace.progress("Checking MCP servers...");
-        let registered = self
-            .invocation
-            .mcp_list()
-            .map_err(RegisterMcpError::Register)?;
+        let registered = self.invocation.mcp_list().map_err(RegisterMcpError::Mcp)?;
         let registered = registered.into_keys().collect();
 
         // -- register missing servers --
@@ -109,7 +106,7 @@ impl RegisterMcp<'_> {
 
             self.invocation
                 .mcp_add(&resolved)
-                .map_err(|e| RegisterMcpError::Register(format!("{}: {e}", entry.name)))?;
+                .map_err(|error| RegisterMcpError::Mcp(error.at_server(&entry.name)))?;
 
             let msg =
                 registration_message(self.invocation.kind, &entry.name, entry.headers.is_empty());

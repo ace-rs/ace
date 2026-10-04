@@ -16,6 +16,8 @@ pub enum SetupError {
     #[error("{0}")]
     Preflight(#[from] crate::backend::PreflightError),
     #[error("{0}")]
+    Mcp(#[from] crate::backend::McpError),
+    #[error("{0}")]
     Config(#[from] config::ConfigError),
     #[error("{0}")]
     Prepare(#[from] PrepareError),
@@ -62,6 +64,16 @@ impl Setup<'_> {
         };
         let invocation = ace.pending_invocation(&pending, &content, &effective_school.root)?;
         ace.preflight(&invocation)?;
+        let excluded = config::selection::Policy::from_tree(&pending)
+            .exclude_mcp()
+            .values();
+        let needs_inventory = content
+            .mcp
+            .iter()
+            .any(|entry| !excluded.contains(&entry.name));
+        if needs_inventory {
+            invocation.mcp_list()?;
+        }
 
         EditConfig {
             path: &ace_paths.project,

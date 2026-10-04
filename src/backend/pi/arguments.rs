@@ -10,33 +10,22 @@ pub(crate) enum OutputMode {
 }
 
 pub(crate) struct Options {
-    pub probe_command: Vec<String>,
     pub mcp_config: Option<PathBuf>,
     pub mode: OutputMode,
+    pub extension_disabling_flag: Option<String>,
 }
 
-pub(super) fn parse(context: &Invocation) -> Result<Options, PreflightError> {
-    let Some(program) = context
-        .command
-        .first()
-        .filter(|program| !program.is_empty())
-    else {
-        return Err(PreflightError::InvalidArguments(
-            "Pi command is empty; configure a Pi executable before launching ACE.".into(),
-        ));
-    };
-    let mut options = Options {
-        probe_command: vec![program.clone()],
-        mcp_config: None,
-        mode: OutputMode::Text,
-    };
+pub(super) fn probe_command(context: &Invocation) -> Result<Vec<String>, PreflightError> {
+    parse(context)?;
+    let program = &context.command[0];
+    let mut command = vec![program.clone()];
     let direct_pi = std::path::Path::new(program)
         .file_stem()
         .is_some_and(|name| name == "pi");
     let mut prefix = context.command[1..].iter();
     while let Some(argument) = prefix.next() {
         if is_config_flag(argument) {
-            options.mcp_config = Some(config_path(argument, &mut prefix, context)?);
+            config_path(argument, &mut prefix, context)?;
             continue;
         }
         if direct_pi
@@ -50,10 +39,34 @@ pub(super) fn parse(context: &Invocation) -> Result<Options, PreflightError> {
                 "Pi command prefix contains `{argument}`. Keep `cmd` as the executable and transparent wrapper prefix; use backend model/effort fields or ACE passthrough for Pi launch options."
             )));
         }
-        options.probe_command.push(argument.clone());
+        command.push(argument.clone());
     }
 
-    let mut args = context.extra_args.iter();
+    Ok(command)
+}
+
+pub(super) fn parse(context: &Invocation) -> Result<Options, PreflightError> {
+    let Some(_program) = context
+        .command
+        .first()
+        .filter(|program| !program.is_empty())
+    else {
+        return Err(PreflightError::InvalidArguments(
+            "Pi command is empty; configure a Pi executable before launching ACE.".into(),
+        ));
+    };
+    let mut options = Options {
+        mcp_config: None,
+        mode: OutputMode::Text,
+        extension_disabling_flag: None,
+    };
+    let launch_arguments = context.command[1..]
+        .iter()
+        .chain(&context.extra_args)
+        .cloned()
+        .collect::<Vec<_>>();
+
+    let mut args = launch_arguments.iter();
     while let Some(argument) = args.next() {
         if argument == "--" {
             if args.any(|value| is_config_flag(value)) {
@@ -67,9 +80,7 @@ pub(super) fn parse(context: &Invocation) -> Result<Options, PreflightError> {
         }
         match argument.as_str() {
             "--no-extensions" | "-ne" => {
-                return Err(PreflightError::InvalidArguments(format!(
-                    "Pi requires pi-mcp-adapter; remove `{argument}` from launch arguments. Use Pi's `config` command to inspect extension filtering."
-                )));
+                options.extension_disabling_flag = Some(argument.clone());
             }
             "--mode" => options.mode = output_mode(args.next().map(String::as_str))?,
             "--use-theme" | "--tui-mode" => {
@@ -200,8 +211,23 @@ mod tests {
 
     #[test]
     fn direct_pi_cannot_receive_a_positional_prompt_during_probe() {
-        assert!(parse(&context(&["pi", "hello"], &[])).is_err());
-        assert!(parse(&context(&["/opt/bin/pi", "hello"], &[])).is_err());
+        assert!(probe_command(&context(&["pi", "hello"], &[])).is_err());
+        assert!(probe_command(&context(&["/opt/bin/pi", "hello"], &[])).is_err());
+    }
+
+    #[test]
+    fn ordinary_options_accept_disabled_extensions_and_native_command_prefixes() {
+        for (command, args) in [
+            (vec!["pi"], vec!["--no-extensions"]),
+            (vec!["pi", "--model", "provider/model", "-ne"], vec![]),
+            (vec!["pi", "literal prompt"], vec![]),
+            (vec!["wrapper", "prefix", "--mode", "rpc"], vec![]),
+        ] {
+            parse(&context(&command, &args)).expect("ordinary launch options");
+        }
+        let options = parse(&context(&["pi", "--mode", "rpc"], &["--mode", "json"]))
+            .expect("command options and passthrough precedence");
+        assert_eq!(options.mode, OutputMode::Json);
     }
 
     #[test]
@@ -237,7 +263,10 @@ mod tests {
     fn adapter_selection_is_removed_only_from_the_probe_command() {
         let context = context(&["wrapper", "prefix", "--mcp-config", "instance.json"], &[]);
         let options = parse(&context).expect("known adapter option");
-        assert_eq!(options.probe_command, ["wrapper", "prefix"]);
+        assert_eq!(
+            probe_command(&context).expect("inventory command"),
+            ["wrapper", "prefix"]
+        );
         assert_eq!(
             options.mcp_config,
             Some(PathBuf::from("/project/instance.json"))
@@ -256,7 +285,14 @@ mod tests {
             options.mcp_config,
             Some(PathBuf::from("/project/last.json"))
         );
-        assert_eq!(options.probe_command, ["pi"]);
+        assert_eq!(
+            probe_command(&context(
+                &["pi", "--mcp-config=first.json"],
+                &["--mcp-config", "last.json"]
+            ))
+            .expect("inventory command"),
+            ["pi"]
+        );
     }
 
     #[test]

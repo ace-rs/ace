@@ -8,14 +8,22 @@ see [upstream research](../../vendor/pi-mcp.md).
 
 ## Installation prerequisite
 
-Install Pi and register its required adapter using Pi's package manager:
+Install Pi for ordinary launch. When ACE uses MCP, register its required adapter
+using Pi's package manager:
 
 ```sh
 pi install npm:pi-mcp-adapter@3
 ```
 
-ACE runs the resolved command's `list --no-approve` operation with the same working
-directory and environment as launch, adding `PI_OFFLINE=1` for the probe. The probe
+Ordinary launch validates Pi arguments without probing packages or requiring the
+adapter. Setup and preparation consult MCP inventory only when the effective school
+has non-excluded MCP servers; no servers, or all servers excluded, means no MCP probe.
+Explicit MCP inventory, registration, removal, and nonempty health checks verify the
+adapter at the backend's MCP boundary.
+
+For that verification, ACE runs the resolved command's `list --no-approve` operation
+with the same working directory and environment as launch, adding `PI_OFFLINE=1` for
+the probe. The probe
 does not approve project resources or load extension factories. A Pi-managed npm
 declaration and reported installed directory are required; a version suffix is accepted.
 The installed package manifest must identify
@@ -24,8 +32,9 @@ compatibility review before ACE can provision their configuration. Missing Pi or
 installation exits 2 with recovery guidance. Failed checks and unrecognized output are
 separate errors.
 Custom command prefixes and the effective Pi agent directory also apply to the recovery
-command, including instances that override `HOME`. Command wrappers must transparently
-forward Pi arguments; direct Pi command prefixes cannot contain a prompt. Put model and
+command, including instances that override `HOME`. For MCP probes, command wrappers must
+transparently forward Pi arguments; direct Pi command prefixes cannot contain a prompt.
+Put model and
 effort in their backend fields and other launch options in ACE passthrough.
 `--mcp-config` may appear in the command prefix; ACE omits it only for package probes.
 Use `--mcp-config <path>` or `--mcp-config=<path>` before the `--` separator. ACE rejects
@@ -36,13 +45,15 @@ Project-only, Git, local, and autodiscovered extension installations are not cer
 by this user-scope npm installation check.
 
 This proves package installation, not extension loading, project trust, authentication,
-or MCP health. Explicit extension-disabling flags are rejected; runtime filtering and
-load failures remain Pi diagnostics. Configure resource selection through `pi config`.
+or MCP health. MCP operations reject explicit extension-disabling flags; runtime
+filtering and load failures remain Pi diagnostics. Configure resource selection through
+`pi config`.
 ACE never installs packages, grants trust, or completes OAuth during this check.
 
-Setup checks the prospective merged configuration before publishing `ace.toml`.
-Preparation acquires the school, refreshes bindings, and checks the final invocation
-before linking skills or writing configuration. Explicit MCP registration checks before
+Setup checks the prospective merged configuration and any needed MCP inventory before
+publishing `ace.toml`. Preparation acquires the school, refreshes bindings, validates the
+final invocation, and reads any needed MCP inventory before linking skills or writing
+configuration. Explicit MCP registration checks before
 clearing an exclusion. Pure ACE configuration inspection needs no Pi installation.
 
 ## Launch and skills

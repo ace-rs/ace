@@ -14,6 +14,41 @@ name = "github"
 url = "https://api.githubcopilot.com/mcp/"
 "#;
 
+#[test]
+fn inventory_prerequisite_failures_keep_exit_classes_before_mcp_mutations() {
+    for args in [
+        vec!["mcp"],
+        vec!["mcp", "check"],
+        vec!["mcp", "reset"],
+        vec!["mcp", "unregister", "linear"],
+        vec!["mcp", "register", "linear"],
+    ] {
+        for (control, code) in [
+            (r#"{"unavailable":"adapter missing"}"#, 2),
+            (r#"{"failed":"adapter probe failed"}"#, 3),
+            (r#"{"invalid_arguments":"adapter invocation invalid"}"#, 1),
+        ] {
+            let env = TestEnv::new();
+            env.write_dogfood_school(&format!("backend = \"flaude\"\n{SCHOOL_TOML_TWO_SERVERS}"));
+            env.write_flaude_mcp_list(&["linear", "github"]);
+            let exclusions = "# keep this exclusion\nexclude_mcp = [\"linear\"]\n";
+            env.write_file("ace.local.toml", exclusions);
+            let inventory = env.read_file(".flaude-mcp-list");
+
+            env.ace()
+                .env("FLAUDE_MCP_LIST", control)
+                .args(&args)
+                .assert()
+                .code(code);
+
+            assert_eq!(env.read_file("ace.local.toml"), exclusions);
+            assert_eq!(env.read_file(".flaude-mcp-list"), inventory);
+            env.assert_not_exists(".flaude-mcp-records.jsonl");
+            env.assert_not_exists(".flaude-exec-records.jsonl");
+        }
+    }
+}
+
 // -- ace mcp (bare) --
 
 #[test]

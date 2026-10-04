@@ -29,7 +29,7 @@ fn load_configuration(context: &Invocation, packages: &[PathBuf]) -> Result<Conf
         }
         _ => home.join(".pi/agent"),
     };
-    let selected = selected_config(context, &agent)?;
+    let selected = selected_config(context, &agent).map_err(|error| error.to_string())?;
     Configuration::load_documents(&context.project_dir, &home, selected, packages)
 }
 

@@ -3,7 +3,7 @@ use std::path::Path;
 use std::process::{Command, Output, Stdio};
 
 use super::super::{Invocation, OneShotRequest, PreflightError, PromptInput, SessionRequest};
-use super::{build_one_shot_args, build_session_args, launch_options, packages, recovery_command};
+use super::{arguments, build_one_shot_args, build_session_args, packages, recovery_command};
 use crate::session::{ResumeMode, SessionProcess, StorePrompt};
 
 pub(super) struct ListPackages;
@@ -63,9 +63,8 @@ fn verify_manifest(
 }
 
 fn inventory_command(context: &Invocation) -> Result<Command, PreflightError> {
-    let options = launch_options(context)?;
     let mut probe = context.clone();
-    probe.command = options.probe_command;
+    probe.command = arguments::probe_command(context)?;
     let mut command = probe.process();
     command
         .args(["list", "--no-approve"])

@@ -54,7 +54,7 @@ fn run_list(ace: &mut Ace) -> Result<(), CmdError> {
         Err(e) => return Err(e.into()),
     };
     let excluded = ace.excluded_mcp()?;
-    let registered = invocation.mcp_list().map_err(CmdError::failed)?;
+    let registered = invocation.mcp_list().map_err(CmdError::from)?;
     let registered = registered.into_keys().collect();
 
     for row in inventory(&declared, &excluded, &registered) {
@@ -142,7 +142,7 @@ fn run_check(ace: &mut Ace) -> Result<(), CmdError> {
     ace.preflight(&invocation)?;
     let registered: HashSet<String> = invocation
         .mcp_list()
-        .map_err(CmdError::failed)?
+        .map_err(CmdError::from)?
         .into_keys()
         .collect();
     let school_names: HashSet<&str> = entries.iter().map(|e| e.name.as_str()).collect();
@@ -170,7 +170,7 @@ fn run_check(ace: &mut Ace) -> Result<(), CmdError> {
     if !check_names.is_empty() {
         ace.progress("Checking MCP server health...");
         match invocation.mcp_check(&check_names) {
-            Err(e) => return Err(CmdError::failed(format!("health check failed: {e}"))),
+            Err(error) => return Err(error.into()),
             Ok(statuses) if statuses.is_empty() => {
                 for name in &check_names {
                     ace.done(&format!("{name} (registered)"));
@@ -204,7 +204,7 @@ fn run_reset(ace: &mut Ace) -> Result<(), CmdError> {
     ace.preflight(&invocation)?;
     let registered: HashSet<String> = invocation
         .mcp_list()
-        .map_err(CmdError::failed)?
+        .map_err(CmdError::from)?
         .into_keys()
         .collect();
 
@@ -224,7 +224,7 @@ fn run_reset(ace: &mut Ace) -> Result<(), CmdError> {
         names: &names,
     }
     .run(ace)
-    .map_err(CmdError::failed)
+    .map_err(CmdError::from)
 }
 
 /// `ace mcp unregister <name>` — remove one registered server.
@@ -236,7 +236,7 @@ fn run_unregister(ace: &mut Ace, name: String) -> Result<(), CmdError> {
     ace.preflight(&invocation)?;
     if !invocation
         .mcp_list()
-        .map_err(CmdError::failed)?
+        .map_err(CmdError::from)?
         .contains_key(&name)
     {
         ace.info(&format!("'{name}' is not registered, nothing to remove"));
@@ -248,7 +248,7 @@ fn run_unregister(ace: &mut Ace, name: String) -> Result<(), CmdError> {
         names: &[name],
     }
     .run(ace)
-    .map_err(CmdError::failed)
+    .map_err(CmdError::from)
 }
 
 /// `ace mcp register <name>` — un-skip and register a single school-defined MCP.
@@ -275,7 +275,7 @@ fn run_register(ace: &mut Ace, name: String) -> Result<(), CmdError> {
         })?;
 
     ace.preflight(&invocation)?;
-    invocation.mcp_list().map_err(CmdError::failed)?;
+    invocation.mcp_list().map_err(CmdError::from)?;
     let local_path = ace.paths().local.clone();
     EditMcpConfig {
         path: &local_path,

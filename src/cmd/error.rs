@@ -32,6 +32,8 @@ pub(crate) enum CmdError {
     #[error("{0}")]
     Preflight(#[from] crate::backend::PreflightError),
     #[error("{0}")]
+    Mcp(#[from] crate::backend::McpError),
+    #[error("{0}")]
     Start(#[from] StartError),
     #[error("{0}")]
     Io(#[from] std::io::Error),
@@ -145,6 +147,7 @@ impl CmdError {
         match self {
             Self::Adhoc { code, .. } => *code,
             Self::Preflight(error) => preflight_exit_code(error),
+            Self::Mcp(error) => mcp_exit_code(error),
             Self::Start(error) => start_exit_code(error),
             Self::Prompt(error) => io_exit_code(error),
             Self::Io(_) | Self::Git(_) => ExitCode::Operational,
@@ -252,6 +255,14 @@ fn preflight_exit_code(error: &crate::backend::PreflightError) -> ExitCode {
     }
 }
 
+fn mcp_exit_code(error: &crate::backend::McpError) -> ExitCode {
+    match error {
+        crate::backend::McpError::Prerequisite(error) => preflight_exit_code(error),
+        crate::backend::McpError::Failed(_) => ExitCode::Operational,
+        crate::backend::McpError::Server { source, .. } => mcp_exit_code(source),
+    }
+}
+
 fn setup_exit_code(error: &SetupError) -> ExitCode {
     match error {
         SetupError::Config(config) => config_exit_code(config),
@@ -260,6 +271,7 @@ fn setup_exit_code(error: &SetupError) -> ExitCode {
         SetupError::AlreadySetUp => ExitCode::Usage,
         SetupError::Backend(error) => backend_exit_code(error),
         SetupError::Preflight(error) => preflight_exit_code(error),
+        SetupError::Mcp(error) => mcp_exit_code(error),
     }
 }
 
@@ -282,7 +294,7 @@ fn prepare_exit_code(error: &PrepareError) -> ExitCode {
 
 fn mcp_register_exit_code(error: &RegisterMcpError) -> ExitCode {
     match error {
-        RegisterMcpError::Register(_) => ExitCode::Operational,
+        RegisterMcpError::Mcp(error) => mcp_exit_code(error),
         RegisterMcpError::Io(prompt) => io_exit_code(prompt),
         RegisterMcpError::Config(config) => config_exit_code(config),
     }
@@ -334,6 +346,47 @@ pub(crate) fn exit_on_err(ace: &mut Ace, result: Result<(), CmdError>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mcp_prerequisites_keep_their_exit_class_through_command_and_action_wrappers() {
+        use crate::backend::{McpError, PreflightError};
+
+        for (construct, code) in [
+            (
+                PreflightError::Unavailable as fn(String) -> PreflightError,
+                ExitCode::Unavailable,
+            ),
+            (PreflightError::Failed, ExitCode::Operational),
+            (PreflightError::InvalidArguments, ExitCode::Usage),
+        ] {
+            let prerequisite = || construct("prerequisite diagnostic".into());
+            let direct = CmdError::from(McpError::from(prerequisite()));
+            let registration =
+                CmdError::from(RegisterMcpError::from(McpError::from(prerequisite())));
+            let preparation = CmdError::from(PrepareError::from(RegisterMcpError::from(
+                McpError::from(prerequisite()),
+            )));
+
+            assert_eq!(direct.exit_code(), code);
+            assert_eq!(registration.exit_code(), code);
+            assert_eq!(preparation.exit_code(), code);
+            assert_eq!(
+                CmdError::from(SetupError::from(McpError::from(prerequisite()))).exit_code(),
+                code
+            );
+            let contextual = CmdError::from(McpError::from(prerequisite()).at_server("sample"));
+            assert!(contextual.to_string().contains("sample"));
+            assert!(contextual.to_string().contains("prerequisite diagnostic"));
+            assert_eq!(contextual.exit_code(), code);
+        }
+        assert_eq!(
+            CmdError::from(crate::backend::McpError::from(
+                "operation failed".to_string()
+            ))
+            .exit_code(),
+            ExitCode::Operational
+        );
+    }
 
     fn git_error() -> GitError {
         GitError::Exec {

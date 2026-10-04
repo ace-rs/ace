@@ -10,8 +10,8 @@ use serde::de::DeserializeOwned;
 use actions::RecordCall;
 
 use super::{
-    Invocation, McpDecl, McpInventory, McpRemoval, McpStatus, OneShotRequest, PreflightError,
-    PromptInput, SessionRequest,
+    Invocation, McpDecl, McpError, McpInventory, McpRemoval, McpStatus, OneShotRequest,
+    PreflightError, PromptInput, SessionRequest,
 };
 use crate::config::ace_toml::Trust;
 use crate::session::ResumeMode;
@@ -46,7 +46,11 @@ pub(super) fn preflight(context: &Invocation) -> Result<(), PreflightError> {
     }
     .run(context)
     .map_err(PreflightError::Failed)?;
-    let prerequisite = control(context, "FLAUDE_PREFLIGHT").map_err(PreflightError::Failed)?;
+    prerequisite(context, "FLAUDE_PREFLIGHT")
+}
+
+fn prerequisite(context: &Invocation, name: &str) -> Result<(), PreflightError> {
+    let prerequisite = control(context, name).map_err(PreflightError::Failed)?;
 
     match prerequisite {
         Prerequisite::Ready => Ok(()),
@@ -176,12 +180,13 @@ fn synthesize_status(code: i32) -> Result<std::process::ExitStatus, std::io::Err
     Ok(std::process::ExitStatus::from_raw(code as u32))
 }
 
-pub(super) fn mcp_list(context: &Invocation) -> Result<McpInventory, String> {
+pub(super) fn mcp_list(context: &Invocation) -> Result<McpInventory, McpError> {
     RecordCall {
         action: "mcp_list",
         names: &[],
     }
     .run(context)?;
+    prerequisite(context, "FLAUDE_MCP_LIST")?;
     let path = context.home_dir()?.join(".flaude-mcp-list");
 
     let content = match std::fs::read_to_string(&path) {
@@ -189,7 +194,7 @@ pub(super) fn mcp_list(context: &Invocation) -> Result<McpInventory, String> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             return Ok(McpInventory::new());
         }
-        Err(error) => return Err(format!("read {}: {error}", path.display())),
+        Err(error) => return Err(format!("read {}: {error}", path.display()).into()),
     };
 
     Ok(content

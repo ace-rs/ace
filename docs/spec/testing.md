@@ -137,6 +137,9 @@ Flaude accepts JSON controls through the resolved invocation environment:
   `{"failed":"message"}`, or `{"invalid_arguments":"message"}`.
   These exercise the existing prerequisite exit classes and the requirement to
   verify before publishing config, linking, provisioning, or launching.
+- `FLAUDE_MCP_LIST`: the same prerequisite responses, applied when MCP inventory
+  is consulted. This tests MCP prerequisites independently of launch validation,
+  including that empty or fully excluded school server sets skip MCP inventory.
 - `FLAUDE_MCP_CHECK`: `"healthy"` (default),
   `{"statuses":{"server-name":false}}`, or `{"failed":"message"}`.
   A statuses map must cover each requested server; missing results fail the
