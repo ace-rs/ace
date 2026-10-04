@@ -16,6 +16,10 @@ mod skills;
 mod templates;
 mod upgrade;
 
+#[cfg(test)]
+#[path = "../tests/common/fixtures.rs"]
+mod test_fixtures;
+
 // In-process integration tests exercise cache lifetime without exposing a public library.
 #[cfg(test)]
 #[path = "../tests/config_actions/mod.rs"]

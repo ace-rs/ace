@@ -299,3 +299,91 @@ fn mcp_skips_already_registered_servers() {
         "should register github, not linear"
     );
 }
+
+#[test]
+fn health_failure_reports_diagnostic_without_changing_registration() {
+    let env = TestEnv::new();
+    env.setup_flaude_school(SCHOOL_TOML_TWO_SERVERS);
+    env.write_flaude_mcp_list(&["linear", "github"]);
+    let original = env.read_file(".flaude-mcp-list");
+
+    env.ace()
+        .env(
+            "FLAUDE_MCP_CHECK",
+            r#"{"failed":"fixture health probe failed"}"#,
+        )
+        .args(["mcp", "check"])
+        .assert()
+        .code(3)
+        .stderr(predicates::str::contains("fixture health probe failed"));
+
+    assert_eq!(env.read_file(".flaude-mcp-list"), original);
+    env.assert_not_exists(".flaude-mcp-records.jsonl");
+}
+
+#[test]
+fn unhealthy_registered_server_causes_failure_and_reports_both_results() {
+    let env = TestEnv::new();
+    env.setup_flaude_school(SCHOOL_TOML_TWO_SERVERS);
+    env.write_flaude_mcp_list(&["linear", "github"]);
+
+    env.ace()
+        .env(
+            "FLAUDE_MCP_CHECK",
+            r#"{"statuses":{"linear":true,"github":false}}"#,
+        )
+        .args(["mcp", "check"])
+        .assert()
+        .code(3)
+        .stderr(predicates::str::contains("linear\n"))
+        .stderr(predicates::str::contains("github (unhealthy)"));
+
+    assert_eq!(env.read_file(".flaude-mcp-list"), "linear\ngithub");
+    env.assert_not_exists(".flaude-mcp-records.jsonl");
+}
+
+#[test]
+fn invalid_health_fixture_cannot_report_registered_servers_as_healthy() {
+    for (control, diagnostic) in [
+        (r#"{"statuses":{"linear":true}}"#, "omitted server 'github'"),
+        ("not JSON", "invalid FLAUDE_MCP_CHECK"),
+    ] {
+        let env = TestEnv::new();
+        env.setup_flaude_school(SCHOOL_TOML_TWO_SERVERS);
+        env.write_flaude_mcp_list(&["linear", "github"]);
+
+        env.ace()
+            .env("FLAUDE_MCP_CHECK", control)
+            .args(["mcp", "check"])
+            .assert()
+            .code(3)
+            .stderr(predicates::str::contains(diagnostic));
+
+        assert_eq!(env.read_file(".flaude-mcp-list"), "linear\ngithub");
+        env.assert_not_exists(".flaude-mcp-records.jsonl");
+    }
+}
+
+#[test]
+fn health_checks_only_registered_unexcluded_school_servers() {
+    let env = TestEnv::new();
+    env.setup_flaude_school(SCHOOL_TOML_TWO_SERVERS);
+    env.write_flaude_mcp_list(&["linear", "github", "foreign"]);
+    env.write_file("ace.local.toml", "exclude_mcp = [\"github\"]\n");
+
+    env.ace()
+        .env("FLAUDE_MCP_CHECK", r#"{"statuses":{"linear":true}}"#)
+        .args(["mcp", "check"])
+        .assert()
+        .success();
+
+    let calls = env.read_file(".flaude-calls.jsonl");
+    let check: serde_json::Value = calls
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).expect("call record"))
+        .find(|call| call["action"] == "mcp_check")
+        .expect("health attempt");
+    assert_eq!(check["names"], serde_json::json!(["linear"]));
+    assert_eq!(env.read_file(".flaude-mcp-list"), "linear\ngithub\nforeign");
+    env.assert_not_exists(".flaude-mcp-records.jsonl");
+}

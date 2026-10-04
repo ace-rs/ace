@@ -1,11 +1,7 @@
-#[path = "../common/fixtures.rs"]
-mod common;
-
-use common::TestEnv;
-
 use crate::ace::{Ace, Io};
 use crate::actions::project::edit_config::{EditConfig, FieldEdit};
 use crate::config::paths::AcePaths;
+use crate::test_fixtures::TestEnv;
 
 fn instance(env: &TestEnv) -> Ace {
     Ace::new(

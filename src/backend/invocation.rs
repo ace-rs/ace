@@ -39,6 +39,7 @@ impl Invocation {
     pub fn preflight(&self) -> Result<(), PreflightError> {
         match self.kind {
             Kind::Pi => pi::preflight(self),
+            Kind::Flaude => flaude::preflight(self),
             _ => Ok(()),
         }
     }

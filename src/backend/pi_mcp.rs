@@ -26,35 +26,11 @@ pub(super) fn mcp_list(context: &Invocation) -> Result<McpInventory, String> {
 }
 
 pub(super) fn mcp_add(entry: &McpDecl, context: &Invocation) -> Result<(), String> {
-    let mut configuration = Configuration::load(context)?;
-    if configuration.inventory().0.contains_key(&entry.name) {
-        return Ok(());
-    }
-
-    let document = configuration.user_document();
-    let mut updated = document.body.clone();
-    add_entry(&mut updated, entry)?;
-
-    configuration.publish_user(updated)
+    Configuration::load(context)?.add(entry)
 }
 
 pub(super) fn mcp_remove(name: &str, context: &Invocation) -> Result<McpRemoval, String> {
-    let mut configuration = Configuration::load(context)?;
-    let document = configuration.user_document();
-    let mut updated = document.body.clone();
-    let removed = updated
-        .get_mut("mcpServers")
-        .and_then(Value::as_object_mut)
-        .is_some_and(|servers| servers.remove(name).is_some());
-
-    if removed {
-        configuration.publish_user(updated)?;
-    }
-
-    match configuration.inventory().0.remove(name) {
-        Some(source) => Ok(McpRemoval::StillRegistered { source }),
-        None => Ok(McpRemoval::Removed),
-    }
+    Configuration::load(context)?.remove(name)
 }
 
 pub(super) fn mcp_check(names: &[String], context: &Invocation) -> Result<Vec<McpStatus>, String> {
@@ -100,13 +76,28 @@ struct Configuration {
 
 impl Configuration {
     fn load(context: &Invocation) -> Result<Self, String> {
+        let (home, user_path) = Self::configuration_paths(context)?;
+        let packages =
+            super::pi::installed_package_paths(context).map_err(|error| error.to_string())?;
+        Self::load_documents(&context.project_dir, &home, user_path, &packages)
+    }
+
+    fn configuration_paths(context: &Invocation) -> Result<(PathBuf, PathBuf), String> {
         let home = context.home_dir()?;
         validate_environment(context)?;
         let agent = super::pi::agent_dir(context).map_err(|error| error.to_string())?;
         let user_path = selected_config(context, &agent)?;
         reject_project_packages(context)?;
-        reject_package_servers(context)?;
+        Ok((home, user_path))
+    }
 
+    fn load_documents(
+        project_dir: &Path,
+        home: &Path,
+        user_path: PathBuf,
+        packages: &[PathBuf],
+    ) -> Result<Self, String> {
+        reject_package_servers(packages)?;
         let global_paths = [
             home.join(".config/mcp/mcp.json"),
             home.join(".agents/mcp.json"),
@@ -120,11 +111,11 @@ impl Configuration {
         }
         let user_index = documents.len();
         documents.push(Document::read(user_path.clone())?);
-        let ancestors = ancestor_documents(&documents, &home, &context.project_dir)?;
+        let ancestors = ancestor_documents(&documents, home, project_dir)?;
         documents.extend(ancestors);
         for path in [
-            context.project_dir.join(".mcp.json"),
-            context.project_dir.join(".pi/mcp-adapter.json"),
+            project_dir.join(".mcp.json"),
+            project_dir.join(".pi/mcp-adapter.json"),
         ] {
             if path != user_path {
                 documents.push(Document::read(path)?);
@@ -138,6 +129,33 @@ impl Configuration {
             documents,
             user_index,
         })
+    }
+
+    fn add(&mut self, entry: &McpDecl) -> Result<(), String> {
+        if self.inventory().0.contains_key(&entry.name) {
+            return Ok(());
+        }
+        let mut updated = self.user_document().body.clone();
+        add_entry(&mut updated, entry)?;
+
+        self.publish_user(updated)
+    }
+
+    fn remove(&mut self, name: &str) -> Result<McpRemoval, String> {
+        let mut updated = self.user_document().body.clone();
+        let removed = updated
+            .get_mut("mcpServers")
+            .and_then(Value::as_object_mut)
+            .is_some_and(|servers| servers.remove(name).is_some());
+
+        if removed {
+            self.publish_user(updated)?;
+        }
+
+        match self.inventory().0.remove(name) {
+            Some(source) => Ok(McpRemoval::StillRegistered { source }),
+            None => Ok(McpRemoval::Removed),
+        }
     }
 
     fn user_document(&self) -> &Document {
@@ -324,8 +342,7 @@ fn resolve_path(value: &str, home: &Path, project: &Path) -> PathBuf {
     }
 }
 
-fn reject_package_servers(context: &Invocation) -> Result<(), String> {
-    let paths = super::pi::installed_package_paths(context).map_err(|error| error.to_string())?;
+fn reject_package_servers(paths: &[PathBuf]) -> Result<(), String> {
     for path in paths {
         let manifest = path.join("package.json");
         let content = match std::fs::read_to_string(&manifest) {
@@ -501,6 +518,10 @@ fn add_entry(document: &mut Map<String, Value>, entry: &McpDecl) -> Result<(), S
         .or_insert(Value::Object(definition));
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "../../tests/pi_adapter/mod.rs"]
+mod adapter_tests;
 
 #[cfg(test)]
 mod tests {

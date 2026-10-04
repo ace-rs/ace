@@ -1,15 +1,70 @@
+mod actions;
+
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::process::Output;
 
+use serde::Deserialize;
+use serde::de::DeserializeOwned;
+
+use actions::RecordCall;
+
 use super::{
-    Invocation, McpDecl, McpInventory, McpRemoval, McpStatus, OneShotRequest, PromptInput,
-    SessionRequest,
+    Invocation, McpDecl, McpInventory, McpRemoval, McpStatus, OneShotRequest, PreflightError,
+    PromptInput, SessionRequest,
 };
 use crate::config::ace_toml::Trust;
 use crate::session::ResumeMode;
 
 pub(super) fn is_ready() -> bool {
     true
+}
+
+#[derive(Default, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum Prerequisite {
+    #[default]
+    Ready,
+    Unavailable(String),
+    Failed(String),
+    InvalidArguments(String),
+}
+
+#[derive(Default, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum Health {
+    #[default]
+    Healthy,
+    Statuses(BTreeMap<String, bool>),
+    Failed(String),
+}
+
+pub(super) fn preflight(context: &Invocation) -> Result<(), PreflightError> {
+    RecordCall {
+        action: "preflight",
+        names: &[],
+    }
+    .run(context)
+    .map_err(PreflightError::Failed)?;
+    let prerequisite = control(context, "FLAUDE_PREFLIGHT").map_err(PreflightError::Failed)?;
+
+    match prerequisite {
+        Prerequisite::Ready => Ok(()),
+        Prerequisite::Unavailable(message) => Err(PreflightError::Unavailable(message)),
+        Prerequisite::Failed(message) => Err(PreflightError::Failed(message)),
+        Prerequisite::InvalidArguments(message) => Err(PreflightError::InvalidArguments(message)),
+    }
+}
+
+fn control<T: Default + DeserializeOwned>(context: &Invocation, name: &str) -> Result<T, String> {
+    let Some(value) = context.env_value(name) else {
+        return Ok(T::default());
+    };
+    let value = value
+        .into_string()
+        .map_err(|_| format!("{name} is not UTF-8"))?;
+
+    serde_json::from_str(&value).map_err(|error| format!("invalid {name}: {error}"))
 }
 
 /// The fixture records the trust level verbatim rather than translating it
@@ -122,6 +177,11 @@ fn synthesize_status(code: i32) -> Result<std::process::ExitStatus, std::io::Err
 }
 
 pub(super) fn mcp_list(context: &Invocation) -> Result<McpInventory, String> {
+    RecordCall {
+        action: "mcp_list",
+        names: &[],
+    }
+    .run(context)?;
     let path = context.home_dir()?.join(".flaude-mcp-list");
 
     let content = match std::fs::read_to_string(&path) {
@@ -141,6 +201,11 @@ pub(super) fn mcp_list(context: &Invocation) -> Result<McpInventory, String> {
 }
 
 pub(super) fn mcp_add(entry: &McpDecl, context: &Invocation) -> Result<(), String> {
+    RecordCall {
+        action: "mcp_add",
+        names: std::slice::from_ref(&entry.name),
+    }
+    .run(context)?;
     use std::io::Write;
 
     let record_path = context.home_dir()?.join(".flaude-mcp-records.jsonl");
@@ -168,6 +233,11 @@ pub(super) fn mcp_add(entry: &McpDecl, context: &Invocation) -> Result<(), Strin
 }
 
 pub(super) fn mcp_remove(name: &str, context: &Invocation) -> Result<McpRemoval, String> {
+    RecordCall {
+        action: "mcp_remove",
+        names: &[name.to_string()],
+    }
+    .run(context)?;
     use std::io::Write;
 
     // -- append removal record --
@@ -209,14 +279,37 @@ pub(super) fn mcp_remove(name: &str, context: &Invocation) -> Result<McpRemoval,
     Ok(McpRemoval::Removed)
 }
 
-pub(super) fn mcp_check(names: &[String], _context: &Invocation) -> Result<Vec<McpStatus>, String> {
-    Ok(names
-        .iter()
-        .map(|n| McpStatus {
-            name: n.clone(),
-            ok: true,
-        })
-        .collect())
+pub(super) fn mcp_check(names: &[String], context: &Invocation) -> Result<Vec<McpStatus>, String> {
+    RecordCall {
+        action: "mcp_check",
+        names,
+    }
+    .run(context)?;
+    let health = control(context, "FLAUDE_MCP_CHECK")?;
+
+    match health {
+        Health::Healthy => Ok(names
+            .iter()
+            .map(|name| McpStatus {
+                name: name.clone(),
+                ok: true,
+            })
+            .collect()),
+        Health::Statuses(statuses) => names
+            .iter()
+            .map(|name| {
+                let ok = statuses
+                    .get(name)
+                    .copied()
+                    .ok_or_else(|| format!("Flaude health fixture omitted server '{name}'"))?;
+                Ok(McpStatus {
+                    name: name.clone(),
+                    ok,
+                })
+            })
+            .collect(),
+        Health::Failed(message) => Err(message),
+    }
 }
 
 /// Flaude exec records file.

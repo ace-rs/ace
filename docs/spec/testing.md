@@ -38,6 +38,13 @@ result differs between the two is reading the host.
 - Exercise filesystem, git, symlinks, and cross-module interactions
 - Each test gets its own `TestEnv` — no shared state, no `#[serial]`
 
+Backend adapter filesystem tests may run in process through a `#[cfg(test)]`
+module that includes a file under `tests/`, as configuration action tests do.
+They exercise the real adapter's file loading and publication with supplied,
+already verified external inputs; they never invoke an external backend or
+replace its executable with a shell script. Pure parsing and command construction
+remain unit tests, and CLI orchestration remains Flaude integration coverage.
+
 ## TestEnv
 
 Sandboxed filesystem root backed by `tempfile::TempDir`. RAII cleanup on drop.
@@ -111,9 +118,9 @@ Flaude writes JSONL to `$HOME/.flaude-exec-records.jsonl` and
 `$HOME/.flaude-mcp-records.jsonl`. Fields available for assertion:
 
 - **exec_session**: `trust`, `resume`, `session_prompt`, `env`,
-  `project_dir`, `extra_args`, `cmd`
+  `project_dir`, `extra_args`, `cmd`, `model`, `effort`
 - **exec_one_shot**: `prompt` (`kind` + `text`), `env`,
-  `project_dir`, `extra_args`, `cmd`
+  `project_dir`, `extra_args`, `cmd`, `model`, `effort`
 - **mcp_add**: `name`, `url`, `headers`
 - **mcp_remove**: `name`
 
@@ -121,3 +128,33 @@ One-shot output is controllable via env vars
 (`FLAUDE_ONE_SHOT_STDOUT`, `FLAUDE_ONE_SHOT_STDERR`,
 `FLAUDE_ONE_SHOT_EXIT_CODE`) for testing exit code propagation
 and output passthrough.
+
+### Prerequisite and health failure scenarios
+
+Flaude accepts JSON controls through the resolved invocation environment:
+
+- `FLAUDE_PREFLIGHT`: `"ready"` (default), `{"unavailable":"message"}`,
+  `{"failed":"message"}`, or `{"invalid_arguments":"message"}`.
+  These exercise the existing prerequisite exit classes and the requirement to
+  verify before publishing config, linking, provisioning, or launching.
+- `FLAUDE_MCP_CHECK`: `"healthy"` (default),
+  `{"statuses":{"server-name":false}}`, or `{"failed":"message"}`.
+  A statuses map must cover each requested server; missing results fail the
+  fixture instead of silently reporting healthy. Health checks never change
+  registration records.
+
+Malformed controls fail explicitly. Backend-instance environment values override
+ambient controls through the same resolved environment used by other operations.
+
+Prerequisite and MCP operation attempts append to the invocation home's
+`.flaude-calls.jsonl`, including action, requested names, command, environment,
+project directory, model, effort, and passthrough arguments. Records include failed
+attempts; successful prerequisite checks may be cached for an identical invocation.
+Tests use these records to verify ordering and resolved intent, not incidental
+inventory-read counts.
+
+Pi coverage follows this split: Flaude verifies ACE's prerequisite guards,
+school refresh, dispatch, and health-failure handling; Pi units verify package
+probe arguments, parsing, manifest compatibility, and health report policy;
+in-process adapter tests verify real Pi configuration layers, symlink preservation,
+and concurrent-write rejection. A Flaude success is not verification of Pi's CLI.
