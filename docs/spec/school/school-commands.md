@@ -102,8 +102,7 @@ The `ace-school` skill makes each proposal in its own git worktree of an ACE-man
 clone, obtained with `ace pull <owner/repo>`, so the shared clone stays clean and keeps
 updating. `ace paths worktrees` prints the root, `<data dir>/ace/.worktrees`, laid out as
 `<owner>/<repo>/<desc>`; the dot prefix cannot collide with a GitHub owner name. ACE
-only reports the location: the skill creates and removes the worktrees, and ACE never
-deletes, resets, or re-clones a school clone.
+only reports the location: the skill creates and removes the worktrees.
 
 ## `ace import <source> [--skill <name>] [--all]`
 

@@ -41,8 +41,8 @@ This repo IS the ACE tool, so the full `ace*` family applies (`ace`, `ace-afk`,
   (`src/cmd/`). Pure-I/O actions return `std::io::Error` directly.
 - `CmdError` carries a process exit class via `ExitCode` (`exit_code()`,
   dispatched by `exit_on_err`). Build ad-hoc errors with `CmdError::usage`/
-  `unavailable`/`failed` — the exit class is mandatory at construction; there is
-  no catch-all `Other`. New leaf-error variants must be routed in the matching
+  `failed` — the exit class is mandatory at construction; an absent precondition
+  is a named leaf variant; there is no catch-all `Other`. New leaf-error variants must be routed in the matching
   `*_exit_code` classifier. Contract: `docs/spec/exit-codes.md`.
 
 ## Project-Repo vs School-Repo Context
