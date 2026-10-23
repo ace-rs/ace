@@ -143,8 +143,8 @@ a fresh acceptance audit of every historical feature.
 - Doctor **123** includes the skill-frontmatter diagnostics follow-up from
   `docs/spec/skills/model.md`. Required dependencies and recommendations stay under
   **124 (⊇195)**; the boundary with MCP checking is still undecided.
-- J's **200** owns the capability-catalog research; H's **13** remains deferred until
-  its proposed supersession is decided. Instruction delivery is a related research item.
+- H's **13** shipped as `ace llm-help` (`ec469f1`), settling J **200**'s catalog
+  question; 200 keeps only skill-authoring guidance. Instruction delivery is related research.
 - C's provenance idea owns the August ownership-map proposal. **70**, **155**, **187**,
   and the no-copy alternative remain related requirements or competing designs.
 
