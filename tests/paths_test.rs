@@ -64,3 +64,21 @@ fn paths_unknown_key() {
         .failure()
         .stderr(predicates::str::contains("unknown key"));
 }
+
+/// school-commands.md § Proposal worktrees: `ace-school` reads the location from here.
+#[test]
+fn paths_worktrees_key_sits_beside_school_clones() {
+    let env = TestEnv::new();
+    env.setup_embedded("top-gun");
+
+    let output = env
+        .ace()
+        .args(["paths", "worktrees"])
+        .output()
+        .expect("ace paths worktrees");
+
+    assert!(output.status.success(), "worktrees key should resolve");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let expected = env.path("data/ace/.worktrees");
+    assert_eq!(stdout.trim(), expected.to_str().expect("utf-8 path"));
+}

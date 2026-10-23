@@ -153,7 +153,7 @@ enum Command {
     },
     /// Print resolved filesystem paths ACE uses
     Paths {
-        /// Print only this key (e.g. "project", "cache", "school")
+        /// Print only this key (e.g. "project", "cache", "school", "worktrees")
         key: Option<String>,
     },
     /// Import a skill from an external repository into the school

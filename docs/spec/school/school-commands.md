@@ -96,6 +96,15 @@ in the `ace-school` skill, provided by the `ace-rs/school` standard import and s
 `ace school init`, not in the injected prompt. Exact commands and flags live in the CLI
 (`--help`, `ace llm-help`).
 
+### Proposal worktrees
+
+The `ace-school` skill makes each proposal in its own git worktree of an ACE-managed
+clone, obtained with `ace pull <owner/repo>`, so the shared clone stays clean and keeps
+updating. `ace paths worktrees` prints the root, `<data dir>/ace/.worktrees`, laid out as
+`<owner>/<repo>/<desc>`; the dot prefix cannot collide with a GitHub owner name. ACE
+only reports the location: the skill creates and removes the worktrees, and ACE never
+deletes, resets, or re-clones a school clone.
+
 ## `ace import <source> [--skill <name>] [--all]`
 
 Import a skill from an external repository into the **authored school**. A top-level

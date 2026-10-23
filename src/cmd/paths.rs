@@ -37,11 +37,13 @@ fn build_paths(
     p: &paths::AcePaths,
     school_specifier: Option<&str>,
 ) -> Result<Vec<(String, String)>, CmdError> {
-    let mut out = Vec::new();
-
-    out.push(("config.user".into(), p.user.display().to_string()));
-    out.push(("project".into(), ace.project_dir().display().to_string()));
-    out.push(("cache".into(), p.cache.display().to_string()));
+    let worktrees = paths::ace_worktrees_dir()?;
+    let mut out = vec![
+        ("config.user".into(), p.user.display().to_string()),
+        ("project".into(), ace.project_dir().display().to_string()),
+        ("cache".into(), p.cache.display().to_string()),
+        ("worktrees".into(), worktrees.display().to_string()),
+    ];
 
     if let Some(spec) = school_specifier {
         let sp = LinkedSchool::resolve(ace.project_dir(), spec)?;

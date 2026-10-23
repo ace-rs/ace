@@ -41,6 +41,12 @@ pub fn ace_data_dir() -> Result<PathBuf, ConfigError> {
         .map(|d| d.join("ace"))
 }
 
+/// Root for school proposal worktrees: `<user_data_dir>/ace/.worktrees`, laid out as
+/// `<owner>/<repo>/<desc>`. The dot prefix cannot collide with a GitHub owner name.
+pub fn ace_worktrees_dir() -> Result<PathBuf, ConfigError> {
+    ace_data_dir().map(|d| d.join(".worktrees"))
+}
+
 /// Cache root for imported upstream source repos: `<user_cache_dir>/ace/imports`.
 /// Read-only snapshots — safe to sweep.
 pub fn ace_import_cache_dir() -> Result<PathBuf, ConfigError> {
