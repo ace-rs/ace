@@ -43,6 +43,16 @@ without reading source.
 Adding a new `ace` capability without a corresponding read surface is
 incomplete work. A feature the user can't inspect is a trust hole.
 
+### `ace llm-help` is the agent-facing catalog
+
+Agents cannot learn what ACE can do from `--help` alone, and the school an agent reads
+may be on a different commit than the installed binary. `ace llm-help` prints a
+capability catalog versioned with the binary: concepts, every visible command and
+global flag (rendered from the clap definitions, so they cannot drift), the `ace.toml`
+and `school.toml` sections, and what is out of scope. The injected session prompt and
+the `ace school init` scaffold carry only a one-line pointer to it; schools and skills
+point to it instead of copying command or schema tables.
+
 ### tmux is the managed-session UI
 
 ACE uses tmux for persistent terminals, panes, windows, detach, attachment, and switching.

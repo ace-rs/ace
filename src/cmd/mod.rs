@@ -5,6 +5,7 @@ mod explain;
 mod fmt;
 mod import;
 mod link;
+mod llm_help;
 mod main;
 mod mcp;
 mod paths;
@@ -39,7 +40,7 @@ pub struct Cli {
     command: Option<Command>,
 
     /// Override the configured backend for this command invocation.
-    /// Built-ins: claude, codex, opencode, pi. Custom names from `[[backends]]`
+    /// Built-ins: claude, codex, opencode, pi. Custom names from `[backends.<name>]`
     /// declarations are also accepted; resolved against the registry.
     #[arg(short = 'b', long, global = true)]
     backend: Option<String>,
@@ -230,6 +231,9 @@ enum Command {
     },
     /// Print version information
     Version,
+    /// Print the capability catalog for AI agents: features, where each lives, and
+    /// what is out of scope
+    LlmHelp,
 }
 
 impl Command {
@@ -276,7 +280,8 @@ impl Command {
             | Self::Skills { .. }
             | Self::Explain { .. }
             | Self::Upgrade { silent: true, .. }
-            | Self::Version => Wordmark::None,
+            | Self::Version
+            | Self::LlmHelp => Wordmark::None,
         }
     }
 }
@@ -392,6 +397,7 @@ pub fn run(ace: &mut Ace, cli: Cli) {
             force,
             version,
         } => upgrade::run(ace, silent, force, version),
+        Command::LlmHelp => llm_help::run(ace, &<Cli as clap::CommandFactory>::command()),
         Command::Version => {
             println!("ace {BUILD_IDENTITY}");
         }

@@ -7,3 +7,4 @@ pub const EXCLUDED_SKILLS: &str = include_str!("builtins/prompt_excluded_skills.
 pub const PROJECT_CLAUDE_MD: &str = include_str!("builtins/tpl_project_claude_md.md");
 pub const SCHOOL_INSTRUCTIONS_MD: &str = include_str!("builtins/tpl_school_instructions.md");
 pub const SCHOOL_README: &str = include_str!("builtins/tpl_school_readme.md");
+pub const LLM_HELP: &str = include_str!("builtins/llm_help.md");
