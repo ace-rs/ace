@@ -109,6 +109,25 @@ fn setup_already_set_up() {
         .stderr(predicates::str::contains("already set up"));
 }
 
+/// setup.md § Guards: a configured project is refused before any school is chosen,
+/// so the cached-school picker never appears.
+#[test]
+fn setup_without_specifier_refuses_configured_project_before_picking() {
+    let env = TestEnv::new();
+    env.setup_embedded("iceman");
+    env.write_file(
+        "data/ace/index.toml",
+        "[[school]]\nspecifier = \"acme/one\"\nrepo = \"acme/one\"\n\n\
+         [[school]]\nspecifier = \"acme/two\"\nrepo = \"acme/two\"\n",
+    );
+
+    env.ace()
+        .args(["setup"])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("already set up"));
+}
+
 #[test]
 fn setup_links_all_four_folders() {
     let env = TestEnv::new();

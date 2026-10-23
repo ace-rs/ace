@@ -19,5 +19,5 @@ pub use prepare::{Prepare, PrepareError};
 pub use pull::{ChangeKind, Pull, PullOutcome, SkillChange};
 pub use register_mcp::{RegisterMcp, RegisterMcpError, register_missing as register_missing_mcp};
 pub use remove_mcp::RemoveMcp;
-pub use setup::{Setup, SetupError};
+pub use setup::{SchoolChoice, Setup, SetupError};
 pub use update_gitignore::UpdateGitignore;

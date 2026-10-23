@@ -33,17 +33,15 @@ require confirmation to continue. Remote school acquisition still requires Git.
 ## Specifier Resolution
 
 All of setup is consumer-side: every "school" in this file is the **linked school**
-(glossary: `school/overview.md`). Before calling the Setup action, the CLI layer
-resolves which school to link:
+(glossary: `school/overview.md`). The Setup action chooses the school after the guards
+pass, so a configured project is refused before any picker appears:
 
 - **`ace setup <owner/repo> `** — specifier is the argument.
 - **`ace setup`** (no argument) — resolve from cache:
   - **One cached school** — use it automatically.
   - **Multiple cached schools** — TUI picker.
-  - **No cached schools** — error: `no schools cached, ace setup <owner/repo>?`
-
-This logic lives in the cmd/TUI layer. The Setup action always receives a resolved
-specifier.
+  - **No cached schools** — error `no cached schools` (exit 2), with hints to run
+    `ace school init`, `ace setup <owner/repo>`, or `ace setup ace-rs/school`.
 
 ## Setup Steps
 

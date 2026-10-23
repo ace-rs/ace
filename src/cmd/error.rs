@@ -80,11 +80,6 @@ impl CmdError {
         Self::adhoc(message, ExitCode::Usage)
     }
 
-    /// A required resource or precondition is absent. Exit 2.
-    pub fn unavailable(message: impl Into<String>) -> Self {
-        Self::adhoc(message, ExitCode::Unavailable)
-    }
-
     /// A valid operation was attempted and failed. Exit 3.
     pub fn failed(message: impl Into<String>) -> Self {
         Self::adhoc(message, ExitCode::Operational)
@@ -136,6 +131,11 @@ impl CmdError {
             Self::Prompt(error) | Self::Setup(SetupError::Prompt(error)) => {
                 error.hint().map(str::to_string).into_iter().collect()
             }
+            Self::Setup(SetupError::NoCachedSchools) => vec![
+                "run `ace school init` to create a new school".to_string(),
+                "run `ace setup <owner/repo>` to install a specific school".to_string(),
+                "run `ace setup ace-rs/school` to install the default school".to_string(),
+            ],
             Self::Adhoc { hints, .. } => hints.clone(),
             _ => Vec::new(),
         }
@@ -269,6 +269,7 @@ fn setup_exit_code(error: &SetupError) -> ExitCode {
         SetupError::Prepare(error) => prepare_exit_code(error),
         SetupError::Prompt(error) => io_exit_code(error),
         SetupError::AlreadySetUp => ExitCode::Usage,
+        SetupError::NoCachedSchools => ExitCode::Unavailable,
         SetupError::Backend(error) => backend_exit_code(error),
         SetupError::Preflight(error) => preflight_exit_code(error),
         SetupError::Mcp(error) => mcp_exit_code(error),
@@ -456,17 +457,20 @@ mod tests {
     #[test]
     fn adhoc_constructors_carry_their_class() {
         assert_eq!(CmdError::usage("x").exit_code(), ExitCode::Usage);
-        assert_eq!(
-            CmdError::unavailable("x").exit_code(),
-            ExitCode::Unavailable
-        );
         assert_eq!(CmdError::failed("x").exit_code(), ExitCode::Operational);
     }
 
     #[test]
     fn hints_preserve_the_class() {
-        let error = CmdError::unavailable("no school").with_hint("run ace setup");
+        let error = CmdError::failed("download failed").with_hint("retry");
+        assert_eq!(error.exit_code(), ExitCode::Operational);
+    }
+
+    #[test]
+    fn setup_without_cached_schools_is_unavailable_with_hints() {
+        let error = CmdError::Setup(SetupError::NoCachedSchools);
         assert_eq!(error.exit_code(), ExitCode::Unavailable);
+        assert!(!error.hints().is_empty());
     }
 
     #[test]

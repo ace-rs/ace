@@ -67,10 +67,12 @@ at construction** through classifying constructors:
 
 ```rust
 CmdError::usage("cannot combine --user and --project")     // 1
-CmdError::unavailable("no schools cached, run ace setup")  // 2
 CmdError::failed(format!("download failed: {e}"))          // 3
-CmdError::unavailable("...").with_hint("try: ace setup")   // hints, any class
+CmdError::failed("...").with_hint("retry later")           // hints, any class
 ```
+
+An absent precondition (exit 2) is always a named leaf variant, such as
+`SetupError::NoCachedSchools`, never an ad-hoc message.
 
 A new leaf-error variant must be routed in the matching `*_exit_code` classifier;
 an un-classified fallback must not be (re)introduced — the mandatory code is the

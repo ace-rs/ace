@@ -1,6 +1,5 @@
 use crate::ace::Ace;
-use crate::actions::project::{Prepare, Setup};
-use crate::config::index_toml;
+use crate::actions::project::{Prepare, SchoolChoice, Setup};
 use crate::git;
 use crate::templates;
 
@@ -14,13 +13,13 @@ pub fn run(ace: &mut Ace, specifier: Option<&str>) {
 fn run_inner(ace: &mut Ace, specifier: Option<&str>) -> Result<(), CmdError> {
     let project_dir = ace.project_dir().to_path_buf();
 
-    let resolved = match specifier {
-        Some(s) => normalize_specifier(s),
-        None => resolve_from_cache(ace)?,
+    let school = match specifier {
+        Some(s) => SchoolChoice::Named(normalize_specifier(s)),
+        None => SchoolChoice::Cached,
     };
 
     Setup {
-        specifier: &resolved,
+        school,
         project_dir: &project_dir,
     }
     .run(ace)?;
@@ -72,24 +71,5 @@ fn normalize_specifier(spec: &str) -> String {
             format!("{normalized}:{path}")
         }
         None => git::normalize_source(spec),
-    }
-}
-
-fn resolve_from_cache(ace: &mut Ace) -> Result<String, CmdError> {
-    let index_path = index_toml::index_path()?;
-    let index = index_toml::load(&index_path)?;
-
-    let specs = index_toml::list_specifiers(&index);
-    match specs.len() {
-        0 => Err(CmdError::unavailable("no cached schools").with_hints(vec![
-            "run `ace school init` to create a new school".to_string(),
-            "run `ace setup <owner/repo>` to install a specific school".to_string(),
-            "run `ace setup ace-rs/school` to install the default school".to_string(),
-        ])),
-        1 => Ok(specs.into_iter().next().expect("checked len=1")),
-        _ => {
-            let choice = ace.prompt_select("Select school:", specs)?;
-            Ok(choice)
-        }
     }
 }

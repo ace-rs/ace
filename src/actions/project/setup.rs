@@ -25,11 +25,42 @@ pub enum SetupError {
     Prompt(#[from] IoError),
     #[error("already set up, use `ace` to run")]
     AlreadySetUp,
+    #[error("no cached schools")]
+    NoCachedSchools,
+}
+
+/// Which school `ace setup` links.
+pub enum SchoolChoice {
+    /// A normalized specifier the user named.
+    Named(String),
+    /// One already downloaded: the only cached school, or the user's pick among several.
+    Cached,
+}
+
+impl SchoolChoice {
+    fn resolve(&self, ace: &mut Ace) -> Result<String, SetupError> {
+        let Self::Named(specifier) = self else {
+            return Self::pick_cached(ace);
+        };
+        Ok(specifier.clone())
+    }
+
+    fn pick_cached(ace: &mut Ace) -> Result<String, SetupError> {
+        let index = config::index_toml::load(&config::index_toml::index_path()?)?;
+        let specs = config::index_toml::list_specifiers(&index);
+
+        match specs.as_slice() {
+            [] => Err(SetupError::NoCachedSchools),
+            [only] => Ok(only.clone()),
+            _ => Ok(ace.prompt_select("Select school:", specs)?),
+        }
+    }
 }
 
 /// Acquire and validate the linked school before publishing the project's ace.toml.
+/// The already-set-up guard runs before a school is chosen (setup.md § Guards).
 pub struct Setup<'a> {
-    pub specifier: &'a str,
+    pub school: SchoolChoice,
     pub project_dir: &'a Path,
 }
 
@@ -46,7 +77,8 @@ impl Setup<'_> {
             );
         }
 
-        let school = LinkedSchool::resolve(self.project_dir, self.specifier)?;
+        let specifier = self.school.resolve(ace)?;
+        let school = LinkedSchool::resolve(self.project_dir, &specifier)?;
         let requested_content = self.prepare_school(ace, &school)?;
 
         let mut pending = match ace.require_tree() {
@@ -54,7 +86,7 @@ impl Setup<'_> {
             Err(config::ConfigError::NoConfig) => config::tree::Tree::default(),
             Err(error) => return Err(error.into()),
         };
-        pending.project.get_or_insert_default().school = self.specifier.to_string();
+        pending.project.get_or_insert_default().school = specifier.clone();
         let effective_specifier = pending.specifier().expect("pending project school");
         let effective_school = LinkedSchool::resolve(self.project_dir, &effective_specifier)?;
         let content = if effective_school.root == school.root {
@@ -77,7 +109,7 @@ impl Setup<'_> {
 
         EditConfig {
             path: &ace_paths.project,
-            assignments: vec![FieldEdit::new("school", self.specifier)],
+            assignments: vec![FieldEdit::new("school", &specifier)],
         }
         .run(ace)?;
         Ok(())
