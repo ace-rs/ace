@@ -62,8 +62,9 @@ claim. The School formatting correction preserves the reproduction command as in
 ### Evidence retention
 
 Pre-migration Outline content, local task content, session records, and publication
-readbacks were captured under `tmp/docs-consolidation-2026-09-23/` during the session.
-These are supplementary captures, not a second task tracker. The original checkpoint is
+readbacks were captured under `tmp/docs-consolidation-2026-09-23/` during the session;
+that untracked capture was deleted in the 2026-10-24 stale-file cleanup, and this record
+keeps the results. The original checkpoint is
 also retained in `.ace/archive/2026-09-14-session-trail.md` before shortening active
 continuity. Durable task status and authority live in Outline; product evidence lives
 in the linked specifications. No build, model run, dependency change, or push was needed.
