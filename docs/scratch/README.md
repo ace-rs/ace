@@ -24,8 +24,6 @@ Research supports task decisions; these notes are not an independent work queue.
 
 - [Build and test speedups](2026-05-09-build-test-speedups.md) — historical measurements
   and build candidates; the recorded test work is closed.
-- [School capability catalog](2026-05-30-school-instructions-catalog.md) — unsettled
-  instructions and CLI-guidance proposal.
 - [School skill provenance](2026-08-25-school-skill-provenance.md) — import and ownership
   research.
 - [Codebase audit](2026-06-10-codebase-audit.md) — historical findings requiring
