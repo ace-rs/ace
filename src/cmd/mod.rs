@@ -200,8 +200,11 @@ enum Command {
         /// Skill name to inspect
         name: String,
     },
-    /// Fetch latest school changes (force, ignoring cooldown)
-    Pull,
+    /// Clone or update a school as an ACE-managed clone (force, ignoring cooldown)
+    Pull {
+        /// School specifier (`owner/repo`). Omit to pull the linked school.
+        specifier: Option<String>,
+    },
     /// Re-link school folders into the project (no pull)
     Link {
         /// Replace symlinks left behind by a previous school
@@ -244,7 +247,7 @@ impl Command {
             | Self::Fmt
             | Self::Format
             | Self::Import { .. }
-            | Self::Pull
+            | Self::Pull { .. }
             | Self::Link { .. }
             | Self::Auto
             | Self::Yolo => Wordmark::Compact,
@@ -379,7 +382,7 @@ pub fn run(ace: &mut Ace, cli: Cli) {
             names,
         } => skills::run(ace, command, all, names),
         Command::Explain { name } => explain::run(ace, &name),
-        Command::Pull => pull::run(ace),
+        Command::Pull { specifier } => pull::run(ace, specifier.as_deref()),
         Command::Link { force } => link::run(ace, force),
         Command::New { backend_args } => {
             let mode = match cli.one_shot_prompt {

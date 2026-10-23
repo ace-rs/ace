@@ -197,3 +197,39 @@ fn self_heal_does_not_duplicate_index_entry() {
         "index should have exactly one entry, got:\n{index}"
     );
 }
+
+// school-commands.md § `ace pull`: a named school is cloned or updated as an
+// ACE-managed clone, with or without a configured project.
+
+#[test]
+fn pull_named_school_clones_it_without_project_config() {
+    let env = TestEnv::new();
+    let school = env.setup_remote_school("other/school");
+    std::fs::remove_file(env.path("ace.toml")).expect("drop project config");
+    std::fs::remove_dir_all(&school.cache).expect("drop clone");
+
+    env.ace().args(["pull", "other/school"]).assert().success();
+
+    assert!(
+        school.cache.join("school.toml").exists(),
+        "named pull should clone the school under the data dir",
+    );
+}
+
+#[test]
+fn pull_named_school_updates_an_existing_clone() {
+    let env = TestEnv::new();
+    let school = env.setup_remote_school("other/school");
+    std::fs::remove_file(env.path("ace.toml")).expect("drop project config");
+    push_to_origin(&env, &school, "skills/maverick/NEW.md", "# New\n");
+
+    env.ace()
+        .args(["pull", "https://github.com/other/school.git"])
+        .assert()
+        .success();
+
+    assert!(
+        school.cache.join("skills/maverick/NEW.md").exists(),
+        "named pull should fast-forward the existing clone",
+    );
+}

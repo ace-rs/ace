@@ -50,6 +50,22 @@ impl LinkedSchool {
     }
 }
 
+/// Normalize a user-typed specifier: strip the GitHub URL prefix and `.git` suffix from
+/// the source portion, preserving any `:subpath` (e.g. `owner/repo:subpath`).
+pub fn normalize_specifier(spec: &str) -> String {
+    // A URL's scheme colon is not the subpath separator.
+    let body_start = spec.find("://").map_or(0, |i| i + "://".len());
+    let subpath_colon = spec[body_start..].find(':').map(|i| body_start + i);
+
+    match subpath_colon {
+        Some(i) => {
+            let normalized = crate::git::normalize_source(&spec[..i]);
+            format!("{normalized}:{}", &spec[i + 1..])
+        }
+        None => crate::git::normalize_source(spec),
+    }
+}
+
 /// Parse "source:path" specifier into (source, optional path).
 fn parse_specifier(spec: &str) -> Result<(String, Option<&str>), ConfigError> {
     let (source, path) = match spec.split_once(':') {
@@ -80,6 +96,16 @@ fn has_traversal(s: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn normalize_specifier_keeps_subpath_and_strips_urls() {
+        assert_eq!(normalize_specifier("o/r:sub"), "o/r:sub");
+        assert_eq!(normalize_specifier("https://github.com/o/r.git"), "o/r");
+        assert_eq!(
+            normalize_specifier("https://github.com/o/r.git:sub"),
+            "o/r:sub"
+        );
+    }
 
     #[test]
     fn parse_specifier_valid() {

@@ -1,6 +1,6 @@
 use crate::ace::Ace;
 use crate::actions::project::{Prepare, SchoolChoice, Setup};
-use crate::git;
+use crate::school::linked;
 use crate::templates;
 
 use super::CmdError;
@@ -14,7 +14,7 @@ fn run_inner(ace: &mut Ace, specifier: Option<&str>) -> Result<(), CmdError> {
     let project_dir = ace.project_dir().to_path_buf();
 
     let school = match specifier {
-        Some(s) => SchoolChoice::Named(normalize_specifier(s)),
+        Some(s) => SchoolChoice::Named(linked::normalize_specifier(s)),
         None => SchoolChoice::Cached,
     };
 
@@ -60,16 +60,4 @@ fn run_inner(ace: &mut Ace, specifier: Option<&str>) -> Result<(), CmdError> {
 
     ace.done("Setup complete.");
     Ok(())
-}
-
-/// Normalize a specifier: strip GitHub URL prefix and .git suffix from the source portion.
-/// Preserves colon-separated path (e.g. `owner/repo:subpath`).
-fn normalize_specifier(spec: &str) -> String {
-    match spec.split_once(':') {
-        Some((source, path)) => {
-            let normalized = git::normalize_source(source);
-            format!("{normalized}:{path}")
-        }
-        None => git::normalize_source(spec),
-    }
 }

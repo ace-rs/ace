@@ -113,6 +113,20 @@ When the user runs `ace` (no subcommand) in a project that already has `ace.toml
 3. Build system prompt from school config.
 4. Execute the resolved backend (Claude Code, Codex, OpenCode, or Pi).
 
+## `ace pull [specifier]`
+
+Clones or updates a school as an ACE-managed clone, forcing a fetch that ignores the
+cooldown. It never links into the project.
+
+- **No argument** — the linked school from `ace.toml`.
+- **A specifier** (`owner/repo`, a GitHub URL, or either with `:subpath`) — that school,
+  linked or not. No project config is needed, so agents and the `ace-school` skill can
+  obtain a managed checkout of any school, such as an upstream one they will propose a
+  change to, without cloning it by hand.
+
+A missing clone is cloned and recorded in `index.toml`; an existing one goes through
+Pull with the same dirty-tree and fast-forward rules as a normal run.
+
 ## Actions Summary
 
 All consumer-side actions live in `src/actions/project/` (see
