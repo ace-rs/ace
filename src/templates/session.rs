@@ -258,13 +258,16 @@ mod tests {
     }
 
     #[test]
-    fn injects_school_clone_and_proposal_steps() {
+    fn school_clone_layer_points_to_ace_school_without_procedure() {
         let dir = nonexistent_dir();
         let clone_path = Path::new("/home/user/.local/share/ace/org/school");
         let prompt = build_prompt("Acme", "", "", &dir, &[], Some(clone_path), false, &[]);
         assert!(prompt.contains("School clone: /home/user/.local/share/ace/org/school"));
-        assert!(prompt.contains("guide the user through"));
-        assert!(prompt.contains("git -C /home/user/.local/share/ace/org/school"));
+        assert!(prompt.contains("`ace-school`"));
+        assert!(
+            !prompt.contains("git -C"),
+            "procedure belongs to ace-school (school-commands.md)"
+        );
     }
 
     fn sample_changes() -> Vec<SkillChange> {
@@ -419,12 +422,12 @@ mod tests {
     }
 
     #[test]
-    fn dirty_school_includes_gitignore_guidance() {
+    fn dirty_school_states_blocked_updates() {
         let dir = nonexistent_dir();
         let clone_path = Path::new("/tmp/school");
         let prompt = build_prompt("Acme", "", "", &dir, &[], Some(clone_path), true, &[]);
         assert!(prompt.contains("uncommitted local changes"));
-        assert!(prompt.contains(".gitignore"));
+        assert!(prompt.contains("cannot update it"));
     }
 
     #[test]

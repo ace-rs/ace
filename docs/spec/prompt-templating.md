@@ -12,8 +12,8 @@ distinct from the backend's own system prompt.
 Built by concatenating layers, separated by blank lines:
 
 1. **Built-in** — `prompt_session.md`, always present. Contains school name/concept,
-   symlink edit flow, config file awareness, debugging tips. Rendered with
-   `{{ school_name }}`.
+   the ACE-managed symlink invariant, the config files, and pointers to `ace config`,
+   `ace paths`, and `ace llm-help`. Rendered with `{{ school_name }}`.
 2. **School** — top-level `session_prompt` field in `school.toml`. Domain-specific
    instructions from the school maintainer, injected verbatim (no template substitution).
    See [school/school-toml.md](school/school-toml.md#session_prompt) for the field
@@ -27,9 +27,12 @@ Built by concatenating layers, separated by blank lines:
 5. **Skill change summary** — `prompt_changes.md`, only when skills changed since last
    session. Lists added, updated, and removed skills. Rendered with `{{ changes }}`.
 6. **School changes** — `prompt_school_changes.md`, only when a school clone exists
-   (remote schools). Contains proposal workflow steps. Rendered with `{{ school_clone }}`.
-   When the clone has uncommitted changes, `prompt_dirty_school.md` is appended (no
-   placeholders).
+   (remote schools). States the clone path, that ACE manages the clone, and that school
+   skill changes go through the `ace-school` skill. It carries no procedure; see
+   [school-commands.md](school/school-commands.md#skill-modification-workflow).
+   Rendered with `{{ school_clone }}`. When the clone has uncommitted changes,
+   `prompt_dirty_school.md` is appended (no placeholders): it states that updates are
+   blocked and points to `ace-school`.
 7. **Previous skills** — `prompt_previous_skills.md`, only when a `previous-skills/`
    directory exists. Consolidation guidance. Rendered with `{{ backend_dir }}`. Note:
    post-2026-04-23 ACE no longer creates `previous-skills/` (per-skill linking handles

@@ -164,10 +164,6 @@ different source repository.
 
 ## Commit Messages
 
-A school repo is not application code — it is **policy**. Every commit changes how an
-entire team writes code. School changes propagate to every developer on the team, so
-commits must carry enough context for someone reading `git log` months later to understand
-the decision without asking around. A diff alone doesn't convey intent — the commit body
-is the institutional memory.
-
-Format and examples are in `src/templates/builtins/tpl_school_instructions.md`.
+Each school owns its commit conventions. The scaffold written by `ace school init`
+(`src/templates/builtins/tpl_school_instructions.md`) ships no commit policy, so it never
+competes with a school's own rules.

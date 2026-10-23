@@ -83,18 +83,18 @@ The dirty guard in step 1 ensures user edits are never silently discarded.
 ## Skill Modification Workflow
 
 When ACE execs into the backend (the final lifecycle step in
-[overview.md](../overview.md)), it injects a session prompt that:
+[overview.md](../overview.md)), the injected session prompt carries only runtime facts
+and invariants, plus one pointer:
 
-1. Tells the AI that skills are loaded from the linked school and are editable.
-2. Instructs it to propose changes back to the linked school's repo when skills are
-   modified.
+- the linked school's clone path, and whether it has uncommitted changes;
+- the clone and the skill symlinks are managed by ACE, so agents do not edit them;
+- to change a school skill, load the `ace-school` skill.
 
-The AI backend handles the full PR workflow: `ace diff` to review, branch in the linked
-school clone, commit, push, create PR via GitHub MCP. No dedicated `ace` command needed — the AI
-has all the tools (git + GitHub MCP).
-
-The `ace-school` skill (provided by the `ace-rs/school` standard import, seeded by
-`ace school init`) provides detailed instructions for this workflow.
+The binary changes per release and schools cannot edit it, while school content changes
+continuously. Procedures (branching, remotes, PR tooling, approval gates) therefore live
+in the `ace-school` skill, provided by the `ace-rs/school` standard import and seeded by
+`ace school init`, not in the injected prompt. Exact commands and flags live in the CLI
+(`--help`, `ace llm-help`).
 
 ## `ace import <source> [--skill <name>] [--all]`
 
