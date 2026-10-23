@@ -152,9 +152,8 @@ a fresh acceptance audit of every historical feature.
 
 - **146 / 147:** the roadmap lists them as Now, but A has no detailed entries and the
   local ledger supplies no closure. A preserves them as needing status verification.
-- **Prompt override:** H records an earlier file-based proposal at
-  `~/.config/ace/prompts/session.md` and an `ace.toml` alternative. The latest roadmap
-  supplies no choice. H owns the unresolved storage design.
+- **Prompt override:** killed 2026-10-24 with `ace config expand`. The built-in prompt
+  now holds only facts, invariants, and pointers; additions use `session_prompt` layers.
 - **Cursor:** A suggests revisiting it, but cancelled **9** supersedes the older survey.
   Keep the idea provisional; no decision to revive the cancelled task is evidenced.
 - **MCP stdio / Dockerfile:** B's **64** priority and **237** idea do not supersede the
