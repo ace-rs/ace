@@ -198,9 +198,9 @@ including I's **241** discovery diagnostics, remain under one audit revalidation
   unmeasured build options. Test improvements are complete; nextest, separate target
   directories, nightly codegen, and dropping static targets remain rejected/unpursued.
   The old provider-specific cache recipe is replaced by portable caching as an option.
-- [Capability catalog](../scratch/2026-05-30-school-instructions-catalog.md): J/200 and
-  H/13 own the open choice; the phantom school-fix command is already closed. Its old
-  command/config inventory is evidence to recheck, not current product documentation.
+- [Capability catalog](../scratch/2026-05-30-school-instructions-catalog.md): superseded
+  on 2026-10-24. The catalog is the binary's `ace llm-help` (H/13, `ec469f1`); its
+  template-catalog proposal and old inventory are historical only.
 - [School provenance](../scratch/2026-08-25-school-skill-provenance.md): C owns all five
   open rulings and the proposed acceptance shape; no ownership schema is approved.
 - [Skill rearchitecture](../scratch/2026-06-02-skill-model-rearchitect.md) and the
