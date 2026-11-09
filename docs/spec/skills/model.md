@@ -144,7 +144,17 @@ predicate (a string `name` plus a string `description`) is sufficient.
 ### Required fields
 
 - `name` — string, non-empty.
-- `description` — string. Single line or YAML block scalar (`>` or `|`).
+- `description` — string. Plain, quoted, or any YAML block scalar: `|` or `>`, with an
+  optional chomping indicator (`-`, `+`) and indentation digit in either order, and an
+  optional trailing comment (`>-`, `|2+`, `> # note`).
+
+ACE reads only top-level fields (`src/skills/frontmatter.rs`); a `key:` line inside a
+block scalar or a nested mapping is not a field. Values follow YAML's folding and
+chomping rules. Quoted values lose their outer quotes and the escapes for their own
+delimiter (`''`, `\"`, `\\`); other double-quoted escapes stay as written. A header ACE
+cannot read as a block scalar (`>x`) keeps its text as the value. ACE's own listings
+(`ace explain`, `ace school skills`) render the description on one line, collapsing
+every run of whitespace to a single space.
 
 ### Honored fields (pass-through)
 

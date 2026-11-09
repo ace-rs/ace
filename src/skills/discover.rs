@@ -32,6 +32,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
+use super::frontmatter;
 use super::identity::Locator;
 use super::name::RejectReason;
 use super::{Discovered, Skill};
@@ -278,9 +279,8 @@ const SKIP_DIRS: &[&str] = &[
 /// Best-effort frontmatter extraction for the fields discovery cares
 /// about: `internal: true` (discovery-time filter) and `name:` (used by
 /// the imports resolver to flag cross-source divergence at colliding
-/// identities). A full frontmatter parser lives in `skills::meta`;
-/// this is a narrow read so discovery doesn't have to materialize the
-/// full struct for every skill on disk.
+/// identities). Only top-level fields count, so a `name:` or `internal:`
+/// line inside a block scalar or a nested mapping is not read.
 ///
 /// Returns `(internal, frontmatter_name)`. Either or both may be absent
 /// from the SKILL.md; the function never errors.
@@ -288,32 +288,17 @@ fn read_frontmatter_flags(skill_md: &Path) -> (bool, Option<String>) {
     let Ok(content) = std::fs::read_to_string(skill_md) else {
         return (false, None);
     };
-    let content = content.trim_start();
-    let Some(rest) = content.strip_prefix("---") else {
+    let Some(fields) = frontmatter::parse(&content) else {
         return (false, None);
     };
-    let Some(close) = rest.find("\n---") else {
-        return (false, None);
-    };
-    let block = &rest[..close];
-    let mut internal = false;
-    let mut name: Option<String> = None;
-    for line in block.lines() {
-        let trimmed = line.trim();
-        if let Some(val) = trimmed.strip_prefix("internal:") {
-            let val = val
-                .trim()
-                .trim_matches('"')
-                .trim_matches('\'')
-                .to_ascii_lowercase();
-            internal = val == "true";
-        } else if let Some(val) = trimmed.strip_prefix("name:") {
-            let val = val.trim().trim_matches('"').trim_matches('\'');
-            if !val.is_empty() {
-                name = Some(val.to_string());
-            }
-        }
-    }
+
+    let internal = fields
+        .get("internal")
+        .is_some_and(|v| v.eq_ignore_ascii_case("true"));
+    let name = fields
+        .get("name")
+        .filter(|n| !n.is_empty())
+        .map(String::from);
     (internal, name)
 }
 

@@ -1,10 +1,14 @@
 use std::fs;
 use std::path::Path;
 
-/// Metadata extracted from a SKILL.md YAML frontmatter.
+use super::frontmatter;
+
+/// Display metadata from a SKILL.md frontmatter.
 #[derive(Debug)]
 pub struct SkillMeta {
     pub name: String,
+    /// The `description` field as one line: every run of whitespace, line breaks
+    /// included, becomes a single space, so a block scalar renders on one listing line.
     pub description: String,
 }
 
@@ -15,47 +19,14 @@ pub fn load(skill_dir: &Path) -> Option<SkillMeta> {
     parse(&content)
 }
 
-/// Parse YAML frontmatter from SKILL.md content.
-/// Expects `---` delimited frontmatter with `name` and `description` fields.
+/// Parse SKILL.md content. `None` when it has no frontmatter or no non-empty `name`.
 fn parse(content: &str) -> Option<SkillMeta> {
-    let content = content.trim_start();
-    if !content.starts_with("---") {
-        return None;
-    }
-
-    let after_open = &content[3..];
-    let close = after_open.find("\n---")?;
-    let block = &after_open[..close];
-
-    let mut name = None;
-    let mut desc_parts: Vec<String> = Vec::new();
-    let mut in_desc = false;
-
-    for line in block.lines() {
-        let trimmed = line.trim();
-
-        // New key starts (not indented, contains `:`)
-        if !line.starts_with(' ') && !line.starts_with('\t') && line.contains(':') {
-            in_desc = false;
-
-            if let Some(val) = trimmed.strip_prefix("name:") {
-                name = Some(val.trim().to_string());
-            } else if let Some(val) = trimmed.strip_prefix("description:") {
-                let val = val.trim();
-                if val == ">" || val == "|" {
-                    // Block scalar — collect continuation lines
-                    in_desc = true;
-                } else {
-                    desc_parts.push(val.to_string());
-                }
-            }
-        } else if in_desc && (line.starts_with(' ') || line.starts_with('\t')) {
-            desc_parts.push(trimmed.to_string());
-        }
-    }
-
-    let name = name.filter(|n| !n.is_empty())?;
-    let description = desc_parts.join(" ");
+    let fields = frontmatter::parse(content)?;
+    let name = fields.get("name").filter(|n| !n.is_empty())?.to_string();
+    let description = fields
+        .get("description")
+        .map(|d| d.split_whitespace().collect::<Vec<_>>().join(" "))
+        .unwrap_or_default();
 
     Some(SkillMeta { name, description })
 }
@@ -88,6 +59,21 @@ description: >
             meta.description,
             "First line of description second line of description."
         );
+    }
+
+    #[test]
+    fn every_block_scalar_header_yields_one_line_text() {
+        // Regression: `>-` used to parse as the literal text ">-".
+        for header in [">", ">-", ">+", "|", "|-", "|+", ">2-", "|-2", ">- # note"] {
+            let content = format!(
+                "---\nname: s\ndescription: {header}\n  First line\n\n  second line.\n---\n"
+            );
+            let meta = parse(&content).expect("should parse block scalar frontmatter");
+            assert_eq!(
+                meta.description, "First line second line.",
+                "header {header:?}"
+            );
+        }
     }
 
     #[test]

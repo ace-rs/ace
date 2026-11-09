@@ -13,6 +13,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 pub mod discover;
+pub mod frontmatter;
 pub mod identity;
 pub mod meta;
 pub mod name;
