@@ -16,8 +16,7 @@ environments up-to-date. Acts as an entrypoint to supported AI coding backends â
 brew install ace-rs/tap/ace
 ```
 
-The tap lives at [`ace-rs/homebrew-tap`](https://github.com/ace-rs/homebrew-tap)
-and is kept in sync from this repo as a git subtree under `homebrew-tap/`.
+The tap lives at [`ace-rs/homebrew-tap`](https://github.com/ace-rs/homebrew-tap).
 
 **curl installer** (Linux, macOS x86_64, or if you don't use Homebrew):
 

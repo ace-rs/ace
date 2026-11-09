@@ -18,13 +18,6 @@ One-time host setup:
 - `gh` CLI, authenticated against `ace-rs/ace`.
 - **macOS host** for the full matrix. Linux hosts can build the Linux/Windows
   targets only; the `*-apple-darwin` targets need Apple's toolchain.
-- `gh-tap` git remote pointing at the Homebrew tap repo:
-
-  ```sh
-  git remote add gh-tap gh:ace-rs/homebrew-tap
-  ```
-
-  `release.sh` warns and skips the formula push if this remote is missing.
 
 Optional: `cargo install sccache` to speed up repeat cross-builds.
 
@@ -33,27 +26,27 @@ Optional: `cargo install sccache` to speed up repeat cross-builds.
 From a clean working tree on `main`:
 
 ```sh
-./release.sh 0.7.2     # bump, build, patch formula, commit, tag, push, publish
+./release.sh 0.7.2     # bump, build, commit, tag, push, publish, print formula values
 ```
 
-Then author the GitHub release notes (§7); Chakrit handles the website handoff (§8).
+Then author the GitHub release notes (§7), hand the formula values to the tap's owner
+(§6), and hand the release to the website (§8).
 
 ## 3. What each script does
 
 **`release.sh <version>`** — refuses to run with a dirty tree. In one linear
 flow: calls `cargo set-version` to update `Cargo.toml` + `Cargo.lock`, writes
 `v<version>` to `./latest`, runs `./build-all.sh`, computes the sha256 of
-`target/dist/ace-aarch64-apple-darwin`, sed-patches
-`homebrew-tap/Formula/ace.rb` (version, download URL, sha), commits and tags
-as `v<version>`, pushes `main` and the tag to `gh`, runs `gh release create
-v<ver> --generate-notes <binaries>`, re-downloads the published macOS arm64
-artifact and verifies its sha matches the formula (aborts if not), then
-pushes the formula via `git subtree push --prefix=homebrew-tap gh-tap main`.
+`target/dist/ace-aarch64-apple-darwin`, commits and tags as `v<version>`,
+pushes `main` and the tag to `gh`, runs `gh release create v<ver>
+--generate-notes <binaries>`, re-downloads the published macOS arm64 artifact
+and verifies its sha matches the built one (aborts if not), then prints the
+formula's `version`, `url` and `sha256` lines for the tap's owner.
 
 The build happens **before** the version-bump commit on purpose: `build.rs`
 embeds `ACE_GIT_HASH` from `git rev-parse --short HEAD` and uses
 `cargo:rerun-if-changed=.git/HEAD`, so any HEAD movement between the build
-and the upload would invalidate the formula sha. Building first means the
+and the upload would rebuild a binary whose sha differs from the printed one. Building first means the
 shipped binary embeds the pre-bump commit's hash (one behind the tag), but
 the formula sha and the uploaded artifact agree — which is what users hit
 when `brew install` validates the download.
@@ -111,18 +104,21 @@ holds every channel back, installers and `ace upgrade` alike. See
 
 ## 6. Homebrew
 
-Formula lives at `homebrew-tap/Formula/ace.rb`, kept in this repo as a git
-subtree. `release.sh` sed-patches three lines after the macOS aarch64
-binary is built (and before the version-bump commit is created):
+The formula lives at `Formula/ace.rb` in
+[`ace-rs/homebrew-tap`](https://github.com/ace-rs/homebrew-tap), a separate
+repo with its own owner. This repo never clones, patches or pushes to it.
+
+After publishing the GitHub release, `release.sh` re-downloads the macOS arm64
+artifact and re-hashes it as a safety net. If the published sha doesn't match the
+built one, the script aborts before printing anything for the tap. On success it prints
+the three formula lines to change:
 
 - `version "<x.y.z>"`
 - `url "https://github.com/ace-rs/ace/releases/download/v<x.y.z>/ace-aarch64-apple-darwin"`
 - `sha256 "<sha of the macOS aarch64 binary>"`
 
-After publishing the GitHub release, `release.sh` re-downloads the macOS
-arm64 artifact and re-hashes it as a safety net — if the published sha
-doesn't match the formula, the script aborts before pushing the subtree to
-`gh-tap`. End users install with:
+Hand those lines to the tap's owner, who updates and pushes the formula. Homebrew
+serves the previous version until they do. End users install with:
 
 ```sh
 brew install ace-rs/tap/ace

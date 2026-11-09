@@ -138,10 +138,10 @@ steps live — do not duplicate them here or in any other doc.
 
 **Distribution.** Primary channel is Homebrew via the
 [`ace-rs/homebrew-tap`](https://github.com/ace-rs/homebrew-tap) tap: end users
-install with `brew install ace-rs/tap/ace`. The formula source lives at
-`homebrew-tap/Formula/ace.rb` in this repo as a git subtree; `release.sh` patches
-it and pushes the subtree to the tap repo. A sha mismatch between the published
-binary and the formula sha means the release is broken — verify after publishing.
+install with `brew install ace-rs/tap/ace`. The tap is a separate repo with its own
+owner, and this repo never writes to it. `release.sh` prints the formula's version, URL
+and sha256 for the tap's owner to apply. A sha mismatch between the published binary
+and the formula sha means the release is broken.
 
 ### Roadmap & backlog
 
